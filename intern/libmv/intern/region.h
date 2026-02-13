@@ -1,21 +1,3 @@
-/* SPDX-FileCopyrightText: 2014 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#ifndef LIBMV_C_API_REGION_H_
-#define LIBMV_C_API_REGION_H_
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef struct libmv_Region {
-  float min[2];
-  float max[2];
-} libmv_Region;
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif  // LIBMV_C_API_REGION_H_
+version https://git-lfs.github.com/spec/v1
+oid sha256:f26803be3acecd4dd2f7705afb60077ac15fcbf4a6c9d02b55900d6501aa4e32
+size 342

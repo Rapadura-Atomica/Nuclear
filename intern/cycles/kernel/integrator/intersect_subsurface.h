@@ -1,24 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "kernel/integrator/subsurface.h"
-
-CCL_NAMESPACE_BEGIN
-
-ccl_device void integrator_intersect_subsurface(KernelGlobals kg, IntegratorState state)
-{
-  PROFILING_INIT(kg, PROFILING_INTERSECT_SUBSURFACE);
-
-#ifdef __SUBSURFACE__
-  if (subsurface_scatter(kg, state)) {
-    return;
-  }
-#endif
-
-  integrator_path_terminate(kg, state, nullptr, DEVICE_KERNEL_INTEGRATOR_INTERSECT_SUBSURFACE);
-}
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:552c257b32b5314825cef7c3daad937b995e20ba2ae5511d44c3ddfac8e8984f
+size 528

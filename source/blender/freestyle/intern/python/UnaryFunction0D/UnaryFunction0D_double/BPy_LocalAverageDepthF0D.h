@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0DDouble.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject LocalAverageDepthF0D_Type;
-
-#define BPy_LocalAverageDepthF0D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&LocalAverageDepthF0D_Type))
-
-/*---------------------------Python BPy_LocalAverageDepthF0D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction0DDouble py_uf0D_double;
-} BPy_LocalAverageDepthF0D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:59f724c9ed4b7aede7c7486fa647c56a00ae59688dcb8e4fa18535a4b28b1948
+size 735

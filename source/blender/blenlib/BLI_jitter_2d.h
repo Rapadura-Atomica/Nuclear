@@ -1,13 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup bli
- */
-
-void BLI_jitter_init(float (*jitarr)[2], int num);
-void BLI_jitterate1(float (*jit1)[2], float (*jit2)[2], int num, float radius1);
-void BLI_jitterate2(float (*jit1)[2], float (*jit2)[2], int num, float radius2);
+version https://git-lfs.github.com/spec/v1
+oid sha256:ac28ce714e6b84bd3f5b3488372542621af5563b3483cfb2f58b17a0ca09a346
+size 384

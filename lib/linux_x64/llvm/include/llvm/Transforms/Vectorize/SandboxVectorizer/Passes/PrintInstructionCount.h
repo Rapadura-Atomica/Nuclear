@@ -1,23 +1,3 @@
-#ifndef LLVM_TRANSFORMS_VECTORIZE_SANDBOXVECTORIZER_PASSES_PRINTINSTRUCTIONCOUNT_H
-#define LLVM_TRANSFORMS_VECTORIZE_SANDBOXVECTORIZER_PASSES_PRINTINSTRUCTIONCOUNT_H
-
-#include "llvm/SandboxIR/Pass.h"
-#include "llvm/SandboxIR/Region.h"
-
-namespace llvm::sandboxir {
-
-/// A Region pass that prints the instruction count for the region to stdout.
-/// Used to test -sbvec-passes while we don't have any actual optimization
-/// passes.
-class PrintInstructionCount final : public RegionPass {
-public:
-  PrintInstructionCount() : RegionPass("null") {}
-  bool runOnRegion(Region &R, const Analyses &A) final {
-    outs() << "InstructionCount: " << std::distance(R.begin(), R.end()) << "\n";
-    return false;
-  }
-};
-
-} // namespace llvm::sandboxir
-
-#endif // LLVM_TRANSFORMS_VECTORIZE_SANDBOXVECTORIZER_PASSES_PRINTINSTRUCTIONCOUNTPASS_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:6c23d88b5978cca8e97f997dfe26344a6dfdd5532b4c706ee06f6436a3942140
+size 829

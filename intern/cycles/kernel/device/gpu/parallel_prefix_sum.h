@@ -1,36 +1,3 @@
-/* SPDX-FileCopyrightText: 2021-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-CCL_NAMESPACE_BEGIN
-
-/* Parallel prefix sum.
- *
- * TODO: actually make this work in parallel.
- *
- * This is used for an array the size of the number of shaders in the scene
- * which is not usually huge, so might not be a significant bottleneck. */
-
-#include "util/atomic.h"
-
-__device__ void gpu_parallel_prefix_sum(const int global_id,
-                                        ccl_global int *counter,
-                                        ccl_global int *prefix_sum,
-                                        const int num_values)
-{
-  if (global_id != 0) {
-    return;
-  }
-
-  int offset = 0;
-  for (int i = 0; i < num_values; i++) {
-    const int new_offset = offset + counter[i];
-    prefix_sum[i] = offset;
-    counter[i] = 0;
-    offset = new_offset;
-  }
-}
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:79a984feb62beca2df62e58bd9c18c710abbdf7a0358289b49985b4f4d2d3991
+size 895

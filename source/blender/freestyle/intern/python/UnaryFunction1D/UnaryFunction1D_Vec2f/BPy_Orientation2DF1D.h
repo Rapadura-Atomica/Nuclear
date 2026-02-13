@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DVec2f.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Orientation2DF1D_Type;
-
-#define BPy_Orientation2DF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&Orientation2DF1D_Type))
-
-/*---------------------------Python BPy_Orientation2DF1D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DVec2f py_uf1D_vec2f;
-} BPy_Orientation2DF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:e43d6a304f54ab0926c5cdfc8cab68b05bd6cdfdc03e939bafcd5346c89e31f0
+size 712

@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2003-2022 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \mainpage Blender
- *
- * \section intro Introduction
- *
- * Blender is an integrated 3d package.
- *
- * These pages document the source code of blender.
- *
- * \subsection implinks Important Links
- * - <a href="https://developer.blender.org">developer.blender.org</a> with bug tracker.
- * - <a href="https://developer.blender.org/docs/">Development documentation</a>.
- *
- * \subsection blother Other
- * For more information on using Blender browse to https://www.blender.org
- *
- */
-
-/** \defgroup undoc Undocumented
- *
- * \brief Modules and libraries that are still undocumented,
- * or lacking proper integration into the doxygen system, are marked in this group.
- */
+version https://git-lfs.github.com/spec/v1
+oid sha256:72f8cd79b8b3cf7113dc34713fa7d216e0dc3e320d1170ccbaf0bb5e68e5f5f0
+size 773

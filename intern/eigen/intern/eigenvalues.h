@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2015 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup intern_eigen
- */
-
-#ifndef __EIGEN3_EIGENVALUES_C_API_H__
-#define __EIGEN3_EIGENVALUES_C_API_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-bool EIG_self_adjoint_eigen_solve(const int size,
-                                  const float *matrix,
-                                  float *r_eigen_values,
-                                  float *r_eigen_vectors);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* __EIGEN3_EIGENVALUES_C_API_H__ */
+version https://git-lfs.github.com/spec/v1
+oid sha256:73a97bd03dfdcdc6ac609f3bc944064c1ca5a6bf7d179d81273873b50b679d85
+size 554

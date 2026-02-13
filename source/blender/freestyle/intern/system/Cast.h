@@ -1,24 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup freestyle
- * \brief Cast function
- */
-
-namespace Freestyle {
-
-namespace Cast {
-template<class T, class U> U *cast(T *in)
-{
-  if (!in) {
-    return nullptr;
-  }
-  return dynamic_cast<U *>(in);
-}
-}  // end of namespace Cast
-
-} /* namespace Freestyle */
+version https://git-lfs.github.com/spec/v1
+oid sha256:bc275f038d126633b4a7ef2af9dadc838acdf0075f5b2028964c47af85af124d
+size 387

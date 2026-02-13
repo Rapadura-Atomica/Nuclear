@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0DViewShape.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject GetShapeF0D_Type;
-
-#define BPy_GetShapeF0D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&GetShapeF0D_Type))
-
-/*---------------------------Python BPy_GetShapeF0D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction0DViewShape py_uf0D_viewshape;
-} BPy_GetShapeF0D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:77bf9559ef90caebd715591218d9410c04a2218a8265470d4ef6cf78886ca398
+size 699

@@ -1,12 +1,3 @@
-//
-// Copyright 2020 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_AR_AR_H
-#define PXR_USD_AR_AR_H
-
-#define AR_VERSION 2
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:87e45cabb752daae3312d93d747bdf014b670b7cc2587d41cf9f8f22d3871787
+size 218

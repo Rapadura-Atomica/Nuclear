@@ -1,22 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-#include "DNA_grease_pencil_types.h"
-
-/** \file
- * \ingroup bke
- * \brief Low-level operations for grease pencil that cannot be defined in the C++ header yet.
- */
-
-enum {
-  BKE_GREASEPENCIL_BATCH_DIRTY_ALL = 0,
-};
-
-extern void (*BKE_grease_pencil_batch_cache_dirty_tag_cb)(GreasePencil *grease_pencil, int mode);
-extern void (*BKE_grease_pencil_batch_cache_free_cb)(GreasePencil *grease_pencil);
-
-void BKE_grease_pencil_batch_cache_dirty_tag(GreasePencil *grease_pencil, int mode);
-void BKE_grease_pencil_batch_cache_free(GreasePencil *grease_pencil);
+version https://git-lfs.github.com/spec/v1
+oid sha256:f31e0743154410289596c29b6778f82d7f4c91ed8d14373771cfc714214edf46
+size 666

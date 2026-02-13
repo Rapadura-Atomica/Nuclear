@@ -1,30 +1,3 @@
-/*
-** SPDX-License-Identifier: BSD-3-Clause
-** Copyright Contributors to the OpenEXR Project.
-*/
-
-#ifndef OPENEXR_CORE_H
-#define OPENEXR_CORE_H
-
-#include "openexr_config.h"
-
-#include "openexr_base.h"
-#include "openexr_errors.h"
-
-#include "openexr_attr.h"
-#include "openexr_context.h"
-
-#include "openexr_part.h"
-
-#include "openexr_std_attr.h"
-
-#include "openexr_chunkio.h"
-
-#include "openexr_compression.h"
-
-#include "openexr_decode.h"
-#include "openexr_encode.h"
-
-#include "openexr_debug.h"
-
-#endif /* OPENEXR_CORE_H */
+version https://git-lfs.github.com/spec/v1
+oid sha256:64112b55030b83dc5826db78d5ff05bd72d31bb9aed8bef268b8ba63c5649824
+size 520

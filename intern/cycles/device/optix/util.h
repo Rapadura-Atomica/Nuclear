@@ -1,33 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#ifdef WITH_OPTIX
-
-#  include "device/cuda/util.h"
-
-#  ifdef WITH_CUDA_DYNLOAD
-#    include <cuew.h>  // IWYU pragma: export
-// Do not use CUDA SDK headers when using CUEW
-#    define OPTIX_DONT_INCLUDE_CUDA
-#  endif
-
-#  include <optix_stubs.h>  // IWYU pragma: export
-
-/* Utility for checking return values of OptiX function calls. */
-#  define optix_device_assert(optix_device, stmt) \
-    { \
-      OptixResult result = stmt; \
-      if (result != OPTIX_SUCCESS) { \
-        const char *name = optixGetErrorName(result); \
-        optix_device->set_error( \
-            string_printf("%s in %s (%s:%d)", name, #stmt, __FILE__, __LINE__)); \
-      } \
-    } \
-    (void)0
-
-#  define optix_assert(stmt) optix_device_assert(this, stmt)
-
-#endif /* WITH_OPTIX */
+version https://git-lfs.github.com/spec/v1
+oid sha256:0483ea3e6591ca90f746d80262f60c464922dca176b0404699a2fbdd1e859bbf
+size 877

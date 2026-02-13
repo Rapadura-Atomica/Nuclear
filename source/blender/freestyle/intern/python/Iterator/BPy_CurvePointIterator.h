@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Iterator.h"
-
-#include "../../stroke/CurveIterators.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject CurvePointIterator_Type;
-
-#define BPy_CurvePointIterator_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&CurvePointIterator_Type))
-
-/*---------------------------Python BPy_CurvePointIterator structure definition----------*/
-typedef struct {
-  BPy_Iterator py_it;
-  Freestyle::CurveInternal::CurvePointIterator *cp_it;
-} BPy_CurvePointIterator;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:5cfb860e517ab8e14592bea3409b855b7dbd46714a96bbb7ea3d2e8b278b625b
+size 787

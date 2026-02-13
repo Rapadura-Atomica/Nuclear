@@ -1,26 +1,3 @@
-//===- StripNonLineTableDebugInfo.h - -------------------------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_UTILS_STRIPNONLINETABLEDEBUGINFO_H
-#define LLVM_TRANSFORMS_UTILS_STRIPNONLINETABLEDEBUGINFO_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class Module;
-
-class StripNonLineTableDebugInfoPass
-    : public PassInfoMixin<StripNonLineTableDebugInfoPass> {
-public:
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
-};
-
-} // end namespace llvm
-
-#endif // LLVM_TRANSFORMS_UTILS_STRIPNONLINETABLEDEBUGINFO_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:007ef7ef59f937bbdd7a2e8af741fc7380cbe617cabfd8508f4380f7813ee3c8
+size 815

@@ -1,26 +1,3 @@
-/*========================== begin_copyright_notice ============================
-
-Copyright (C) 2018-2021 Intel Corporation
-
-SPDX-License-Identifier: MIT
-
-============================= end_copyright_notice ===========================*/
-
-#ifndef IGC_OPENCL_H
-#define IGC_OPENCL_H
-
-#if defined(_WIN64)
-  #define IGC_LIBRARY_NAME "igc64.dll"
-  #define FCL_LIBRARY_NAME "igdfcl64.dll"
-#elif defined(_WIN32)
-  #define IGC_LIBRARY_NAME "igc32.dll"
-  #define FCL_LIBRARY_NAME "igdfcl32.dll"
-#elif defined(ANDROID)
-  #define IGC_LIBRARY_NAME "libigc.so"
-  #define FCL_LIBRARY_NAME "libigdfcl.so"
-#else
-  #define IGC_LIBRARY_NAME "libigc.so.2"
-  #define FCL_LIBRARY_NAME "libigdfcl.so.2"
-#endif
-
-#endif // IGC_OPENCL_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:f1d649a8f91d191d9e982302b2e308d28a7df4365ef5a45cf50ab276b7e85787
+size 710

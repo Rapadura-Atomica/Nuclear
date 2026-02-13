@@ -1,25 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_CLOSURESOURCECODENODE_H
-#define MATERIALX_CLOSURESOURCECODENODE_H
-
-#include <MaterialXGenShader/Nodes/SourceCodeNode.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-/// @class ClosureSourceCodeNode
-/// Implementation for a closure node using data-driven static source code.
-class MX_GENSHADER_API ClosureSourceCodeNode : public SourceCodeNode
-{
-  public:
-    static ShaderNodeImplPtr create();
-
-    void emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage) const override;
-};
-
-MATERIALX_NAMESPACE_END
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:db156d047d1f127c4f7bfea18991c538c5246520959402850efaf7d77acb675a
+size 636

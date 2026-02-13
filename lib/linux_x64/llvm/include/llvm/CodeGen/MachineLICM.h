@@ -1,34 +1,3 @@
-//===- llvm/CodeGen/MachineLICM.h -------------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_MACHINELICM_H
-#define LLVM_CODEGEN_MACHINELICM_H
-
-#include "llvm/CodeGen/MachinePassManager.h"
-
-namespace llvm {
-
-template <typename DerivedT, bool PreRegAlloc>
-class MachineLICMBasePass : public PassInfoMixin<DerivedT> {
-public:
-  PreservedAnalyses run(MachineFunction &MF,
-                        MachineFunctionAnalysisManager &MFAM);
-};
-
-class EarlyMachineLICMPass
-    : public MachineLICMBasePass<EarlyMachineLICMPass, true> {};
-
-class MachineLICMPass : public MachineLICMBasePass<MachineLICMPass, false> {};
-
-} // namespace llvm
-
-extern template class llvm::MachineLICMBasePass<llvm::EarlyMachineLICMPass,
-                                                true>;
-extern template class llvm::MachineLICMBasePass<llvm::MachineLICMPass, false>;
-
-#endif // LLVM_CODEGEN_MACHINELICM_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:9b15daaa7c2fd111aa10cadd007c3b6bd54f250db4ae0ddb87e87e789d8f1538
+size 1175

@@ -1,29 +1,3 @@
-//
-// Copyright 2023 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_IMAGING_HD_FLATTENED_VISIBILITY_DATA_SOURCE_PROVIDER_H
-#define PXR_IMAGING_HD_FLATTENED_VISIBILITY_DATA_SOURCE_PROVIDER_H
-
-#include "pxr/imaging/hd/api.h"
-
-#include "pxr/imaging/hd/flattenedDataSourceProvider.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-class HdFlattenedVisibilityDataSourceProvider : public HdFlattenedDataSourceProvider
-{
-    HD_API
-    HdContainerDataSourceHandle GetFlattenedDataSource(
-        const Context&) const override;
-
-    HD_API
-    void ComputeDirtyLocatorsForDescendants(
-        HdDataSourceLocatorSet * locators) const override;
-};
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif // PXR_IMAGING_HD_FLATTENED_VISIBILITY_DATA_SOURCE_PROVIDER_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:b7b13efe3ca89bcf205fe124f4db18cc2522703a3c1a483630df07c7f8a1ce01
+size 801

@@ -1,32 +1,3 @@
-//===- LowerMatrixIntrinsics.h - Lower matrix intrinsics. -------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// This pass lowers matrix intrinsics down to vector operations.
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_SCALAR_LOWERMATRIXINTRINSICS_H
-#define LLVM_TRANSFORMS_SCALAR_LOWERMATRIXINTRINSICS_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-class LowerMatrixIntrinsicsPass
-    : public PassInfoMixin<LowerMatrixIntrinsicsPass> {
-  bool Minimal;
-
-public:
-  LowerMatrixIntrinsicsPass(bool Minimal = false) : Minimal(Minimal) {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-  void printPipeline(raw_ostream &OS,
-                     function_ref<StringRef(StringRef)> MapClassName2PassName);
-  static bool isRequired() { return true; }
-};
-} // namespace llvm
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:755ffe77c372c719e6d8e083538637c4bdf58492016cd975907060159c118149
+size 1129

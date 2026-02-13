@@ -1,22 +1,3 @@
-/* SPDX-FileCopyrightText: 2006 Joseph Eagar <joeedh@gmail.com>.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup imbcineon
- *
- * Cineon image file format library routines.
- */
-
-#pragma once
-
-#include "logImageCore.h"
-
-#include <cstdlib>
-
-int logimage_fseek(LogImageFile *logFile, intptr_t offset, int origin);
-int logimage_fwrite(const void *buffer, size_t size, unsigned int count, LogImageFile *logFile);
-int logimage_fread(void *buffer, size_t size, unsigned int count, LogImageFile *logFile);
-int logimage_read_uchar(unsigned char *x, LogImageFile *logFile);
-int logimage_read_ushort(unsigned short *x, LogImageFile *logFile);
-int logimage_read_uint(unsigned int *x, LogImageFile *logFile);
+version https://git-lfs.github.com/spec/v1
+oid sha256:ae92c32d7899d1faed3d9a4863fc424ac7094ce5593134dd627aeaa9c6b14f66
+size 721

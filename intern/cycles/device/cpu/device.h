@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/string.h"
-#include "util/unique_ptr.h"
-#include "util/vector.h"
-
-CCL_NAMESPACE_BEGIN
-
-class Device;
-class DeviceInfo;
-class Profiler;
-class Stats;
-
-unique_ptr<Device> device_cpu_create(const DeviceInfo &info,
-                                     Stats &stats,
-                                     Profiler &profiler,
-                                     bool headless);
-
-void device_cpu_info(vector<DeviceInfo> &devices);
-
-string device_cpu_capabilities();
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:895de34a93ff7a6ed94cf117c1b0a826ef8b201f6b61e08fcc1e744b9096b772
+size 607

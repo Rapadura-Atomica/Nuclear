@@ -1,33 +1,3 @@
-//
-// Copyright 2016 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_SDF_PY_UTILS_H
-#define PXR_USD_SDF_PY_UTILS_H
-
-#include "pxr/pxr.h"
-#include "pxr/usd/sdf/api.h"
-#include "pxr/usd/sdf/layer.h"
-
-#include "pxr/external/boost/python/dict.hpp"
-#include <string>
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-/// Convert the Python dictionary \p dict to an SdfLayer::FileFormatArguments
-/// object and return it via \p args. 
-///
-/// If a non-string key or value is encountered, \p errMsg will be filled in
-/// (if given) and this function will return false. Otherwise, this function
-/// will return true.
-SDF_API bool
-SdfFileFormatArgumentsFromPython(
-    const pxr_boost::python::dict& dict,
-    SdfLayer::FileFormatArguments* args,
-    std::string* errMsg = NULL);
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif // PXR_USD_SDF_PY_UTILS_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:17fb053b5d9cc749deb964d1a1fce13995aaad76c1da1c0adb5a376e5a6102cb
+size 896

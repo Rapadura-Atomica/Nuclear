@@ -1,32 +1,3 @@
-//
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) Contributors to the OpenEXR Project.
-//
-
-#ifndef INCLUDED_IMF_STRING_ATTRIBUTE_H
-#define INCLUDED_IMF_STRING_ATTRIBUTE_H
-
-//-----------------------------------------------------------------------------
-//
-//	class StringAttribute
-//
-//-----------------------------------------------------------------------------
-
-#include "ImfExport.h"
-#include "ImfNamespace.h"
-
-#include "ImfAttribute.h"
-
-#include <string>
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_ENTER
-
-typedef TypedAttribute<std::string> StringAttribute;
-
-#ifndef COMPILING_IMF_STRING_ATTRIBUTE
-extern template class IMF_EXPORT_EXTERN_TEMPLATE TypedAttribute<std::string>;
-#endif
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_EXIT
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:e6170d8773bfaa6f34db6b917752f0769618b7621ba80adeb15d16e6b3cb29c1
+size 746

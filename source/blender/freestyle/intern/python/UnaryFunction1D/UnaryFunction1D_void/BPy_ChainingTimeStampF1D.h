@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DVoid.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ChainingTimeStampF1D_Type;
-
-#define BPy_ChainingTimeStampF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&ChainingTimeStampF1D_Type))
-
-/*---------------------------Python BPy_ChainingTimeStampF1D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DVoid py_uf1D_void;
-} BPy_ChainingTimeStampF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:c5c5155620137bc69fabe545a764c5ab75c8d92f1c9a235eb7eeddd3ce7a5b55
+size 729

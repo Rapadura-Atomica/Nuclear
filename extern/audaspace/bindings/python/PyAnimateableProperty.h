@@ -1,34 +1,3 @@
-/*******************************************************************************
- * Copyright 2009-2025 Jörg Müller
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ******************************************************************************/
-
-#pragma once
-
-#include <Python.h>
-
-#include "Audaspace.h"
-
-typedef void Reference_AnimateableProperty;
-
-typedef struct
-{
-	PyObject_HEAD Reference_AnimateableProperty* animateableProperty;
-} AnimateablePropertyP;
-
-extern AUD_API PyObject* AnimateableProperty_empty();
-extern AUD_API AnimateablePropertyP* checkAnimateableProperty(PyObject* animateableProperty);
-
-bool initializeAnimateableProperty();
-void addAnimateablePropertyToModule(PyObject* module);
+version https://git-lfs.github.com/spec/v1
+oid sha256:e1c9b2a3b05543f0fe7ae48086526e89a6ed6946315bfde8c4833a6e8e0395cc
+size 1210

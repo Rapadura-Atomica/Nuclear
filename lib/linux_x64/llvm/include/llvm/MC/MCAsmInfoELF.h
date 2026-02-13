@@ -1,26 +1,3 @@
-//===- llvm/MC/MCAsmInfoELF.h - ELF Asm info --------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_MC_MCASMINFOELF_H
-#define LLVM_MC_MCASMINFOELF_H
-
-#include "llvm/MC/MCAsmInfo.h"
-
-namespace llvm {
-
-class MCAsmInfoELF : public MCAsmInfo {
-  virtual void anchor();
-  MCSection *getNonexecutableStackSection(MCContext &Ctx) const final;
-
-protected:
-  MCAsmInfoELF();
-};
-
-} // end namespace llvm
-
-#endif // LLVM_MC_MCASMINFOELF_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:f9fde86ba6abe3370381a8c9d38b0aa0b60665555736a57ffc18273d99a7cc81
+size 711

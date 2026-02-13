@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Interface0D.h"
-
-#include "../../view_map/ViewMap.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ViewVertex_Type;
-
-#define BPy_ViewVertex_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&ViewVertex_Type))
-
-/*---------------------------Python BPy_ViewVertex structure definition----------*/
-typedef struct {
-  BPy_Interface0D py_if0D;
-  Freestyle::ViewVertex *vv;
-} BPy_ViewVertex;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:5ee0096a54cdad0fad1be04410debc9c64074a2743d1b565978e5b05842b7239
+size 720

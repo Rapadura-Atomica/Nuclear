@@ -1,23 +1,3 @@
-//===-- llvm/MC/MCAsmInfoWasm.h - Wasm Asm info -----------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_MC_MCASMINFOWASM_H
-#define LLVM_MC_MCASMINFOWASM_H
-
-#include "llvm/MC/MCAsmInfo.h"
-
-namespace llvm {
-class MCAsmInfoWasm : public MCAsmInfo {
-  virtual void anchor();
-
-protected:
-  MCAsmInfoWasm();
-};
-} // namespace llvm
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:63b99211436d00b7ebcdc83be6a3eccbd7a11d14626561faa2609556a6e50ec4
+size 612

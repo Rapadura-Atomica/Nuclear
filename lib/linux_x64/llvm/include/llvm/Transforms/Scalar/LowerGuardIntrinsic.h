@@ -1,27 +1,3 @@
-//===--- LowerGuardIntrinsic.h - Lower the guard intrinsic ---------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// This pass lowers the llvm.experimental.guard intrinsic to a conditional call
-// to @llvm.experimental.deoptimize.  Once this happens, the guard can no longer
-// be widened.
-//
-//===----------------------------------------------------------------------===//
-#ifndef LLVM_TRANSFORMS_SCALAR_LOWERGUARDINTRINSIC_H
-#define LLVM_TRANSFORMS_SCALAR_LOWERGUARDINTRINSIC_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-struct LowerGuardIntrinsicPass : PassInfoMixin<LowerGuardIntrinsicPass> {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-
-}
-
-#endif // LLVM_TRANSFORMS_SCALAR_LOWERGUARDINTRINSIC_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:cd244362572b0daadb87a577c1552c3cb48ab32221a49ce08fba63756e28d0f7
+size 993

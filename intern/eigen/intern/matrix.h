@@ -1,22 +1,3 @@
-/* SPDX-FileCopyrightText: 2015 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup intern_eigen
- */
-
-#ifndef __EIGEN3_MATRIX_C_API_H__
-#define __EIGEN3_MATRIX_C_API_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-bool EIG_invert_m4_m4(float inverse[4][4], const float matrix[4][4]);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* __EIGEN3_MATRIX_C_API_H__ */
+version https://git-lfs.github.com/spec/v1
+oid sha256:ba759c26a1ce67d18407b6ec6ff8007ca7e50d14a9115fb248a637c75a0fab04
+size 388

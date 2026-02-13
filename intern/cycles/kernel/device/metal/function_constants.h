@@ -1,20 +1,3 @@
-/* SPDX-FileCopyrightText: 2021-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-enum {
-  Kernel_DummyConstant,
-#define KERNEL_STRUCT_MEMBER(parent, type, name) KernelData_##parent##_##name,
-#include "kernel/data_template.h"
-
-  KernelData_kernel_features
-};
-
-#ifdef __KERNEL_METAL__
-#  define KERNEL_STRUCT_MEMBER(parent, type, name) \
-    constant type kernel_data_##parent##_##name \
-        [[function_constant(KernelData_##parent##_##name)]];
-#  include "kernel/data_template.h"
-
-constant int kernel_data_kernel_features [[function_constant(KernelData_kernel_features)]];
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:6fef7a5bc5b032708983e47c2903345d76ce6e96d1997dfb80dbd9793556b8c5
+size 604

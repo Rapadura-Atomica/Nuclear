@@ -1,20 +1,3 @@
-/* SPDX-FileCopyrightText: 2002-2022 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#ifndef __MARCHING_CUBES_TABLE_H__
-#define __MARCHING_CUBES_TABLE_H__
-
-/* number of configurations */
-#define TOTCONF 256
-
-/* maximum number of triangles per configuration */
-#define MAX_TRIS 10
-
-/* number of triangles in each configuration */
-extern const int marching_cubes_numtri[TOTCONF];
-
-/* table of triangles in each configuration */
-extern const int marching_cubes_tris[TOTCONF][MAX_TRIS][3];
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:591a89d9395c74f9b986d861db0ddf69f79db33112f5ea78d5562e0b83bdab6d
+size 514

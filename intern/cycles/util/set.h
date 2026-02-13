@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include <set>
-#include <unordered_set>
-
-#if defined(_MSC_VER) && (_MSC_VER >= 1900)
-#  include <iterator>
-#endif
-
-CCL_NAMESPACE_BEGIN
-
-using std::set;
-using std::unordered_set;
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:201ea84b62dd88eb5971a52343586538f54dc869cc4ce94504220c319d9e54f7
+size 313

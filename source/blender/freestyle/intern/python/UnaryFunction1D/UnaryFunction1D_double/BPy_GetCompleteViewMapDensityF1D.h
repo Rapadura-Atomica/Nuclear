@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DDouble.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject GetCompleteViewMapDensityF1D_Type;
-
-#define BPy_GetCompleteViewMapDensityF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&GetCompleteViewMapDensityF1D_Type))
-
-/*---------------------------Python BPy_GetCompleteViewMapDensityF1D structure
- * definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DDouble py_uf1D_double;
-} BPy_GetCompleteViewMapDensityF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:4e899fb0331ac9b7c49eefbe93cde449c03b41bf3ddb168c455fc7fd744785f4
+size 778

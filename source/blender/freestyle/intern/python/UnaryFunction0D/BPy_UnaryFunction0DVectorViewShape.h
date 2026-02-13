@@ -1,34 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0D.h"
-
-#include "../../view_map/ViewMap.h"
-#include <vector>
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject UnaryFunction0DVectorViewShape_Type;
-
-#define BPy_UnaryFunction0DVectorViewShape_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&UnaryFunction0DVectorViewShape_Type))
-
-/*---------------------------Python BPy_UnaryFunction0DVectorViewShape structure
- * definition----------*/
-typedef struct {
-  BPy_UnaryFunction0D py_uf0D;
-  Freestyle::UnaryFunction0D<std::vector<Freestyle::ViewShape *>> *uf0D_vectorviewshape;
-} BPy_UnaryFunction0DVectorViewShape;
-
-/*---------------------------Python BPy_UnaryFunction0DVectorViewShape visible
- * prototypes-----------*/
-int UnaryFunction0DVectorViewShape_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:291a1ddd81cf1aa10b9bbe53ab36857e1442c470338aecda65451d521d1f42e6
+size 1079

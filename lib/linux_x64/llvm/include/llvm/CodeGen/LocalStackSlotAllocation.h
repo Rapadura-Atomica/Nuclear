@@ -1,24 +1,3 @@
-//===- LocalStackSlotAllocation.h -------------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_LOCALSTACKSLOTALLOCATION_H
-#define LLVM_CODEGEN_LOCALSTACKSLOTALLOCATION_H
-
-#include "llvm/CodeGen/MachinePassManager.h"
-
-namespace llvm {
-
-class LocalStackSlotAllocationPass
-    : public PassInfoMixin<LocalStackSlotAllocationPass> {
-public:
-  PreservedAnalyses run(MachineFunction &MF, MachineFunctionAnalysisManager &);
-  static bool isRequired() { return true; }
-};
-
-} // namespace llvm
-#endif // LLVM_CODEGEN_LOCALSTACKSLOTALLOCATION_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:31e72223ebf2de5101d396a8287bc9d859b53f99638b12feaad53ec92010c255
+size 831

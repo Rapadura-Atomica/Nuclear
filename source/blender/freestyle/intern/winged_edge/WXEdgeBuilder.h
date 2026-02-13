@@ -1,31 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup freestyle
- * \brief Class inherited from WingedEdgeBuilder and designed to build a WX (WingedEdge + extended
- * info (silhouette etc...)) structure from a polygonal model
- */
-
-#include "WingedEdgeBuilder.h"
-
-#include "../scene_graph/IndexedFaceSet.h"
-
-namespace Freestyle {
-
-class WXEdgeBuilder : public WingedEdgeBuilder {
- public:
-  WXEdgeBuilder() : WingedEdgeBuilder() {}
-  virtual ~WXEdgeBuilder() {}
-  VISIT_DECL(IndexedFaceSet);
-
- protected:
-  virtual void buildWVertices(WShape &shape, const float *vertices, uint vsize);
-
-  MEM_CXX_CLASS_ALLOC_FUNCS("Freestyle:WXEdgeBuilder")
-};
-
-} /* namespace Freestyle */
+version https://git-lfs.github.com/spec/v1
+oid sha256:c6d51020e3dd0b768f4447d8c12914ca331cb7b7680a96bcf0294577aff84816
+size 754

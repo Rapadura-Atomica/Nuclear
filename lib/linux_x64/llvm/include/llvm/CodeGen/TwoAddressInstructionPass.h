@@ -1,29 +1,3 @@
-//===- llvm/CodeGen/TwoAddressInstructionPass.h -----------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_TWOADDRESSINSTRUCTIONPASS_H
-#define LLVM_CODEGEN_TWOADDRESSINSTRUCTIONPASS_H
-
-#include "llvm/CodeGen/MachinePassManager.h"
-
-namespace llvm {
-
-class TwoAddressInstructionPass
-    : public PassInfoMixin<TwoAddressInstructionPass> {
-public:
-  PreservedAnalyses run(MachineFunction &MF,
-                        MachineFunctionAnalysisManager &MFAM);
-  MachineFunctionProperties getSetProperties() const {
-    return MachineFunctionProperties().set(
-        MachineFunctionProperties::Property::TiedOpsRewritten);
-  }
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_TWOADDRESSINSTRUCTIONPASS_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:c2f76f73d4220f101ed403406906898ee942c6faa5ae9f4442a6a82682ea5a4c
+size 980

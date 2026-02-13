@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DVectorViewShape.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject GetOccludeeF1D_Type;
-
-#define BPy_GetOccludeeF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&GetOccludeeF1D_Type))
-
-/*---------------------------Python BPy_GetOccludeeF1D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DVectorViewShape py_uf1D_vectorviewshape;
-} BPy_GetOccludeeF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:b5499a968527d158e51c573493dca39870ff3710b95c168d652f6fb4a2ffb2f8
+size 732

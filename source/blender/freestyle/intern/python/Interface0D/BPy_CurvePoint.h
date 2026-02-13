@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Interface0D.h"
-
-#include "../../stroke/Curve.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject CurvePoint_Type;
-
-#define BPy_CurvePoint_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&CurvePoint_Type))
-
-/*---------------------------Python BPy_CurvePoint structure definition----------*/
-typedef struct {
-  BPy_Interface0D py_if0D;
-  Freestyle::CurvePoint *cp;
-} BPy_CurvePoint;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:d20cc4e224617080baab980b1bcc1dbb88483c84a11ccdec47e05914707c474d
+size 716

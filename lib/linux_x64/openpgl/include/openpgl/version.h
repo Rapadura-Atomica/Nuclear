@@ -1,9 +1,3 @@
-// Copyright 2021 Intel Corporation
-// SPDX-License-Identifier: Apache-2.0
-
-#pragma once
-
-#define OPENPGL_VERSION_MAJOR 0
-#define OPENPGL_VERSION_MINOR 6
-#define OPENPGL_VERSION_PATCH 0
-#define OPENPGL_VERSION "0.6.0"
+version https://git-lfs.github.com/spec/v1
+oid sha256:e59f55289575094283eea060ba440c3a7eda1fa7a536fee758303efb9a397045
+size 218

@@ -1,36 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-/* Functions to display a simple OpenGL window using SDL, simplified to the
- * bare minimum we need to reduce boilerplate code in tests apps. */
-
-CCL_NAMESPACE_BEGIN
-
-using WindowInitFunc = void (*)();
-using WindowExitFunc = void (*)();
-using WindowResizeFunc = void (*)(int, int);
-using WindowDisplayFunc = void (*)();
-using WindowKeyboardFunc = void (*)(unsigned char);
-using WindowMotionFunc = void (*)(int, int, int);
-
-void window_main_loop(const char *title,
-                      const int width,
-                      const int height,
-                      WindowInitFunc initf,
-                      WindowExitFunc exitf,
-                      WindowResizeFunc resize,
-                      WindowDisplayFunc display,
-                      WindowKeyboardFunc keyboard,
-                      WindowMotionFunc motion);
-
-void window_display_info(const char *info);
-void window_display_help();
-void window_redraw();
-
-bool window_opengl_context_enable();
-void window_opengl_context_disable();
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:2cd9c1c2a076fe23ac2a3a9825e919d9938191f57886663a14969280fb45ad83
+size 1132

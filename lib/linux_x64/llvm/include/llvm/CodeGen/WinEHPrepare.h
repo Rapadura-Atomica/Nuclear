@@ -1,27 +1,3 @@
-//===-- llvm/CodeGen/WinEHPrepare.h ----------------------------*- C++ -*--===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_WINEHPREPARE_H
-#define LLVM_CODEGEN_WINEHPREPARE_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class WinEHPreparePass : public PassInfoMixin<WinEHPreparePass> {
-  bool DemoteCatchSwitchPHIOnly;
-
-public:
-  WinEHPreparePass(bool DemoteCatchSwitchPHIOnly_ = false)
-      : DemoteCatchSwitchPHIOnly(DemoteCatchSwitchPHIOnly_) {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM);
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_WINEHPREPARE_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:b67eab0fb4a18710270d603e12e307fe2e9b3b4e9847e2a3ae164ea7d5730d9e
+size 856

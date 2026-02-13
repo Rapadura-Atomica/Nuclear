@@ -1,33 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../system/Iterator.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Iterator_Type;
-
-#define BPy_Iterator_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&Iterator_Type))
-
-/*---------------------------Python BPy_Iterator structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-  Freestyle::Iterator *it;
-} BPy_Iterator;
-
-/*---------------------------Python BPy_Iterator visible prototypes-----------*/
-
-int Iterator_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:7e9d31178be412b938e3da889c7b5da32497243b6592d3bfc400088913f2c330
+size 816

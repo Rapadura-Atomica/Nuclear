@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0DFloat.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject GetViewMapGradientNormF0D_Type;
-
-#define BPy_GetViewMapGradientNormF0D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&GetViewMapGradientNormF0D_Type))
-
-/*---------------------------Python BPy_GetViewMapGradientNormF0D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction0DFloat py_uf0D_float;
-} BPy_GetViewMapGradientNormF0D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:56810a27575d691f2cd0d40ac1983bfd703b14e49fc1bb302e1b751bd1e6f401
+size 757

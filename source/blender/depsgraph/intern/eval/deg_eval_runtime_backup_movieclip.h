@@ -1,33 +1,3 @@
-/* SPDX-FileCopyrightText: 2019 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-struct MovieClip;
-struct MovieClipCache;
-struct MovieReader;
-
-namespace blender::deg {
-
-struct Depsgraph;
-
-/* Backup of movie clip runtime data. */
-class MovieClipBackup {
- public:
-  MovieClipBackup(const Depsgraph *depsgraph);
-
-  void reset();
-
-  void init_from_movieclip(MovieClip *movieclip);
-  void restore_to_movieclip(MovieClip *movieclip);
-
-  struct MovieReader *anim;
-  struct MovieClipCache *cache;
-};
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:91e9a15882cbb7395d0a8c2fb8ff98dee8837c7bd28fa37ba6a1cfddb4b442c7
+size 592

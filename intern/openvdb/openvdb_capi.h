@@ -1,18 +1,3 @@
-/* SPDX-FileCopyrightText: 2015 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#ifndef __OPENVDB_CAPI_H__
-#define __OPENVDB_CAPI_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-int OpenVDB_getVersionHex(void);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* __OPENVDB_CAPI_H__ */
+version https://git-lfs.github.com/spec/v1
+oid sha256:b897ac9262c706eff4f41f1d959ceac1f182c0d20cf4a12648ffed83059dbccd
+size 290

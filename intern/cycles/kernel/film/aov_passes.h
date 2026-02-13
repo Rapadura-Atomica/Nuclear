@@ -1,32 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "kernel/film/write.h"
-
-CCL_NAMESPACE_BEGIN
-
-ccl_device_inline void film_write_aov_pass_value(KernelGlobals kg,
-                                                 ConstIntegratorState state,
-                                                 ccl_global float *ccl_restrict render_buffer,
-                                                 const int aov_id,
-                                                 const float value)
-{
-  ccl_global float *buffer = film_pass_pixel_render_buffer(kg, state, render_buffer);
-  film_write_pass_float(buffer + kernel_data.film.pass_aov_value + aov_id, value);
-}
-
-ccl_device_inline void film_write_aov_pass_color(KernelGlobals kg,
-                                                 ConstIntegratorState state,
-                                                 ccl_global float *ccl_restrict render_buffer,
-                                                 const int aov_id,
-                                                 const float3 color)
-{
-  ccl_global float *buffer = film_pass_pixel_render_buffer(kg, state, render_buffer);
-  film_write_pass_float4(buffer + kernel_data.film.pass_aov_color + aov_id,
-                         make_float4(color, 1.0f));
-}
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:0dfc1766599058ea3d040c995863e7f6a2ac904d116dcc0db54a0db7cebc9040
+size 1329

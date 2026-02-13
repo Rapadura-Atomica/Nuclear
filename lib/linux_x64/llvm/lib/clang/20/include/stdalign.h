@@ -1,24 +1,3 @@
-/*===---- stdalign.h - Standard header for alignment ------------------------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#ifndef __STDALIGN_H
-#define __STDALIGN_H
-
-#if defined(__cplusplus) ||                                                    \
-    (defined(__STDC_VERSION__) && __STDC_VERSION__ < 202311L)
-#ifndef __cplusplus
-#define alignas _Alignas
-#define alignof _Alignof
-#endif
-
-#define __alignas_is_defined 1
-#define __alignof_is_defined 1
-#endif /* __STDC_VERSION__ */
-
-#endif /* __STDALIGN_H */
+version https://git-lfs.github.com/spec/v1
+oid sha256:0375392ce44c0bce9d2dda696b0b2e7129e2e58233e002f532d010c9ac02d27b
+size 756

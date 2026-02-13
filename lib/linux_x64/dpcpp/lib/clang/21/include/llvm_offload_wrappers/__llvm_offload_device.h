@@ -1,10 +1,3 @@
-/*===------ LLVM/Offload helpers for kernel languages (CUDA/HIP) -*- c++ -*-===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#include "__llvm_offload.h"
+version https://git-lfs.github.com/spec/v1
+oid sha256:5b246a387424b8ff24fbfc00091b148feb90514367fbc79713fbc95ee2759702
+size 400

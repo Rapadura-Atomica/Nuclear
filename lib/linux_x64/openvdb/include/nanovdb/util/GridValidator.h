@@ -1,6 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: Apache-2.0
-
-#include <nanovdb/util/Util.h>// for NANOVDB_DEPRECATED_HEADER
-#include <nanovdb/tools/GridValidator.h>
-NANOVDB_DEPRECATED_HEADER("Include nanovdb/tools/GridValidator.h instead.")
+version https://git-lfs.github.com/spec/v1
+oid sha256:02c08afc8cd5a6792d989249b45041c312d079b7ab6b0d159da15d439a4de262
+size 269

@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_BinaryPredicate1D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ViewMapGradientNormBP1D_Type;
-
-#define BPy_ViewMapGradientNormBP1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&ViewMapGradientNormBP1D_Type))
-
-/*---------------------------Python BPy_ViewMapGradientNormBP1D structure definition----------*/
-typedef struct {
-  BPy_BinaryPredicate1D py_bp1D;
-} BPy_ViewMapGradientNormBP1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:b7e0c73f32d21aab5b8b781f7c8edcae1d387508ac1af8614dd2a257e04971df
+size 735

@@ -1,13 +1,3 @@
-/*===---- __stdarg___gnuc_va_list.h - Definition of __gnuc_va_list ---------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#ifndef __GNUC_VA_LIST
-#define __GNUC_VA_LIST
-typedef __builtin_va_list __gnuc_va_list;
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:feca975bfdfb254d17458a8e3d51f8ad6d9bdc9fd6287727f0f8b2fb81fcb0b0
+size 467

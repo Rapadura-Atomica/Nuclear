@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* create python module _cycles used by addon */
-
-void *CCL_python_module_init(void);
-
-void CCL_log_init(void);
-
-#ifdef __cplusplus
-}
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:9034f0f536a433c97ac31e796e23c016dd4ee7449741950d8f6cc4b6ab43c673
+size 297

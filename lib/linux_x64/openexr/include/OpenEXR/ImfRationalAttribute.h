@@ -1,30 +1,3 @@
-//
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) Contributors to the OpenEXR Project.
-//
-
-#ifndef INCLUDED_IMF_RATIONAL_ATTRIBUTE_H
-#define INCLUDED_IMF_RATIONAL_ATTRIBUTE_H
-
-//-----------------------------------------------------------------------------
-//
-//	class RationalAttribute
-//
-//-----------------------------------------------------------------------------
-
-#include "ImfAttribute.h"
-#include "ImfRational.h"
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_ENTER
-
-typedef TypedAttribute<OPENEXR_IMF_INTERNAL_NAMESPACE::Rational>
-    RationalAttribute;
-
-#ifndef COMPILING_IMF_RATIONAL_ATTRIBUTE
-extern template class IMF_EXPORT_EXTERN_TEMPLATE
-    TypedAttribute<OPENEXR_IMF_INTERNAL_NAMESPACE::Rational>;
-#endif
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_EXIT
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:05185d5b05c4720deeb7c4b1779c19f08704c147eae0153b99922e8955798a11
+size 778

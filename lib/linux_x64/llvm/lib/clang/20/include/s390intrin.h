@@ -1,25 +1,3 @@
-/*===---- s390intrin.h - SystemZ intrinsics --------------------------------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#ifndef __S390INTRIN_H
-#define __S390INTRIN_H
-
-#ifndef __s390__
-#error "<s390intrin.h> is for s390 only"
-#endif
-
-#ifdef __HTM__
-#include <htmintrin.h>
-#endif
-
-#ifdef __VEC__
-#include <vecintrin.h>
-#endif
-
-#endif /* __S390INTRIN_H*/
+version https://git-lfs.github.com/spec/v1
+oid sha256:2c8bfec677cd371893070d06f06e2ed9a6657c8e7d1dbafb2d8e3054dd8fe7c5
+size 604

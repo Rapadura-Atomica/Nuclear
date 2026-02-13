@@ -1,31 +1,3 @@
-//===- DebugUnknownSubsection.h -----------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_DEBUGINFO_CODEVIEW_DEBUGUNKNOWNSUBSECTION_H
-#define LLVM_DEBUGINFO_CODEVIEW_DEBUGUNKNOWNSUBSECTION_H
-
-#include "llvm/DebugInfo/CodeView/DebugSubsection.h"
-#include "llvm/Support/BinaryStreamRef.h"
-
-namespace llvm {
-namespace codeview {
-
-class DebugUnknownSubsectionRef final : public DebugSubsectionRef {
-public:
-  DebugUnknownSubsectionRef(DebugSubsectionKind Kind, BinaryStreamRef Data)
-      : DebugSubsectionRef(Kind), Data(Data) {}
-
-  BinaryStreamRef getData() const { return Data; }
-
-private:
-  BinaryStreamRef Data;
-};
-}
-}
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:da6ed224c8c98f48708272273562ff9607e8383a36f5f2c4578dce0f9b7ebf9b
+size 917

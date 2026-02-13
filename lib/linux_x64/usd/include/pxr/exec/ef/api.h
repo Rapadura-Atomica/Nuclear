@@ -1,33 +1,3 @@
-//
-// Copyright 2025 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_EXEC_EF_API_H
-#define PXR_EXEC_EF_API_H
-
-#include "pxr/base/arch/export.h"
-
-#if defined(PXR_STATIC)
-#   define EF_API
-#   define EF_API_TYPE
-#   define EF_API_TEMPLATE_CLASS(...)
-#   define EF_API_TEMPLATE_STRUCT(...)
-#   define EF_LOCAL
-#else
-#   if defined(EF_EXPORTS)
-#       define EF_API ARCH_EXPORT
-#       define EF_API_TYPE ARCH_EXPORT_TYPE
-#       define EF_API_TEMPLATE_CLASS(...) ARCH_EXPORT_TEMPLATE(class, __VA_ARGS__)
-#       define EF_API_TEMPLATE_STRUCT(...) ARCH_EXPORT_TEMPLATE(struct, __VA_ARGS__)
-#   else
-#       define EF_API ARCH_IMPORT
-#       define EF_API_TYPE
-#       define EF_API_TEMPLATE_CLASS(...) ARCH_IMPORT_TEMPLATE(class, __VA_ARGS__)
-#       define EF_API_TEMPLATE_STRUCT(...) ARCH_IMPORT_TEMPLATE(struct, __VA_ARGS__)
-#   endif
-#   define EF_LOCAL ARCH_HIDDEN
-#endif
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:5f859f6a549a4eb5b336b769b7459bf34a1f00e217e237d50d91f2872470364f
+size 964

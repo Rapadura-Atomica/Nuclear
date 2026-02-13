@@ -1,32 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../winged_edge/Nature.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Nature_Type;
-
-#define BPy_Nature_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&Nature_Type))
-
-/*---------------------------Python BPy_Nature structure definition----------*/
-typedef struct {
-  PyLongObject i;
-} BPy_Nature;
-
-/*---------------------------Python BPy_Nature visible prototypes-----------*/
-
-int Nature_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:96759d6c974b30dc910af6cdc94b8636c1535754c1e8778ed6a67b82bc82b5f8
+size 780

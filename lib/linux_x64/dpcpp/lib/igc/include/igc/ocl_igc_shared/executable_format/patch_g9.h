@@ -1,22 +1,3 @@
-/*========================== begin_copyright_notice ============================
-
-Copyright (C) 2017-2021 Intel Corporation
-
-SPDX-License-Identifier: MIT
-
-============================= end_copyright_notice ===========================*/
-
-/*****************************************************************************\
-Abstract:   Contains Gen9 patch structure definitions
-\*****************************************************************************/
-#pragma once
-#include "patch_shared.h"
-
-namespace iOpenCL {
-
-/*****************************************************************************\
-STRUCT: SKernelBinaryHeaderGen9
-\*****************************************************************************/
-struct SKernelBinaryHeaderGen9 : SKernelBinaryHeaderCommon {};
-
-} // namespace iOpenCL
+version https://git-lfs.github.com/spec/v1
+oid sha256:6a63c70efe0d9e214e98d1b8f84eb961ebe8959fb3d3a2ddeef24a28d6928e29
+size 791

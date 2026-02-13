@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DVec2f.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Normal2DF1D_Type;
-
-#define BPy_Normal2DF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&Normal2DF1D_Type))
-
-/*---------------------------Python BPy_Normal2DF1D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DVec2f py_uf1D_vec2f;
-} BPy_Normal2DF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:adbfea0daa248a533f859219c3c867c40f4d40d06a84bfac786363075f397972
+size 687

@@ -1,22 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_CORE_EXPORT_H
-#define MATERIALX_CORE_EXPORT_H
-
-#include <MaterialXCore/Library.h>
-
-/// @file
-/// Import and export declarations for the Core library.
-
-#if defined(MATERIALX_CORE_EXPORTS)
-    #define MX_CORE_API MATERIALX_SYMBOL_EXPORT
-    #define MX_CORE_EXTERN_TEMPLATE(...) MATERIALX_EXPORT_EXTERN_TEMPLATE(__VA_ARGS__)
-#else
-    #define MX_CORE_API MATERIALX_SYMBOL_IMPORT
-    #define MX_CORE_EXTERN_TEMPLATE(...) MATERIALX_IMPORT_EXTERN_TEMPLATE(__VA_ARGS__)
-#endif
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:0d6d5ef6bea402e3ef4a2081185667b869caf81b14fe86c2858ee5c2f74b6ff0
+size 593

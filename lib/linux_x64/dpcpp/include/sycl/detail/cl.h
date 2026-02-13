@@ -1,18 +1,3 @@
-//==---------------- cl.h - Include OpenCL headers -------------------------==//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#pragma once
-
-// Suppress a compiler message about undefined CL_TARGET_OPENCL_VERSION
-// and define all symbols up to OpenCL 3.0
-#ifndef CL_TARGET_OPENCL_VERSION
-#define CL_TARGET_OPENCL_VERSION 300
-#endif
-
-#include <CL/cl.h>
-#include <CL/cl_ext.h>
+version https://git-lfs.github.com/spec/v1
+oid sha256:4b2ae0ecf918a2088b9f34b9ae9971f9468670c9ea3c231217e727beabe9ee27
+size 619

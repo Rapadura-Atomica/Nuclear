@@ -1,32 +1,3 @@
-// Copyright 2021 Intel Corporation
-// SPDX-License-Identifier: Apache-2.0
-
-#pragma once
-
-#include "common.h"
-#include "config.h"
-#include "field.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#ifdef __cplusplus
-struct Device;
-#else
-typedef ManagedObject Device;
-#endif
-
-typedef Device *PGLDevice;
-
-OPENPGL_CORE_INTERFACE PGLDevice pglNewDevice(PGL_DEVICE_TYPE deviceType, size_t numThreads);
-
-OPENPGL_CORE_INTERFACE PGLField pglDeviceNewField(PGLDevice device, PGLFieldArguments args);
-
-OPENPGL_CORE_INTERFACE PGLField pglDeviceNewFieldFromFile(PGLDevice device, const char* fieldFileName);
-
-OPENPGL_CORE_INTERFACE void pglReleaseDevice(PGLDevice device);
-
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:aa1e98191fda4131ddb211e50a1517e37e45beca100754cd83482b956fd25a3a
+size 698

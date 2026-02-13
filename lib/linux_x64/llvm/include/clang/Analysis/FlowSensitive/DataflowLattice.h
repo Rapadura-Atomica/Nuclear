@@ -1,31 +1,3 @@
-//===- DataflowLattice.h ----------------------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-//  This file defines base types for building lattices to be used in dataflow
-//  analyses that run over Control-Flow Graphs (CFGs).
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_ANALYSIS_FLOWSENSITIVE_DATAFLOWLATTICE_H
-#define LLVM_CLANG_ANALYSIS_FLOWSENSITIVE_DATAFLOWLATTICE_H
-
-namespace clang {
-namespace dataflow {
-
-/// Effect indicating whether a lattice operation resulted in a new value.
-enum class LatticeEffect {
-  Unchanged,
-  Changed,
-};
-// DEPRECATED. Use `LatticeEffect`.
-using LatticeJoinEffect = LatticeEffect;
-
-} // namespace dataflow
-} // namespace clang
-
-#endif // LLVM_CLANG_ANALYSIS_FLOWSENSITIVE_DATAFLOWLATTICE_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:cc452d48e3636f224b19c2d1a0930da0c49f30032f0cb91df66193342581d46f
+size 1066

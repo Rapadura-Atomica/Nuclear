@@ -1,24 +1,3 @@
-//===-- llvm/CodeGen/DAGCombine.h  ------- SelectionDAG Nodes ---*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-
-#ifndef LLVM_CODEGEN_DAGCOMBINE_H
-#define LLVM_CODEGEN_DAGCOMBINE_H
-
-namespace llvm {
-
-enum CombineLevel {
-  BeforeLegalizeTypes,
-  AfterLegalizeTypes,
-  AfterLegalizeVectorOps,
-  AfterLegalizeDAG
-};
-
-} // end llvm namespace
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:e5e971f47647aa4d766d9943b01b376be66e8d7b86a6f7f4d308779fbe9c6d9a
+size 606

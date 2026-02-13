@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_StrokeShader.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ColorNoiseShader_Type;
-
-#define BPy_ColorNoiseShader_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&ColorNoiseShader_Type))
-
-/*---------------------------Python BPy_ColorNoiseShader structure definition----------*/
-typedef struct {
-  BPy_StrokeShader py_ss;
-} BPy_ColorNoiseShader;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:0f4a19484e77696a7853d639cf1f486e87bb062fb91081f80a3db5ceb0e52f81
+size 688

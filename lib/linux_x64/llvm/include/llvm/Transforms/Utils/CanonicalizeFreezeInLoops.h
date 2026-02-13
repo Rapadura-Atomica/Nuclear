@@ -1,33 +1,3 @@
-//==- CanonicalizeFreezeInLoop.h - Canonicalize freezes in a loop-*- C++ -*-==//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// This file canonicalizes freeze instructions in a loop.
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_UTILS_CANONICALIZEFREEZEINLOOPS_H
-#define LLVM_TRANSFORMS_UTILS_CANONICALIZEFREEZEINLOOPS_H
-
-#include "llvm/Analysis/LoopAnalysisManager.h"
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-class Loop;
-class LPMUpdater;
-
-/// A pass that canonicalizes freeze instructions in a loop.
-class CanonicalizeFreezeInLoopsPass
-    : public PassInfoMixin<CanonicalizeFreezeInLoopsPass> {
-public:
-  PreservedAnalyses run(Loop &L, LoopAnalysisManager &AM,
-                        LoopStandardAnalysisResults &AR, LPMUpdater &U);
-};
-
-} // end namespace llvm
-
-#endif // LLVM_TRANSFORMS_UTILS_CANONICALIZEFREEZEINLOOPS_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:9b91d9afa91285b96a7153b3fb47a1afdd246d23aa04d233c04f9c0ff8ae08b8
+size 1146

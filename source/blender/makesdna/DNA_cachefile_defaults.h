@@ -1,34 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup DNA
- */
-
-#pragma once
-
-/* clang-format off */
-
-/* -------------------------------------------------------------------- */
-/** \name CacheFile Struct
- * \{ */
-
-#define _DNA_DEFAULT_CacheFile \
-  { \
-    .filepath[0] = '\0', \
-    .override_frame = false, \
-    .frame = 0.0f, \
-    .is_sequence = false, \
-    .scale = 1.0f, \
-    .object_paths ={NULL, NULL}, \
- \
-    .type = 0, \
-    .handle = NULL, \
-    .handle_filepath[0] = '\0', \
-    .handle_readers = NULL, \
-  }
-
-/** \} */
-
-/* clang-format on */
+version https://git-lfs.github.com/spec/v1
+oid sha256:453b2091df5b489590c2e22eddb46d94b3016d0c0f481b891f0ef91f37da929f
+size 627

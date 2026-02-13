@@ -1,28 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_LIGHTNODEMSL_H
-#define MATERIALX_LIGHTNODEMSL_H
-
-#include <MaterialXGenMsl/MslShaderGenerator.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-/// Light node implementation for MSL
-class MX_GENMSL_API LightNodeMsl : public MslImplementation
-{
-  public:
-    LightNodeMsl();
-
-    static ShaderNodeImplPtr create();
-
-    void createVariables(const ShaderNode& node, GenContext& context, Shader& shader) const override;
-
-    void emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage) const override;
-};
-
-MATERIALX_NAMESPACE_END
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:06054e56d75fd2cb7cd71a9afa8b0e48b3577f4de3309e91861d7557150abf51
+size 657

@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \defgroup extern External libraries
- *  \section externabout External libraries
- *  As with \ref intern these libraries are
- *  provided in the Blender codebase. This is
- *  to make building Blender easier. The main
- *  development of these libraries is \b not part
- *  of the normal Blender development process, but
- *  each of the library is developed separately.
- *  Whenever deemed necessary libraries in \c extern/
- *  folder are updated.
- *
- */
-
-/** \defgroup curve_fit Curve Fitting Library
- *  \ingroup extern
- */
-
-/** \defgroup bullet Bullet Physics Library
- *  \ingroup extern
- *  \see \ref bulletdoc
- */
+version https://git-lfs.github.com/spec/v1
+oid sha256:20ec48bebda7c2a444d8e7d861a40098463d39e805bb8953dd046ec2f30a2930
+size 724

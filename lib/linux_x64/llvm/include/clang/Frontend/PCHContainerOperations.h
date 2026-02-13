@@ -1,14 +1,3 @@
-//===--- Frontend/PCHContainerOperations.h - PCH Containers -----*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_FRONTEND_PCHCONTAINEROPERATIONS_H
-#define LLVM_CLANG_FRONTEND_PCHCONTAINEROPERATIONS_H
-
-#include "clang/Serialization/PCHContainerOperations.h"
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:a8409eb2d00d6633c2332e0a782b5eeb111f0de1215bdb9ad5af8bd0d378cdce
+size 541

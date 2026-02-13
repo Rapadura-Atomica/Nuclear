@@ -1,6 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: Apache-2.0
-
-#include <nanovdb/util/Util.h>// for NANOVDB_DEPRECATED_HEADER
-#include <nanovdb/cuda/DeviceBuffer.h>
-NANOVDB_DEPRECATED_HEADER("Include nanovdb/cuda/DeviceBuffer.h instead.")
+version https://git-lfs.github.com/spec/v1
+oid sha256:40c768623b943bf6178b9af1a3703737f1f37f46ba22497f6479047823bd685c
+size 264

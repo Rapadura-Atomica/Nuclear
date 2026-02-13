@@ -1,33 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup ikplugin
- */
-
-#pragma once
-
-struct Depsgraph;
-struct Object;
-struct Scene;
-struct bPoseChannel;
-
-struct IKPlugin {
-  void (*initialize_tree_func)(struct Depsgraph *depsgraph,
-                               struct Scene *scene,
-                               struct Object *ob,
-                               float ctime);
-  void (*execute_tree_func)(struct Depsgraph *depsgraph,
-                            struct Scene *scene,
-                            struct Object *ob,
-                            struct bPoseChannel *pchan,
-                            float ctime);
-  void (*release_tree_func)(struct Scene *scene, struct Object *ob, float ctime);
-  void (*remove_armature_func)(struct bPose *pose);
-  void (*clear_cache)(struct bPose *pose);
-  void (*update_param)(struct bPose *pose);
-  void (*test_constraint)(struct Object *ob, struct bConstraint *cons);
-};
-
-using IKPlugin = struct IKPlugin;
+version https://git-lfs.github.com/spec/v1
+oid sha256:a76db5413bf3858175f66214730baf496b9495a05df9b0022e20e5a5f74abbcb
+size 1052

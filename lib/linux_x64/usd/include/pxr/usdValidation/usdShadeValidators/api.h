@@ -1,34 +1,3 @@
-//
-// Copyright 2024 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_VALIDAION_USD_SHADE_VALIDATORS_API_H
-#define PXR_USD_VALIDAION_USD_SHADE_VALIDATORS_API_H
-
-#include "pxr/base/arch/export.h"
-
-#if defined(PXR_STATIC)
-#   define USDSHADEVALIDATORS_API
-#   define USDSHADEVALIDATORS_API_TEMPLATE_CLASS(...)
-#   define USDSHADEVALIDATORS_API_TEMPLATE_STRUCT(...)
-#   define USDSHADEVALIDATORS_API_LOCAL
-#else
-#   if defined(USDSHADEVALIDATORS_EXPORTS)
-#       define USDSHADEVALIDATORS_API ARCH_EXPORT
-#       define USDSHADEVALIDATORS_API_TEMPLATE_CLASS(...)                     \
-           ARCH_EXPORT_TEMPLATE(class, __VA_ARGS__)
-#       define USDSHADEVALIDATORS_API_TEMPLATE_STRUCT(...)                    \
-           ARCH_EXPORT_TEMPLATE(struct, __VA_ARGS__)
-#   else
-#       define USDSHADEVALIDATORS_API ARCH_IMPORT
-#       define USDSHADEVALIDATORS_API_TEMPLATE_CLASS(...)                     \
-           ARCH_IMPORT_TEMPLATE(class, __VA_ARGS__)
-#       define USDSHADEVALIDATORS_API_TEMPLATE_STRUCT(...)                    \
-           ARCH_IMPORT_TEMPLATE(struct, __VA_ARGS__)
-#   endif
-#       define USDSHADEVALIDATORS_API_LOCAL ARCH_HIDDEN
-#endif
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:4c0493cb9561cc70a66b6caa987600d81a0890b8a532d4d65f5bed6cc6daf779
+size 1258

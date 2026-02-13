@@ -1,28 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_NUMLIGHTSNODEMSL_H
-#define MATERIALX_NUMLIGHTSNODEMSL_H
-
-#include <MaterialXGenMsl/MslShaderGenerator.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-/// Utility node for getting number of active lights for MSL.
-class MX_GENMSL_API NumLightsNodeMsl : public MslImplementation
-{
-  public:
-    NumLightsNodeMsl();
-
-    static ShaderNodeImplPtr create();
-
-    void createVariables(const ShaderNode& node, GenContext& context, Shader& shader) const override;
-
-    void emitFunctionDefinition(const ShaderNode& node, GenContext& context, ShaderStage& stage) const override;
-};
-
-MATERIALX_NAMESPACE_END
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:8c608402f0e0048db829eeaeb690f434e7ad3b79d6018c7b97b11afcbf65bd82
+size 703

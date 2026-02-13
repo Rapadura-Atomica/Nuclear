@@ -1,11 +1,3 @@
-/* Define to 1 if you have the `png' library (-lpng). */
-#define LIBHPDF_HAVE_LIBPNG
-
-/* Define to 1 if you have the `z' library (-lz). */
-#define LIBHPDF_HAVE_ZLIB
-
-/* debug build */
-/* #undef LIBHPDF_DEBUG */
-
-/* debug trace enabled */
-/* #undef LIBHPDF_DEBUG_TRACE */
+version https://git-lfs.github.com/spec/v1
+oid sha256:2df35c9126fba6a7ae4834e1fbcc61c3dd3c6d987454b602a9e17af912ddd069
+size 271

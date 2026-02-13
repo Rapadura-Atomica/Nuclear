@@ -1,17 +1,3 @@
-//
-// Copyright 2025 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-
-#include "pxr/pxr.h"
-#include "pxr/base/tf/debug.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-TF_DEBUG_CODES(
-    VT_ARRAY_EDIT_BOUNDS
-);
-
-PXR_NAMESPACE_CLOSE_SCOPE
+version https://git-lfs.github.com/spec/v1
+oid sha256:e686d3e248e42957769c0977b6638ff907160527032cf6cbf14fc309844830f4
+size 291

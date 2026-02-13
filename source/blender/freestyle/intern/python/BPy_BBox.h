@@ -1,34 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../geometry/BBox.h"
-#include "../geometry/Geom.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject BBox_Type;
-
-#define BPy_BBox_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&BBox_Type))
-
-/*---------------------------Python BPy_BBox structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-  Freestyle::BBox<Freestyle::Geometry::Vec3r> *bb;
-} BPy_BBox;
-
-/*---------------------------Python BPy_BBox visible prototypes-----------*/
-
-int BBox_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:d10b1169c29a4d206409d6fac6e47dcca10e39f0af5718a01f4c25a8d7cca36b
+size 840

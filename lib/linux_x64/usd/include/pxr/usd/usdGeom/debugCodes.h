@@ -1,25 +1,3 @@
-//
-// Copyright 2016 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_USD_GEOM_DEBUG_CODES_H
-#define PXR_USD_USD_GEOM_DEBUG_CODES_H
-
-#include "pxr/pxr.h"
-#include "pxr/base/tf/debug.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-
-TF_DEBUG_CODES( 
-    USDGEOM_EXTENT,
-    USDGEOM_BBOX, 
-    USDGEOM_XFORMCOMMONAPI
-);
-
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif // PXR_USD_USD_GEOM_DEBUG_CODES_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:9a1b5fefb2e508e726979395436eaced62830cab930446bfdd306a9378c2a2d0
+size 455

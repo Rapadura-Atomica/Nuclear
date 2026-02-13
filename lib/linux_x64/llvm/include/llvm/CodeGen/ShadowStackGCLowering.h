@@ -1,24 +1,3 @@
-//===- llvm/CodeGen/ShadowStackGCLowering.h ---------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_SHADOWSTACKGCLOWERING_H
-#define LLVM_CODEGEN_SHADOWSTACKGCLOWERING_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class ShadowStackGCLoweringPass
-    : public PassInfoMixin<ShadowStackGCLoweringPass> {
-public:
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM);
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_SHADOWSTACKGCLOWERING_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:d0dfdca5e10799339f47499d559ffe953e8c7f485b254ef8cbce9803a1a006d8
+size 745

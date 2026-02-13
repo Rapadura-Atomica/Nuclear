@@ -1,26 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_HWVIEWDIRECTIONNODE_H
-#define MATERIALX_HWVIEWDIRECTIONNODE_H
-
-#include <MaterialXGenShader/HwShaderGenerator.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-/// ViewDirection node implementation for hardware languages
-class MX_GENSHADER_API HwViewDirectionNode : public HwImplementation
-{
-  public:
-    static ShaderNodeImplPtr create();
-
-    void createVariables(const ShaderNode& node, GenContext& context, Shader& shader) const override;
-
-    void emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage) const override;
-};
-
-MATERIALX_NAMESPACE_END
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:3119372ea237f8d7551c0ca682be111a1cd1148e24df6fb044da1322860d240d
+size 684

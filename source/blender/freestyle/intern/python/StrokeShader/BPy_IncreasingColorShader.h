@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_StrokeShader.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject IncreasingColorShader_Type;
-
-#define BPy_IncreasingColorShader_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&IncreasingColorShader_Type))
-
-/*---------------------------Python BPy_IncreasingColorShader structure definition----------*/
-typedef struct {
-  BPy_StrokeShader py_ss;
-} BPy_IncreasingColorShader;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:4c05ae2d6be25cf970d8b4a5b74e402c711948ed6836d551c661d619eaaff2f6
+size 713

@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup freestyle
- * \brief Functions to manage I/O for the stroke
- */
-
-#include <iostream>
-
-#include "Stroke.h"
-
-#include "../system/FreestyleConfig.h"
-
-namespace Freestyle {
-
-ostream &operator<<(ostream &out, const StrokeAttribute &iStrokeAttribute);
-
-ostream &operator<<(ostream &out, const StrokeVertex &iStrokeVertex);
-
-ostream &operator<<(ostream &out, const Stroke &iStroke);
-
-} /* namespace Freestyle */
+version https://git-lfs.github.com/spec/v1
+oid sha256:28b75b1fc1a78f180f9b7b6924ded4c560fac2ba264f8b8478d52c9a63c502cf
+size 540

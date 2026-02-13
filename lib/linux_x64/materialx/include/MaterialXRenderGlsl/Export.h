@@ -1,22 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_RENDERGLSL_EXPORT_H
-#define MATERIALX_RENDERGLSL_EXPORT_H
-
-#include <MaterialXCore/Library.h>
-
-/// @file
-/// Macros for declaring imported and exported symbols.
-
-#if defined(MATERIALX_RENDERGLSL_EXPORTS)
-    #define MX_RENDERGLSL_API MATERIALX_SYMBOL_EXPORT
-    #define MX_RENDERGLSL_EXTERN_TEMPLATE(...) MATERIALX_EXPORT_EXTERN_TEMPLATE(__VA_ARGS__)
-#else
-    #define MX_RENDERGLSL_API MATERIALX_SYMBOL_IMPORT
-    #define MX_RENDERGLSL_EXTERN_TEMPLATE(...) MATERIALX_IMPORT_EXTERN_TEMPLATE(__VA_ARGS__)
-#endif
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:a7b0ea5ba6207c2618d8c22f293e0607b2307b343c22956976f78a2b91bcf175
+size 634

@@ -1,28 +1,3 @@
-/*========================== begin_copyright_notice ============================
-
-Copyright (C) 2017-2021 Intel Corporation
-
-SPDX-License-Identifier: MIT
-
-============================= end_copyright_notice ===========================*/
-
-#pragma once
-
-#include "ocl_igc_interface/ocl_gen_binary.h"
-
-#include "cif/export/pimpl_base.h"
-
-#include "igfxfmid.h"
-
-#include "cif/macros/enable.h"
-#include "OCLAPI/oclapi.h"
-
-namespace IGC {
-
-CIF_DECLARE_INTERFACE_PIMPL(OclGenBinary) : CIF::PimplBase{OCL_API_CALL CIF_PIMPL_DECLARE_CONSTRUCTOR(){}};
-
-CIF_DEFINE_INTERFACE_TO_PIMPL_FORWARDING_CTOR_DTOR(OclGenBinary);
-
-} // namespace IGC
-
-#include "cif/macros/disable.h"
+version https://git-lfs.github.com/spec/v1
+oid sha256:7df01116c7b00ef6feec6b17e42e571713ace4901a4a7de510ae8473e602288b
+size 661

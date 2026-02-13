@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2025 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-/* TBB includes <windows.h>, do it ourselves first so we are sure
- * WIN32_LEAN_AND_MEAN and similar are defined beforehand. */
-#ifdef _WIN32
-#  include "util/windows.h"
-#endif
-
-#include <tbb/concurrent_set.h>
-
-CCL_NAMESPACE_BEGIN
-
-using tbb::concurrent_set;
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:eaeddd17e0b88c413166749cf54434848b616e49784ca79a68c729fbd647a884
+size 394

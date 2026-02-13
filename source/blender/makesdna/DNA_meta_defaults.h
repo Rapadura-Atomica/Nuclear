@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup DNA
- */
-
-#pragma once
-
-/* clang-format off */
-
-/* -------------------------------------------------------------------- */
-/** \name MetaBall Struct
- * \{ */
-
-#define _DNA_DEFAULT_MetaBall \
-  { \
-    .texspace_size = {1, 1, 1}, \
-    .texspace_flag = MB_TEXSPACE_FLAG_AUTO, \
-    .wiresize = 0.4f, \
-    .rendersize = 0.2f, \
-    .thresh = 0.6f, \
-  }
-
-/** \} */
-
-/* clang-format on */
+version https://git-lfs.github.com/spec/v1
+oid sha256:552d9c542c6066db1ff87e12bbb314b2e26d473e63d8c1ebf3866edf4a3a35ee
+size 508

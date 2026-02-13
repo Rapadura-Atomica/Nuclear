@@ -1,23 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2023 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include <OSL/oslconfig.h>
-
-CCL_NAMESPACE_BEGIN
-
-using OSLUStringHash = OSL::ustringhash;
-#if OSL_LIBRARY_VERSION_CODE >= 11400
-using OSLUStringRep = OSL::ustringhash;
-#else
-using OSLUStringRep = OSL::ustringrep;
-#endif
-
-static inline OSL::ustring to_ustring(OSLUStringHash h)
-{
-  return OSL::ustring::from_hash(h.hash());
-}
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:ba73b131069180ca4e40024b00982f1c89bec10fbd99efcb92153b55502d7c5a
+size 460

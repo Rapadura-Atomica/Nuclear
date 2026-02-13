@@ -1,29 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/string.h"
-#include "util/unique_ptr.h"
-#include "util/vector.h"
-
-CCL_NAMESPACE_BEGIN
-
-class Device;
-class DeviceInfo;
-class Profiler;
-class Stats;
-
-bool device_oneapi_init();
-
-unique_ptr<Device> device_oneapi_create(const DeviceInfo &info,
-                                        Stats &stats,
-                                        Profiler &profiler,
-                                        bool headless);
-
-void device_oneapi_info(vector<DeviceInfo> &devices);
-
-string device_oneapi_capabilities();
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:e840fa2280ca14a5fb37bd8795e5d16058c086d904da0fbb47ff55f7acdcd1d1
+size 653

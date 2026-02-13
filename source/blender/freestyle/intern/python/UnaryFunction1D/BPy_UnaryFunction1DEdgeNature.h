@@ -1,31 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1D.h"
-
-#include "../../winged_edge/Nature.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject UnaryFunction1DEdgeNature_Type;
-
-#define BPy_UnaryFunction1DEdgeNature_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&UnaryFunction1DEdgeNature_Type))
-
-/*---------------------------Python BPy_UnaryFunction1DEdgeNature structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1D py_uf1D;
-  Freestyle::UnaryFunction1D<Freestyle::Nature::EdgeNature> *uf1D_edgenature;
-} BPy_UnaryFunction1DEdgeNature;
-
-/*---------------------------Python BPy_UnaryFunction1DEdgeNature visible prototypes-----------*/
-int UnaryFunction1DEdgeNature_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:9bb12ff330c1f66068d505d301ea21a3f5af82b47b1580ae7cfc394969cd2b59
+size 1011

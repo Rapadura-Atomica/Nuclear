@@ -1,22 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-/* Cycles version number */
-
-CCL_NAMESPACE_BEGIN
-
-// NOLINTBEGIN
-#define CYCLES_VERSION_MAJOR 4
-#define CYCLES_VERSION_MINOR 5
-#define CYCLES_VERSION_PATCH 0
-// NOLINTEND
-
-#define CYCLES_MAKE_VERSION_STRING2(a, b, c) #a "." #b "." #c
-#define CYCLES_MAKE_VERSION_STRING(a, b, c) CYCLES_MAKE_VERSION_STRING2(a, b, c)
-#define CYCLES_VERSION_STRING \
-  CYCLES_MAKE_VERSION_STRING(CYCLES_VERSION_MAJOR, CYCLES_VERSION_MINOR, CYCLES_VERSION_PATCH)
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:07f69ae52a1a8749e7cbede5e52d839c01938696cc46a874acf73d915968d1ab
+size 577

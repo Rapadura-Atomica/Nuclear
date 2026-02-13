@@ -1,28 +1,3 @@
-//===- DWARFSection.h -------------------------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_DEBUGINFO_DWARF_DWARFSECTION_H
-#define LLVM_DEBUGINFO_DWARF_DWARFSECTION_H
-
-#include "llvm/ADT/StringRef.h"
-
-namespace llvm {
-
-struct DWARFSection {
-  StringRef Data;
-  uint64_t Address = 0;
-};
-
-struct SectionName {
-  StringRef Name;
-  bool IsNameUnique;
-};
-
-} // end namespace llvm
-
-#endif // LLVM_DEBUGINFO_DWARF_DWARFSECTION_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:21d323d671f6d409cee7c578abc9fd6466f919432fd1a2fa92edf342120ed1a8
+size 713

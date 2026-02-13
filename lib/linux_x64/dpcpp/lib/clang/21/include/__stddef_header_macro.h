@@ -1,12 +1,3 @@
-/*===---- __stddef_header_macro.h ------------------------------------------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#ifndef __STDDEF_H
-#define __STDDEF_H
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:4cf46e8fbb809df048eecbbd63686fa741da27afa8db4245bd1f61c1fb1611dc
+size 417

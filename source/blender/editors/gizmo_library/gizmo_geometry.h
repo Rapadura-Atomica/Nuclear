@@ -1,34 +1,3 @@
-/* SPDX-FileCopyrightText: 2016 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup edgizmolib
- *
- * \name Gizmo Geometry
- *
- * \brief Prototypes for arrays defining the gizmo geometry.
- * The actual definitions can be found in files usually
- * called geom_xxx_gizmo.c
- */
-
-#pragma once
-
-#include "BLI_sys_types.h"
-
-typedef struct GizmoGeomInfo {
-  int nverts;
-  int ntris;
-  const float (*verts)[3];
-  const float (*normals)[3];
-  const ushort *indices;
-} GizmoGeomInfo;
-
-/* arrow gizmo */
-extern GizmoGeomInfo wm_gizmo_geom_data_arrow;
-
-/* cube gizmo */
-extern GizmoGeomInfo wm_gizmo_geom_data_cube;
-
-/* dial gizmo */
-extern GizmoGeomInfo wm_gizmo_geom_data_dial;
+version https://git-lfs.github.com/spec/v1
+oid sha256:ed8b5d20f94e414f620fde058a9a5cf225ca763dae32dbb59e899a7750b9f723
+size 704

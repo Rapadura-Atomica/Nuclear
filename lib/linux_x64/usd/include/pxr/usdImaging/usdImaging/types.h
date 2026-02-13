@@ -1,25 +1,3 @@
-//
-// Copyright 2022 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_IMAGING_USD_IMAGING_TYPES_H
-#define PXR_USD_IMAGING_USD_IMAGING_TYPES_H
-
-#include "pxr/pxr.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-/// Given to an invalidation call to indicate whether the property was
-/// added or removed or whether one of its fields changed.
-///
-enum class UsdImagingPropertyInvalidationType
-{
-    Update,
-    Resync
-};
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:c678f9804930cc2b34c779f2cb4f6b56e15bd54d07fd648f0b2c66b68f7c33c1
+size 520

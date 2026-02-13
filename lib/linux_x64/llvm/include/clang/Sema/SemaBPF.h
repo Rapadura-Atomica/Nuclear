@@ -1,33 +1,3 @@
-//===----- SemaBPF.h ------- BPF target-specific routines -----*- C++ -*---===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-/// \file
-/// This file declares semantic analysis functions specific to BPF.
-///
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_SEMA_SEMABPF_H
-#define LLVM_CLANG_SEMA_SEMABPF_H
-
-#include "clang/AST/ASTFwd.h"
-#include "clang/Sema/SemaBase.h"
-
-namespace clang {
-class ParsedAttr;
-
-class SemaBPF : public SemaBase {
-public:
-  SemaBPF(Sema &S);
-
-  bool CheckBPFBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
-
-  void handlePreserveAIRecord(RecordDecl *RD);
-  void handlePreserveAccessIndexAttr(Decl *D, const ParsedAttr &AL);
-};
-} // namespace clang
-
-#endif // LLVM_CLANG_SEMA_SEMABPF_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:a3fddcefd1d8b74a57abfabcbe15259bd963a068bd6b305c06b9760922c622b7
+size 1019

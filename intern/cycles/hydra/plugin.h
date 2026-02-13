@@ -1,31 +1,3 @@
-/* SPDX-FileCopyrightText: 2022 NVIDIA Corporation
- * SPDX-FileCopyrightText: 2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "hydra/config.h"
-#include <pxr/imaging/hd/rendererPlugin.h>
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-class HdCyclesPlugin final : public PXR_NS::HdRendererPlugin {
- public:
-  HdCyclesPlugin();
-  ~HdCyclesPlugin() override;
-
-#if PXR_VERSION < 2302
-  bool IsSupported() const override;
-#else
-  bool IsSupported(bool gpuEnabled) const override;
-#endif
-
-  PXR_NS::HdRenderDelegate *CreateRenderDelegate() override;
-  PXR_NS::HdRenderDelegate *CreateRenderDelegate(
-      const PXR_NS::HdRenderSettingsMap & /*settingsMap*/) override;
-
-  void DeleteRenderDelegate(PXR_NS::HdRenderDelegate *) override;
-};
-
-PXR_NAMESPACE_CLOSE_SCOPE
+version https://git-lfs.github.com/spec/v1
+oid sha256:a569a0138ec5d8d47f35c1cb6991e5d50df7843c318644284b8353ea4718219c
+size 784

@@ -1,16 +1,3 @@
-/*
- * Summary: Removed legacy symbols for an outdated FTP client
- *
- * Copy: See Copyright for the status of this software.
- *
- * Author: Daniel Veillard
- */
-
-#ifndef __NANO_FTP_H__
-#define __NANO_FTP_H__
-
-#ifdef __GNUC__
-  #warning "libxml/nanoftp.h is deprecated"
-#endif
-
-#endif /* __NANO_FTP_H__ */
+version https://git-lfs.github.com/spec/v1
+oid sha256:db63c1b56849b9e60b16fc2e92de28168a1172dff1240f3785b96e1d104d5d43
+size 302

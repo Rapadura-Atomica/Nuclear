@@ -1,29 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject UnaryFunction1DVoid_Type;
-
-#define BPy_UnaryFunction1DVoid_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&UnaryFunction1DVoid_Type))
-
-/*---------------------------Python BPy_UnaryFunction1DVoid structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1D py_uf1D;
-  Freestyle::UnaryFunction1D_void *uf1D_void;
-} BPy_UnaryFunction1DVoid;
-
-/*---------------------------Python BPy_UnaryFunction1DVoid visible prototypes-----------*/
-int UnaryFunction1DVoid_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:1d5dc7698f7092c3726b891575184a476f697143542b7770d3b33e3ae26ba636
+size 898

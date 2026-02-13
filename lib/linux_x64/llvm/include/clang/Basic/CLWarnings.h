@@ -1,26 +1,3 @@
-//===--- CLWarnings.h - Maps some cl.exe warning ids  -----------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_BASIC_CLWARNINGS_H
-#define LLVM_CLANG_BASIC_CLWARNINGS_H
-
-#include <optional>
-
-namespace clang {
-
-namespace diag {
-enum class Group;
-}
-
-/// For cl.exe warning IDs that cleany map to clang diagnostic groups,
-/// returns the corresponding group. Else, returns an empty Optional.
-std::optional<diag::Group> diagGroupFromCLWarningID(unsigned);
-
-} // end namespace clang
-
-#endif // LLVM_CLANG_BASIC_CLWARNINGS_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:e3d8aa2d9adfec599d8d2e7ef2a1249c52da71a9ff6af6db11e5cf2406b8a1fd
+size 796

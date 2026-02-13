@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2025 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/string.h"
-#include "util/types_base.h"
-
-CCL_NAMESPACE_BEGIN
-
-struct KernelLightTreeNode;
-class LightTree;
-struct LightTreeNode;
-class Scene;
-
-void light_tree_plot_to_file(const Scene &scene,
-                             const LightTree &tree,
-                             const LightTreeNode &root_node,
-                             const string &filename);
-
-void klight_tree_plot_to_file(uint root_index,
-                              const KernelLightTreeNode *knodes,
-                              const string &filename);
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:90d2c6a356e3dbe91d1c0acbfba5dd69bf49b5c453d7310c69d36c813f26b2b7
+size 676

@@ -1,23 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup DNA
- */
-
-#pragma once
-
-/* Keep for 'Camera' versioning. */
-/** Properties for DOF effect. */
-typedef struct GPUDOFSettings {
-  /** Focal distance for depth of field. */
-  float focus_distance;
-  float fstop;
-  float focal_length;
-  float sensor;
-  float rotation;
-  float ratio;
-  int num_blades;
-  int high_quality;
-} GPUDOFSettings;
+version https://git-lfs.github.com/spec/v1
+oid sha256:bf1d4e408f4b18343f39b7bf1ec55b938ab8386d1a367ce37ad57b6113d0f527
+size 483

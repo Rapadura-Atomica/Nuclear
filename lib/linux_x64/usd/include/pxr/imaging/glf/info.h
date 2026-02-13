@@ -1,28 +1,3 @@
-//
-// Copyright 2016 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_IMAGING_GLF_INFO_H
-#define PXR_IMAGING_GLF_INFO_H
-
-/// \file glf/info.h
-
-#include "pxr/pxr.h"
-#include "pxr/imaging/glf/api.h"
-#include <string>
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-
-/// Tests for GL extension support.
-///
-/// Returns \c true if each extension name listed in \a extensions
-/// is supported by the current GL context.
-GLF_API
-bool GlfHasExtensions(std::string const & extensions);
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:0b28bfdb38b2b219de634a2e262fda8272bf88e5c7142106d7f987354f2c4754
+size 574

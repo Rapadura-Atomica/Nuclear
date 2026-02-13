@@ -1,36 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../system/FreestyleConfig.h"
-
-#include "../stroke/StrokeShader.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject StrokeShader_Type;
-
-#define BPy_StrokeShader_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&StrokeShader_Type))
-
-/*---------------------------Python BPy_StrokeShader structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-  Freestyle::StrokeShader *ss;
-} BPy_StrokeShader;
-
-/*---------------------------Python BPy_StrokeShader visible prototypes-----------*/
-
-int StrokeShader_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:47b74f904ce1ecd0d7c2c73140b5c67751fa987e84b422821c6d291aa5fcb53c
+size 896

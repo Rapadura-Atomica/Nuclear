@@ -1,24 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup DNA
- */
-
-#pragma once
-
-/* clang-format off */
-
-/* -------------------------------------------------------------------- */
-/** \name PointCloud Struct
- * \{ */
-
-#define _DNA_DEFAULT_PointCloud \
-  { \
-    .flag = 0, \
-  }
-
-/** \} */
-
-/* clang-format on */
+version https://git-lfs.github.com/spec/v1
+oid sha256:b0d8db1364de48f97a06ff5bb8fddd3886926b8828e3cb004ba21f6bcbe4100b
+size 377

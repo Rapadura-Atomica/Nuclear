@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2013 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup openimageio
- */
-
-#pragma once
-
-/*
- * Initialize OpenImageIO on startup.
- */
-void OIIO_init();
-
-/*
- * Get OpenImageIO version.
- */
-int OIIO_getVersionHex();
+version https://git-lfs.github.com/spec/v1
+oid sha256:75cfff9e4815069bd7c8993f7e3072e44c11eb7624c0a9717eb5758cd958f170
+size 278

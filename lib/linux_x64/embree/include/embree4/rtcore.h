@@ -1,14 +1,3 @@
-// Copyright 2009-2021 Intel Corporation
-// SPDX-License-Identifier: Apache-2.0
-
-#pragma once
-
-#include "rtcore_config.h"
-#include "rtcore_common.h"
-#include "rtcore_device.h"
-#include "rtcore_buffer.h"
-#include "rtcore_ray.h"
-#include "rtcore_geometry.h"
-#include "rtcore_scene.h"
-#include "rtcore_builder.h"
-#include "rtcore_quaternion.h"
+version https://git-lfs.github.com/spec/v1
+oid sha256:c12461525b0fef4fe67a2bdc65a824b8338ff9f530a457982e09e3d6ac86f418
+size 341

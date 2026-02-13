@@ -1,17 +1,3 @@
-/*
-    Copyright (c) 2005-2021 Intel Corporation
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
-
-#include "../oneapi/tbb/queuing_mutex.h"
+version https://git-lfs.github.com/spec/v1
+oid sha256:2db98f6781e92a39cb42ef68e3fa318c771a26d566f2cb2e3f52ff8c6e2c258b
+size 655

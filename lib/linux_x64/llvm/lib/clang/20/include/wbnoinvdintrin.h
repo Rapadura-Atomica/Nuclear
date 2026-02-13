@@ -1,24 +1,3 @@
-/*===-------------- wbnoinvdintrin.h - wbnoinvd intrinsic-------------------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#if !defined __X86INTRIN_H && !defined __IMMINTRIN_H
-#error "Never use <wbnoinvdintrin.h> directly; include <x86intrin.h> instead."
-#endif
-
-#ifndef __WBNOINVDINTRIN_H
-#define __WBNOINVDINTRIN_H
-
-static __inline__ void
-  __attribute__((__always_inline__, __nodebug__,  __target__("wbnoinvd")))
-_wbnoinvd (void)
-{
-  __builtin_ia32_wbnoinvd ();
-}
-
-#endif /* __WBNOINVDINTRIN_H */
+version https://git-lfs.github.com/spec/v1
+oid sha256:e22b8221209e1aeed8de50e81c6bfe84b378a8b92bdf018aea601bf1d3c4ac22
+size 749

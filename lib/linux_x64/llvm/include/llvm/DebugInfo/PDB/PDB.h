@@ -1,31 +1,3 @@
-//===- PDB.h - base header file for creating a PDB reader -------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_DEBUGINFO_PDB_PDB_H
-#define LLVM_DEBUGINFO_PDB_PDB_H
-
-#include "llvm/ADT/StringRef.h"
-#include "llvm/DebugInfo/PDB/PDBTypes.h"
-#include "llvm/Support/Error.h"
-#include <memory>
-
-namespace llvm {
-namespace pdb {
-
-class IPDBSession;
-
-Error loadDataForPDB(PDB_ReaderType Type, StringRef Path,
-                     std::unique_ptr<IPDBSession> &Session);
-
-Error loadDataForEXE(PDB_ReaderType Type, StringRef Path,
-                     std::unique_ptr<IPDBSession> &Session);
-
-} // end namespace pdb
-} // end namespace llvm
-
-#endif // LLVM_DEBUGINFO_PDB_PDB_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:7f478b022a565c120d7d23d484814b73eb9e27508c5e405b34f4f0a0eb5c6d0b
+size 938

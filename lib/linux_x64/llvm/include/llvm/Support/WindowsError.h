@@ -1,19 +1,3 @@
-//===-- WindowsError.h - Support for mapping windows errors to posix-------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_SUPPORT_WINDOWSERROR_H
-#define LLVM_SUPPORT_WINDOWSERROR_H
-
-#include <system_error>
-
-namespace llvm {
-std::error_code mapLastWindowsError();
-std::error_code mapWindowsError(unsigned EV);
-}
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:1182b8f2d6ace10194f4a768e62166f5392c2f18ebf7d86646dd6ff243608b6a
+size 580

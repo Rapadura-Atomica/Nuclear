@@ -1,34 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../stroke/Predicates1D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject UnaryPredicate1D_Type;
-
-#define BPy_UnaryPredicate1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&UnaryPredicate1D_Type))
-
-/*---------------------------Python BPy_UnaryPredicate1D structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-  Freestyle::UnaryPredicate1D *up1D;
-} BPy_UnaryPredicate1D;
-
-/*---------------------------Python BPy_UnaryPredicate1D visible prototypes-----------*/
-
-int UnaryPredicate1D_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:3aca6265835e6e87cac244485650537b7209fa5ea892ab2c4e5ccd53d71a94d1
+size 890

@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2020 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-#include "pipeline_view_layer.h"
-
-namespace blender::deg {
-
-/* Builds a dependency graph that contains all objects in the view layer.
- * This is contrary to the regular ViewLayerBuilderPipeline, which is limited to visible objects
- * (and their dependencies). */
-class AllObjectsBuilderPipeline : public ViewLayerBuilderPipeline {
- public:
-  AllObjectsBuilderPipeline(::Depsgraph *graph);
-
- protected:
-  std::unique_ptr<DepsgraphNodeBuilder> construct_node_builder() override;
-  std::unique_ptr<DepsgraphRelationBuilder> construct_relation_builder() override;
-};
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:f4dc0db24fd04b89ac1ba32ab867a6b33559f4e795c04f8ab1ce056f1aca7a7c
+size 744

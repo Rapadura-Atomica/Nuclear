@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include <cstdint>
-#include <cstdlib>
-
-#include <string>
-
-CCL_NAMESPACE_BEGIN
-
-/* Get width in characters of the current console output. */
-int system_console_width();
-
-std::string system_cpu_brand_string();
-int system_cpu_bits();
-bool system_cpu_support_sse42();
-bool system_cpu_support_avx2();
-
-size_t system_physical_ram();
-
-/* Get identifier of the currently running process. */
-uint64_t system_self_process_id();
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:1a31b56b26926f693b7040270dfa1eec8ecdda97fe37fe9acf65bf26d14fc1bf
+size 553

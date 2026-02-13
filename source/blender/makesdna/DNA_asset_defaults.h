@@ -1,31 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup DNA
- */
-
-#pragma once
-
-/* clang-format off */
-
-/* -------------------------------------------------------------------- */
-/** \name Asset Struct
- * \{ */
-
-#define _DNA_DEFAULT_AssetMetaData \
-  { \
-    0 \
-  }
-
-#define _DNA_DEFAULT_AssetLibraryReference \
-  { \
-    .type = ASSET_LIBRARY_LOCAL, \
-    /* Not needed really (should be ignored for anything but #ASSET_LIBRARY_CUSTOM), but helps debugging. */ \
-    .custom_library_index = -1, \
-  }
-
-/** \} */
-
-/* clang-format on */
+version https://git-lfs.github.com/spec/v1
+oid sha256:d340711594a81391186ba38b219557434c78c8e14bbc30c6adb41be0c5ad386d
+size 602

@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/types_base.h"
-
-CCL_NAMESPACE_BEGIN
-
-#ifndef __KERNEL_NATIVE_VECTOR_TYPES__
-
-struct ushort4 {
-  uint16_t x, y, z, w;
-};
-
-#endif
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:273ab469161e15e63be3be1bd2f55b4e985d5045ff064f3518c1ca31b66aee3a
+size 277

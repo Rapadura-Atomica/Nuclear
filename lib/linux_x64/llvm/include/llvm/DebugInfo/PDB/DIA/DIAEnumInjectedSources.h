@@ -1,35 +1,3 @@
-//==- DIAEnumInjectedSources.h - DIA Injected Sources Enumerator -*- C++ -*-==//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_DEBUGINFO_PDB_DIA_DIAENUMINJECTEDSOURCES_H
-#define LLVM_DEBUGINFO_PDB_DIA_DIAENUMINJECTEDSOURCES_H
-
-#include "DIASupport.h"
-#include "llvm/DebugInfo/PDB/IPDBEnumChildren.h"
-#include "llvm/DebugInfo/PDB/IPDBInjectedSource.h"
-
-namespace llvm {
-namespace pdb {
-
-class DIAEnumInjectedSources : public IPDBEnumChildren<IPDBInjectedSource> {
-public:
-  explicit DIAEnumInjectedSources(
-      CComPtr<IDiaEnumInjectedSources> DiaEnumerator);
-
-  uint32_t getChildCount() const override;
-  ChildTypePtr getChildAtIndex(uint32_t Index) const override;
-  ChildTypePtr getNext() override;
-  void reset() override;
-
-private:
-  CComPtr<IDiaEnumInjectedSources> Enumerator;
-};
-} // namespace pdb
-} // namespace llvm
-
-#endif // LLVM_DEBUGINFO_PDB_DIA_DIAENUMINJECTEDSOURCES_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:131353f4273dc14e70b096bd2e5f7701beba79922d2fb8af0b58c349a55075d6
+size 1142

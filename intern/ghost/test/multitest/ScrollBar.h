@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-typedef struct _ScrollBar ScrollBar;
-
-/***/
-
-ScrollBar *scrollbar_new(int inset, int minthumb);
-
-int scrollbar_is_scrolling(ScrollBar *sb);
-int scrollbar_contains_pt(ScrollBar *sb, int pt[2]);
-
-void scrollbar_start_scrolling(ScrollBar *sb, int yco);
-void scrollbar_keep_scrolling(ScrollBar *sb, int yco);
-void scrollbar_stop_scrolling(ScrollBar *sb);
-
-void scrollbar_set_thumbpct(ScrollBar *sb, float pct);
-void scrollbar_set_thumbpos(ScrollBar *sb, float pos);
-void scrollbar_set_rect(ScrollBar *sb, int rect[2][2]);
-
-float scrollbar_get_thumbpct(ScrollBar *sb);
-float scrollbar_get_thumbpos(ScrollBar *sb);
-void scrollbar_get_rect(ScrollBar *sb, int rect_r[2][2]);
-
-void scrollbar_get_thumb(ScrollBar *sb, int thumb_r[2][2]);
-
-void scrollbar_free(ScrollBar *sb);
+version https://git-lfs.github.com/spec/v1
+oid sha256:27139703c2c33def02b792cc73e432b875dedf63965c203b750b8ece4be6f4c0
+size 891

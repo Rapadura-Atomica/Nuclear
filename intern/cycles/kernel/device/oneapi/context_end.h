@@ -1,8 +1,3 @@
-/* SPDX-FileCopyrightText: 2021-2022 Intel Corporation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-}
-; /* end of ONEAPIKernelContext class definition */
-
-#undef kernel_integrator_state
-#define kernel_integrator_state (*(kg->integrator_state))
+version https://git-lfs.github.com/spec/v1
+oid sha256:c4c2793831f01524ca3caffd61daa5f28940d1bfb75e905beafcba360469932e
+size 244

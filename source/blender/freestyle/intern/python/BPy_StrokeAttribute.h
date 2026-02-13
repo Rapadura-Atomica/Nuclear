@@ -1,36 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../stroke/Stroke.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject StrokeAttribute_Type;
-
-#define BPy_StrokeAttribute_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&StrokeAttribute_Type))
-
-/*---------------------------Python BPy_StrokeAttribute structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-  Freestyle::StrokeAttribute *sa;
-  bool borrowed; /* true if *sa is a borrowed reference */
-} BPy_StrokeAttribute;
-
-/*---------------------------Python BPy_StrokeAttribute visible prototypes-----------*/
-
-int StrokeAttribute_Init(PyObject *module);
-void StrokeAttribute_mathutils_register_callback();
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:1e245ad7d7e2f115b71ed17f657a2c1a554636badb8696292e4590916196d82b
+size 985

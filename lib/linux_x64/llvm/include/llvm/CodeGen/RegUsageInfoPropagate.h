@@ -1,25 +1,3 @@
-//===- llvm/CodeGen/RegUsageInfoPropagate.h ---------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_REGUSAGEINFOPROPAGATE_H
-#define LLVM_CODEGEN_REGUSAGEINFOPROPAGATE_H
-
-#include "llvm/CodeGen/MachinePassManager.h"
-
-namespace llvm {
-
-class RegUsageInfoPropagationPass
-    : public PassInfoMixin<RegUsageInfoPropagationPass> {
-public:
-  PreservedAnalyses run(MachineFunction &MF,
-                        MachineFunctionAnalysisManager &MFAM);
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_REGUSAGEINFOPROPAGATE_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:c20591fd6f830e7b13acff0c63ca43f7de81279b6a6e7c439912c100725063f9
+size 805

@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "BPy_ViewEdgeIterator.h"
-
-#include "../../stroke/ChainingIterators.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ChainingIterator_Type;
-
-#define BPy_ChainingIterator_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&ChainingIterator_Type))
-
-/*---------------------------Python BPy_ChainingIterator structure definition----------*/
-typedef struct {
-  BPy_ViewEdgeIterator py_ve_it;
-  Freestyle::ChainingIterator *c_it;
-} BPy_ChainingIterator;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:d22083fab41a1683e42ba503c5f1a8365c0d9919d401be33de568eba1e2b7819
+size 778

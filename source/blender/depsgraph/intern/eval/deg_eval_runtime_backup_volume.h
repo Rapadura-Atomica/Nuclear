@@ -1,30 +1,3 @@
-/* SPDX-FileCopyrightText: 2019 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-struct Volume;
-struct VolumeGridVector;
-
-namespace blender::deg {
-
-struct Depsgraph;
-
-/* Backup of volume datablocks runtime data. */
-class VolumeBackup {
- public:
-  VolumeBackup(const Depsgraph *depsgraph);
-
-  void init_from_volume(Volume *volume);
-  void restore_to_volume(Volume *volume);
-
-  VolumeGridVector *grids;
-  char filepath[/*FILE_MAX*/ 1024];
-};
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:340a10372ef65fd48b4d56a885162f5a4feafae7c1891a7f1e5c51b6f95ff25d
+size 540

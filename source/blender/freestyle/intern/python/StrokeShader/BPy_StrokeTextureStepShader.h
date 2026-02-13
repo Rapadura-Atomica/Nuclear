@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_StrokeShader.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-#include <Python.h>
-
-extern PyTypeObject StrokeTextureStepShader_Type;
-
-#define BPy_StrokeTextureStepShader_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&StrokeTextureStepShader_Type))
-
-/*---------------------------Python BPy_StrokeTextureStepShader structure definition----------*/
-typedef struct {
-  BPy_StrokeShader py_ss;
-} BPy_StrokeTextureStepShader;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:4c413a98a7e7617d63764c4e247e9fddbea9d68c116358bf577b6da69cc47660
+size 744

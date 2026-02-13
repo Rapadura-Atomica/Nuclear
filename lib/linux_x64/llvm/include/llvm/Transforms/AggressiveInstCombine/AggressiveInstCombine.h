@@ -1,29 +1,3 @@
-//===- AggressiveInstCombine.h - AggressiveInstCombine pass -----*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-/// \file
-///
-/// AggressiveInstCombiner - Combine expression patterns to form expressions
-/// with fewer, simple instructions.
-///
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_AGGRESSIVEINSTCOMBINE_AGGRESSIVEINSTCOMBINE_H
-#define LLVM_TRANSFORMS_AGGRESSIVEINSTCOMBINE_AGGRESSIVEINSTCOMBINE_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class AggressiveInstCombinePass
-    : public PassInfoMixin<AggressiveInstCombinePass> {
-public:
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-}
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:cd6881d6e1d08f998c76216e711ab64a0534ba291dc3a49350a05b759e88dd30
+size 952

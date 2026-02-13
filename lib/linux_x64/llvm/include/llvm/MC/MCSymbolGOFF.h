@@ -1,29 +1,3 @@
-//===-- llvm/MC/MCSymbolGOFF.h - GOFF Machine Code Symbols ------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-///
-/// \file
-/// This file contains the MCSymbolGOFF class
-///
-//===----------------------------------------------------------------------===//
-#ifndef LLVM_MC_MCSYMBOLGOFF_H
-#define LLVM_MC_MCSYMBOLGOFF_H
-
-#include "llvm/MC/MCSymbol.h"
-#include "llvm/MC/MCSymbolTableEntry.h"
-
-namespace llvm {
-
-class MCSymbolGOFF : public MCSymbol {
-public:
-  MCSymbolGOFF(const MCSymbolTableEntry *Name, bool IsTemporary)
-      : MCSymbol(SymbolKindGOFF, Name, IsTemporary) {}
-  static bool classof(const MCSymbol *S) { return S->isGOFF(); }
-};
-} // end namespace llvm
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:d87a353f9384d312fbbfead7d549e27d8084d0d8d1f44e9b44697da57800d1e9
+size 933

@@ -1,24 +1,3 @@
-//===-- llvm/BinaryFormat/Swift.h ---Swift Constants-------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-
-#ifndef LLVM_BINARYFORMAT_SWIFT_H
-#define LLVM_BINARYFORMAT_SWIFT_H
-
-namespace llvm {
-namespace binaryformat {
-
-enum Swift5ReflectionSectionKind {
-#define HANDLE_SWIFT_SECTION(KIND, MACHO, ELF, COFF) KIND,
-#include "llvm/BinaryFormat/Swift.def"
-#undef HANDLE_SWIFT_SECTION
-  unknown,
-  last = unknown
-};
-} // end of namespace binaryformat
-} // end of namespace llvm
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:14a0d8eed9d07df51524102ba4329d1b48443765c971be02ba58b2b935208658
+size 663

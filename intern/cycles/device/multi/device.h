@@ -1,21 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/unique_ptr.h"
-
-CCL_NAMESPACE_BEGIN
-
-class Device;
-class DeviceInfo;
-class Profiler;
-class Stats;
-
-unique_ptr<Device> device_multi_create(const DeviceInfo &info,
-                                       Stats &stats,
-                                       Profiler &profiler,
-                                       bool headless);
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:126ecb33274a42e9afd384d4289306711c5be819d62747e28540d02ffae470f6
+size 478

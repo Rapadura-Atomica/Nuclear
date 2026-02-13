@@ -1,23 +1,3 @@
-//
-// Copyright 2016 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_USD_CRATE_INFO_H
-#define PXR_USD_USD_CRATE_INFO_H
-
-#include "pxr/pxr.h"
-#include "pxr/base/tf/token.h"
-#include "pxr/usd/sdf/crateInfo.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-/// \class UsdCrateInfo
-///
-/// \deprecated and aliased in favor of SdfCrateInfo.
-using UsdCrateInfo = SdfCrateInfo;
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif // PXR_USD_USD_CRATE_INFO_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:160fac032c70bf8907788c4fc05e7b13fac949203f70116900ba9cd1b5f7d1c1
+size 501

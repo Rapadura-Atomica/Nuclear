@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryPredicate1D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject WithinImageBoundaryUP1D_Type;
-
-#define BPy_WithinImageBoundaryUP1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&WithinImageBoundaryUP1D_Type))
-
-/*---------------------------Python BPy_WithinImageBoundaryUP1D structure definition----------*/
-typedef struct {
-  BPy_UnaryPredicate1D py_up1D;
-} BPy_WithinImageBoundaryUP1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:476bffde8a414a6bfd5033158fe0374d75d9796638d9135f84dfd300db6cddcc
+size 733

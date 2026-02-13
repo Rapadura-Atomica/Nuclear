@@ -1,16 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-/* Argument Parsing for command line, we use the OpenImageIO
- * library because it has nice functions to do this. */
-
-#include <OpenImageIO/argparse.h>
-
-CCL_NAMESPACE_BEGIN
-
-using OIIO::ArgParse;
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:668fdb7baf02cc27b20ae72646cd0f99a274bab6b47e7b1c0c7fd72264cd6a1d
+size 331

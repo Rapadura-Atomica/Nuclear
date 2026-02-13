@@ -1,14 +1,3 @@
-//
-// Copyright 2025 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_IMAGING_HGI_VERSION_H
-#define PXR_IMAGING_HGI_VERSION_H
-
-//  1 ->  2: HgiVulkan: Removed API related to use of SPIRV-Reflect
-
-#define HGI_API_VERSION 2
-
-#endif // PXR_IMAGING_HGI_VERSION_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:632e736fa569a231157de8fc31d5c341404c4278c1a45a5e0585ff8200ec834a
+size 341

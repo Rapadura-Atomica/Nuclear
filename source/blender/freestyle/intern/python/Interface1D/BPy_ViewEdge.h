@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Interface1D.h"
-
-#include "../../view_map/ViewMap.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ViewEdge_Type;
-
-#define BPy_ViewEdge_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&ViewEdge_Type))
-
-/*---------------------------Python BPy_ViewEdge structure definition----------*/
-typedef struct {
-  BPy_Interface1D py_if1D;
-  Freestyle::ViewEdge *ve;
-} BPy_ViewEdge;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:aeccdd5d43d11029b8854a6d53af671a05d69e60ee1eaf6d3e532b9b70f8de63
+size 708

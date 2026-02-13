@@ -1,17 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-/*---------------------------Python BPy_ContextFunctions visible prototypes-----------*/
-
-int ContextFunctions_Init(PyObject *module);
+version https://git-lfs.github.com/spec/v1
+oid sha256:48bca578effec849fd7972f557e6fa6ef4d287a460a005211c6e112e41702ce0
+size 322

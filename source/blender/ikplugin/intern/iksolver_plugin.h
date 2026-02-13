@@ -1,23 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup ikplugin
- */
-
-#pragma once
-
-#include "ikplugin_api.h"
-
-void iksolver_initialize_tree(struct Depsgraph *depsgraph,
-                              struct Scene *scene,
-                              struct Object *ob,
-                              float ctime);
-void iksolver_execute_tree(struct Depsgraph *depsgraph,
-                           struct Scene *scene,
-                           struct Object *ob,
-                           struct bPoseChannel *pchan_root,
-                           float ctime);
-void iksolver_release_tree(struct Scene *scene, struct Object *ob, float ctime);
-void iksolver_clear_data(struct bPose *pose);
+version https://git-lfs.github.com/spec/v1
+oid sha256:6131e19d23d7e358278194f74291ec21bd34ae9301361a68dc4843b9e69f1789
+size 784

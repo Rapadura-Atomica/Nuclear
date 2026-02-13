@@ -1,29 +1,3 @@
-//===- llvm/Support/BuryPointer.h - Memory Manipulation/Leak ----*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_SUPPORT_BURYPOINTER_H
-#define LLVM_SUPPORT_BURYPOINTER_H
-
-#include <memory>
-
-namespace llvm {
-
-// In tools that will exit soon anyway, going through the process of explicitly
-// deallocating resources can be unnecessary - better to leak the resources and
-// let the OS clean them up when the process ends. Use this function to ensure
-// the memory is not misdiagnosed as an unintentional leak by leak detection
-// tools (this is achieved by preserving pointers to the object in a globally
-// visible array).
-void BuryPointer(const void *Ptr);
-template <typename T> void BuryPointer(std::unique_ptr<T> Ptr) {
-  BuryPointer(Ptr.release());
-}
-
-} // namespace llvm
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:90f513e067c3f4518e096514cab82051b98ea37351a7a4e3e1c3c9b11cf2c31f
+size 1052

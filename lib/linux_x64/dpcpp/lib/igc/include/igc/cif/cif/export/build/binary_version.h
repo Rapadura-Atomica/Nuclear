@@ -1,30 +1,3 @@
-/*========================== begin_copyright_notice ============================
-
-Copyright (C) 2017-2021 Intel Corporation
-
-SPDX-License-Identifier: MIT
-
-============================= end_copyright_notice ===========================*/
-
-#pragma once
-
-#include "cif/common/id.h"
-
-namespace CIF {
-
-namespace Build {
-
-#if defined CIF_ULT
-Version_t GetUltVersion();
-#endif
-
-inline Version_t GetBinaryVersion() {
-#if defined GIT
-#elif defined CIF_ULT
-  return GetUltVersion();
-#else
-  return CIF::UnknownVersion;
-#endif
-}
-} // namespace Build
-} // namespace CIF
+version https://git-lfs.github.com/spec/v1
+oid sha256:015bb086a7fb69260ca40205877f700bd093faa01e594a8cd28e2c455bce68cf
+size 557

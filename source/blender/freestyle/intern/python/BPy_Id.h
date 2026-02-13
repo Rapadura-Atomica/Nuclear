@@ -1,35 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include <iostream>
-
-#include "../system/Id.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Id_Type;
-
-#define BPy_Id_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&Id_Type))
-
-/*---------------------------Python BPy_Id structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-  Freestyle::Id *id;
-} BPy_Id;
-
-/*---------------------------Python BPy_Id visible prototypes-----------*/
-
-int Id_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:10a32ad7a96beee6480e2a19131fd6cc2f46cf791bcae148fa6f8b08753613c8
+size 783

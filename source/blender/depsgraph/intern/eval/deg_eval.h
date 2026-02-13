@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2013 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- *
- * Evaluation engine entry-points for Depsgraph Engine.
- */
-
-#pragma once
-
-namespace blender::deg {
-
-struct Depsgraph;
-
-/**
- * Evaluate all nodes tagged for updating,
- * \warning This is usually done as part of main loop, but may also be
- * called from frame-change update.
- *
- * \note Time sources should be all valid!
- */
-void deg_evaluate_on_refresh(Depsgraph *graph);
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:ad00fea91e5d852d190046eb8f9f70db7cddc95ccac950abc4bda1080171e56d
+size 537

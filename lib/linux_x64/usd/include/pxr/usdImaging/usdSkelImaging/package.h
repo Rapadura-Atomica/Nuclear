@@ -1,21 +1,3 @@
-//
-// Copyright 2019 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_IMAGING_USD_SKEL_IMAGING_PACKAGE_H
-#define PXR_USD_IMAGING_USD_SKEL_IMAGING_PACKAGE_H
-
-#include "pxr/pxr.h"
-#include "pxr/usdImaging/usdSkelImaging/api.h"
-#include "pxr/base/tf/token.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-USDSKELIMAGING_API
-TfToken UsdSkelImagingPackageSkinningShader();
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif // PXR_USD_IMAGING_USD_SKEL_IMAGING_PACKAGE_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:4f67f0eaec544b2ac01c0a6a946d2de67c3f05951b124480f1ae3c1a9acde080
+size 516

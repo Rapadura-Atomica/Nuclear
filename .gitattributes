@@ -3,7 +3,6 @@ lib/**/*.dll filter=lfs diff=lfs merge=lfs -text
 lib/**/*.dylib filter=lfs diff=lfs merge=lfs -text
 lib/**/*.a filter=lfs diff=lfs merge=lfs -text
 lib/**/*.o filter=lfs diff=lfs merge=lfs -text
-
 # Bibliotecas específicas por plataforma
 lib/linux_x64/** filter=lfs diff=lfs merge=lfs -text
 lib/darwin_x64/** filter=lfs diff=lfs merge=lfs -text
@@ -25,4 +24,6 @@ lib/windows_x64/** filter=lfs diff=lfs merge=lfs -text
 # Arquivos de cache e dados
 **/*.cache filter=lfs diff=lfs merge=lfs -text
 **/*.data filter=lfs diff=lfs merge=lfs -text
+*.h filter=lfs diff=lfs merge=lfs -text
+bvh_build_array.h filter=lfs diff=lfs merge=lfs -text
 lib/linux_x64/hiprt/include/hiprt/impl/bvh_build_array.h filter=lfs diff=lfs merge=lfs -text

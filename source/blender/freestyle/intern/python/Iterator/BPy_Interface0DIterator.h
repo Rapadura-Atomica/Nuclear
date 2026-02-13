@@ -1,30 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Iterator.h"
-
-#include "../../view_map/Interface0D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Interface0DIterator_Type;
-
-#define BPy_Interface0DIterator_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&Interface0DIterator_Type))
-
-/*---------------------------Python BPy_Interface0DIterator structure definition----------*/
-typedef struct {
-  BPy_Iterator py_it;
-  Freestyle::Interface0DIterator *if0D_it;
-  bool reversed;
-  bool at_start;
-} BPy_Interface0DIterator;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:3f3191e4fe1717a2108ba5255e8647e70af78bf9eeed92b86d0a02f4af9be4d3
+size 813

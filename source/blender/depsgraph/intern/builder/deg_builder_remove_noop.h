@@ -1,18 +1,3 @@
-/* SPDX-FileCopyrightText: 2020 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-namespace blender::deg {
-
-struct Depsgraph;
-
-/* Remove all no-op nodes that have zero outgoing relations. */
-void deg_graph_remove_unused_noops(Depsgraph *graph);
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:552481d65f9565ece627a8d3db7466d3e01c160977dcd6327d53d6c36727c940
+size 344

@@ -1,18 +1,3 @@
-/* SPDX-FileCopyrightText: 2017 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-namespace blender::deg {
-
-struct Depsgraph;
-
-/* Aggregate operation timings to overall component and ID nodes timing. */
-void deg_eval_stats_aggregate(Depsgraph *graph);
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:be4a2b74571b95e5bcdd226149ea765f07b134ad2d12dba35283a362447aafde
+size 351

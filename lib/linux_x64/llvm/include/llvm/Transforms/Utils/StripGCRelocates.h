@@ -1,25 +1,3 @@
-//===- StripGCRelocates.h - -----------------------------------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_UTILS_STRIPGCRELOCATES_H
-#define LLVM_TRANSFORMS_UTILS_STRIPGCRELOCATES_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class Function;
-
-class StripGCRelocates : public PassInfoMixin<StripGCRelocates> {
-public:
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-
-} // end namespace llvm
-
-#endif // LLVM_TRANSFORMS_UTILS_STRIPGCRELOCATES_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:38e5e1f32033672f53ad9ae612bd07c20487ab726276ef6126801f1b31f15ac1
+size 759

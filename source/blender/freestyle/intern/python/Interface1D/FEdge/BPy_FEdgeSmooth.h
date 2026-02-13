@@ -1,32 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_FEdge.h"
-
-#include "../../../view_map/Silhouette.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject FEdgeSmooth_Type;
-
-#define BPy_FEdgeSmooth_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&FEdgeSmooth_Type))
-
-/*---------------------------Python BPy_FEdgeSmooth structure definition----------*/
-typedef struct {
-  BPy_FEdge py_fe;
-  Freestyle::FEdgeSmooth *fes;
-} BPy_FEdgeSmooth;
-
-/*---------------------------Python BPy_FEdgeSmooth visible prototypes-----------*/
-
-void FEdgeSmooth_mathutils_register_callback();
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:342e6346073354fa5d72d7112c3d6233e6c4e1e9569fae1f503c3b326d310033
+size 857

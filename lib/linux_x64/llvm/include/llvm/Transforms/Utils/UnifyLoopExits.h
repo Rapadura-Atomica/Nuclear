@@ -1,22 +1,3 @@
-//===- UnifyLoopExits.h - Redirect exiting edges to one block -*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_UTILS_UNIFYLOOPEXITS_H
-#define LLVM_TRANSFORMS_UTILS_UNIFYLOOPEXITS_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class UnifyLoopExitsPass : public PassInfoMixin<UnifyLoopExitsPass> {
-public:
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-} // namespace llvm
-
-#endif // LLVM_TRANSFORMS_UTILS_UNIFYLOOPEXITS_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:b9779e0afe178d4cd96835a25dc308538ac45b8d6dba886f77d91d29f49a00cb
+size 733

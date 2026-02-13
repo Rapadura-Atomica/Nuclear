@@ -1,17 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup intern_slim
- */
-
-#pragma once
-
-#include "slim.h"
-
-namespace slim {
-
-void transform_initialization_if_necessary(SLIMData &slim_data);
-
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:9b28831936906ed077251454a8226486b65fd8b5e4afd7d32f30a6cf424687d8
+size 258

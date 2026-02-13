@@ -1,15 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-#pragma once
-
-/** \file
- * \ingroup bke
- */
-
-struct Depsgraph;
-struct Main;
-struct World;
-
-struct World *BKE_world_add(struct Main *bmain, const char *name);
-void BKE_world_eval(struct Depsgraph *depsgraph, struct World *world);
+version https://git-lfs.github.com/spec/v1
+oid sha256:6ffef747c9351274095224a073a931f67fb6e8233bda4e1c85d250bd7981bbea
+size 354

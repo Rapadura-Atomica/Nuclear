@@ -1,29 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_ENVIRON_H
-#define MATERIALX_ENVIRON_H
-
-/// @file
-/// Cross-platform environment variable functionality
-
-#include <MaterialXCore/Library.h>
-
-#include <MaterialXFormat/Export.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-/// Return the value of an environment variable by name
-MX_FORMAT_API string getEnviron(const string& name);
-
-/// Set an environment variable to a specified value
-MX_FORMAT_API bool setEnviron(const string& name, const string& value);
-
-/// Remove an environment variable by name
-MX_FORMAT_API bool removeEnviron(const string& name);
-
-MATERIALX_NAMESPACE_END
-
-#endif // MATERIALX_ENVIRON_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:be443b447964ab259aeb86b39b9f6c044ed2e6f392cfbc8dcd70d1250182f48d
+size 708

@@ -1,9 +1,3 @@
-// CUDA headers define __noinline__ which interferes with libstdc++'s use of
-// `__attribute((__noinline__))`. In order to avoid compilation error,
-// temporarily unset __noinline__ when we include affected libstdc++ header.
-
-#pragma push_macro("__noinline__")
-#undef __noinline__
-#include_next "bits/shared_ptr_base.h"
-
-#pragma pop_macro("__noinline__")
+version https://git-lfs.github.com/spec/v1
+oid sha256:51984393c2035f289bf533c0539b40bb616833a4315380e9a7ca338282b272da
+size 355

@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup shader_fx
- */
-
-#pragma once
-
-#include "BKE_shader_fx.h"
-
-/* ****************** Type structures for all effects ****************** */
-
-extern ShaderFxTypeInfo shaderfx_Type_None;
-extern ShaderFxTypeInfo shaderfx_Type_Blur;
-extern ShaderFxTypeInfo shaderfx_Type_Colorize;
-extern ShaderFxTypeInfo shaderfx_Type_Flip;
-extern ShaderFxTypeInfo shaderfx_Type_Glow;
-extern ShaderFxTypeInfo shaderfx_Type_Pixel;
-extern ShaderFxTypeInfo shaderfx_Type_Rim;
-extern ShaderFxTypeInfo shaderfx_Type_Shadow;
-extern ShaderFxTypeInfo shaderfx_Type_Swirl;
-extern ShaderFxTypeInfo shaderfx_Type_Wave;
-
-/* FX_shaderfx_util.c */
-
-void shaderfx_type_init(ShaderFxTypeInfo *types[]);
+version https://git-lfs.github.com/spec/v1
+oid sha256:72b5568f47c0a0f6c3c80f33de2839f436170f04cce5805c2a8009ff05ba05ee
+size 782

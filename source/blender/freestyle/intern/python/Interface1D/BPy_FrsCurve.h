@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Interface1D.h"
-
-#include "../../stroke/Curve.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject FrsCurve_Type;
-
-#define BPy_FrsCurve_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&FrsCurve_Type))
-
-/*---------------------------Python BPy_FrsCurve structure definition----------*/
-typedef struct {
-  BPy_Interface1D py_if1D;
-  Freestyle::Curve *c;
-} BPy_FrsCurve;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:8e6dc442f3b5b4e64cd5b925cb2f4a6aaaa9c2ce903b69f7970d02f905d60278
+size 700

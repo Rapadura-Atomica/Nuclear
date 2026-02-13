@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "BPy_ChainingIterator.h"
-
-#include "../../stroke/ChainingIterators.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ChainSilhouetteIterator_Type;
-
-#define BPy_ChainSilhouetteIterator_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&ChainSilhouetteIterator_Type))
-
-/*---------------------------Python BPy_ChainSilhouetteIterator structure definition----------*/
-typedef struct {
-  BPy_ChainingIterator py_c_it;
-  Freestyle::ChainSilhouetteIterator *cs_it;
-} BPy_ChainSilhouetteIterator;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:97c92c49d0663b2fde3fe8f33c27106ef1e9bf5c5c593331620052016ba9a962
+size 820

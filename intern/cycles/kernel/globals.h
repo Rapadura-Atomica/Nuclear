@@ -1,13 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-/* Header that can be included wherever KernelGlobals is used in the kernel,
- * to make clangd happy. For GPU devices it's defined beforehand. */
-
-#ifndef __KERNEL_GPU__
-#  include "kernel/device/cpu/compat.h"   // IWYU pragma: export
-#  include "kernel/device/cpu/globals.h"  // IWYU pragma: export
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:32400920e276f25a8a55f7d73d1985102295e500774c0d215b060b7dc36b1205
+size 423

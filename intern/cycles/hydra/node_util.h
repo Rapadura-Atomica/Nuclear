@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2022 NVIDIA Corporation
- * SPDX-FileCopyrightText: 2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "graph/node.h"
-#include "hydra/config.h"
-
-#include <pxr/base/vt/value.h>
-
-HDCYCLES_NAMESPACE_OPEN_SCOPE
-
-void SetNodeValue(CCL_NS::Node *node, const CCL_NS::SocketType &socket, const VtValue &value);
-
-VtValue GetNodeValue(const CCL_NS::Node *node, const CCL_NS::SocketType &socket);
-
-HDCYCLES_NAMESPACE_CLOSE_SCOPE
+version https://git-lfs.github.com/spec/v1
+oid sha256:51e050f9b896045b28629a9f6ce9a1df6d14e68ce791f991028156b178c63656
+size 486

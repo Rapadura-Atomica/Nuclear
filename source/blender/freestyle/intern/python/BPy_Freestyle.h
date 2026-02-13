@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include <Python.h>
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-/*---------------------------Python BPy_Freestyle visible prototypes-----------*/
-
-PyObject *Freestyle_Init(void);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:b0fa41e864d04d824106c374631d013baf85b529bba152100e07e0c3e0af2e84
+size 473

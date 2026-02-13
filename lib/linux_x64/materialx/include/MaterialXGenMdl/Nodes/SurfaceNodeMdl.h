@@ -1,26 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_SURFACENODEMDL_H
-#define MATERIALX_SURFACENODEMDL_H
-
-#include <MaterialXGenMdl/Export.h>
-
-#include <MaterialXGenShader/ShaderNodeImpl.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-/// Surface node implementation for MDL
-class MX_GENMDL_API SurfaceNodeMdl : public ShaderNodeImpl
-{
-  public:
-    static ShaderNodeImplPtr create();
-
-    void emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage) const override;
-};
-
-MATERIALX_NAMESPACE_END
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:1be0a09e0e0860eb8d57d64a213a577657f8c1d3baf6ae59f8725d89ecf37f82
+size 574

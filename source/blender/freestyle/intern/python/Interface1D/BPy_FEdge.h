@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Interface1D.h"
-
-#include "../../view_map/Silhouette.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject FEdge_Type;
-
-#define BPy_FEdge_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&FEdge_Type))
-
-/*---------------------------Python BPy_FEdge structure definition----------*/
-typedef struct {
-  BPy_Interface1D py_if1D;
-  Freestyle::FEdge *fe;
-} BPy_FEdge;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:420b35fd2e3056fb5703576bb32b38da670d4c630e7216218a33494cdc7f8b79
+size 693

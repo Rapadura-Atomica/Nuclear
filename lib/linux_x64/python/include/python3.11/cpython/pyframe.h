@@ -1,17 +1,3 @@
-#ifndef Py_CPYTHON_PYFRAME_H
-#  error "this header file must not be included directly"
-#endif
-
-PyAPI_DATA(PyTypeObject) PyFrame_Type;
-
-#define PyFrame_Check(op) Py_IS_TYPE((op), &PyFrame_Type)
-
-PyAPI_FUNC(PyFrameObject *) PyFrame_GetBack(PyFrameObject *frame);
-PyAPI_FUNC(PyObject *) PyFrame_GetLocals(PyFrameObject *frame);
-
-PyAPI_FUNC(PyObject *) PyFrame_GetGlobals(PyFrameObject *frame);
-PyAPI_FUNC(PyObject *) PyFrame_GetBuiltins(PyFrameObject *frame);
-
-PyAPI_FUNC(PyObject *) PyFrame_GetGenerator(PyFrameObject *frame);
-PyAPI_FUNC(int) PyFrame_GetLasti(PyFrameObject *frame);
-
+version https://git-lfs.github.com/spec/v1
+oid sha256:f24bbe196b29bf392af44a149fb194a8b20ca008de3b98996c9ee8ea146ce67e
+size 582

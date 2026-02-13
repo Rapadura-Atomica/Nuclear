@@ -1,18 +1,3 @@
-/* SPDX-FileCopyrightText: 2015 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-namespace blender::deg {
-
-struct Depsgraph;
-
-/* Performs a transitive reduction to remove redundant relations. */
-void deg_graph_transitive_reduction(Depsgraph *graph);
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:80cb7c22001a1b3874958cc2d626fe097d603a28aa7f149f8f2f39eeaaae8f0b
+size 350

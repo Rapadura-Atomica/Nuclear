@@ -1,33 +1,3 @@
-//
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) Contributors to the OpenEXR Project.
-//
-
-#ifndef INCLUDED_IMF_TILE_DESCRIPTION_ATTRIBUTE_H
-#define INCLUDED_IMF_TILE_DESCRIPTION_ATTRIBUTE_H
-
-//-----------------------------------------------------------------------------
-//
-//	class TileDescriptionAttribute
-//
-//-----------------------------------------------------------------------------
-
-#include "ImfExport.h"
-#include "ImfNamespace.h"
-
-#include "ImfAttribute.h"
-#include "ImfTileDescription.h"
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_ENTER
-
-typedef TypedAttribute<OPENEXR_IMF_INTERNAL_NAMESPACE::TileDescription>
-    TileDescriptionAttribute;
-
-#ifndef COMPILING_IMF_STRING_VECTOR_ATTRIBUTE
-extern template class IMF_EXPORT_EXTERN_TEMPLATE
-    TypedAttribute<OPENEXR_IMF_INTERNAL_NAMESPACE::TileDescription>;
-#endif
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_EXIT
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:bcc87115fd5cd9affd8c81563e5497361ea8c676ee4de02a702dd3d133609ff9
+size 884

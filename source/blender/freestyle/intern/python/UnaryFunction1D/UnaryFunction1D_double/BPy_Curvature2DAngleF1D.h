@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DDouble.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Curvature2DAngleF1D_Type;
-
-#define BPy_Curvature2DAngleF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&Curvature2DAngleF1D_Type))
-
-/*---------------------------Python BPy_Curvature2DAngleF1D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DDouble py_uf1D_double;
-} BPy_Curvature2DAngleF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:fc121c6836d7f7aef10999697fc990b344b8039b0d3f6a1e19e9a3a84f4896ad
+size 730

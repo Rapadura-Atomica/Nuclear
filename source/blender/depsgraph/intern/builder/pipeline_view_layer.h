@@ -1,24 +1,3 @@
-/* SPDX-FileCopyrightText: 2020 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-#include "pipeline.h"
-
-namespace blender::deg {
-
-class ViewLayerBuilderPipeline : public AbstractBuilderPipeline {
- public:
-  ViewLayerBuilderPipeline(::Depsgraph *graph);
-
- protected:
-  void build_nodes(DepsgraphNodeBuilder &node_builder) override;
-  void build_relations(DepsgraphRelationBuilder &relation_builder) override;
-};
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:eda8de0857e0fab5eecb44a6b0bf738e42360e4f43ed94bec2cf4d6d36df3b94
+size 511

@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_StrokeShader.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject PolygonalizationShader_Type;
-
-#define BPy_PolygonalizationShader_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&PolygonalizationShader_Type))
-
-/*---------------------------Python BPy_PolygonalizationShader structure definition----------*/
-typedef struct {
-  BPy_StrokeShader py_ss;
-} BPy_PolygonalizationShader;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:4a7434d9a33b1acdec5169c845b4d61d4921d2ad81e238764665b8e7ed37d8ab
+size 718

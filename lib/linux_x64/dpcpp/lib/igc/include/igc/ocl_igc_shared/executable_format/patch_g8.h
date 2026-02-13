@@ -1,19 +1,3 @@
-/*========================== begin_copyright_notice ============================
-
-Copyright (C) 2017-2021 Intel Corporation
-
-SPDX-License-Identifier: MIT
-
-============================= end_copyright_notice ===========================*/
-
-#pragma once
-#include "patch_shared.h"
-
-namespace iOpenCL {
-
-/*****************************************************************************\
-STRUCT: SKernelBinaryHeaderGen8
-\*****************************************************************************/
-struct SKernelBinaryHeaderGen8 : SKernelBinaryHeaderCommon {};
-
-} // namespace iOpenCL
+version https://git-lfs.github.com/spec/v1
+oid sha256:e9005b26bc4eebd84d13a84486f25941abce6a1f5af56250b2b9ed3367bc36a0
+size 577

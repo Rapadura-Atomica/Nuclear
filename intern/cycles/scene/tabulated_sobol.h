@@ -1,13 +1,3 @@
-/* SPDX-FileCopyrightText: 2019-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/types.h"
-
-CCL_NAMESPACE_BEGIN
-
-void tabulated_sobol_generate_4D(float4 points[], const int size, const int rng_seed);
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:ddb8a3d3686c3a6d9de7e534c9ca8c51be2f1223e7c5cf7b4e16a2fcb1eb1b46
+size 268

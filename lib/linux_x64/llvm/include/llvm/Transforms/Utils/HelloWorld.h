@@ -1,23 +1,3 @@
-//===-- HelloWorld.h - Example Transformations ------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_UTILS_HELLOWORLD_H
-#define LLVM_TRANSFORMS_UTILS_HELLOWORLD_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class HelloWorldPass : public PassInfoMixin<HelloWorldPass> {
-public:
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-
-} // namespace llvm
-
-#endif // LLVM_TRANSFORMS_UTILS_HELLOWORLD_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:6e9a297502dba45f2271c16c1712f936ea825305c44fc3c61e13af4ee70ecd4f
+size 716

@@ -1,20 +1,3 @@
-/* SPDX-FileCopyrightText: 2013 Blender Foundation
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#ifndef OPENSUBDIV_BASE_UTIL_H_
-#define OPENSUBDIV_BASE_UTIL_H_
-
-#include <string>
-#include <vector>
-
-namespace blender::opensubdiv {
-
-void stringSplit(std::vector<std::string> *tokens,
-                 const std::string &str,
-                 const std::string &separators,
-                 bool skip_empty);
-
-}  // namespace blender::opensubdiv
-
-#endif  // OPENSUBDIV_BASE_UTIL_H_
+version https://git-lfs.github.com/spec/v1
+oid sha256:53d8dc1c36963731dff9a4d73c9feea63fa28f099e70f54dd1a820ad08d80178
+size 486

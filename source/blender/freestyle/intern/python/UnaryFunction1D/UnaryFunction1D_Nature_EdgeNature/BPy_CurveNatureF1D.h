@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DEdgeNature.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject CurveNatureF1D_Type;
-
-#define BPy_CurveNatureF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&CurveNatureF1D_Type))
-
-/*---------------------------Python BPy_CurveNatureF1D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DEdgeNature py_uf1D_edgenature;
-} BPy_CurveNatureF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:2d2cf19f8427f322303d4647e7a7988a11e49641fb663801dcb7eab817775db0
+size 717

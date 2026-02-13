@@ -1,32 +1,3 @@
-//===----- SemaAVR.h ------- AVR target-specific routines -----*- C++ -*---===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-/// \file
-/// This file declares semantic analysis functions specific to AVR.
-///
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_SEMA_SEMAAVR_H
-#define LLVM_CLANG_SEMA_SEMAAVR_H
-
-#include "clang/AST/ASTFwd.h"
-#include "clang/Sema/SemaBase.h"
-
-namespace clang {
-class ParsedAttr;
-
-class SemaAVR : public SemaBase {
-public:
-  SemaAVR(Sema &S);
-
-  void handleInterruptAttr(Decl *D, const ParsedAttr &AL);
-  void handleSignalAttr(Decl *D, const ParsedAttr &AL);
-};
-
-} // namespace clang
-
-#endif // LLVM_CLANG_SEMA_SEMAAVR_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:9013ee7ebb6fcb7b83a890c9160655edbfc14f6fc93fa8976127f2306b06d084
+size 943

@@ -1,25 +1,3 @@
-/*
- * Summary: interface for all global variables of the library
- * Description: Deprecated, don't use
- *
- * Copy: See Copyright for the status of this software.
- */
-
-#ifndef __XML_GLOBALS_H
-#define __XML_GLOBALS_H
-
-#include <libxml/xmlversion.h>
-
-/*
- * This file was required to access global variables until version v2.12.0.
- *
- * These includes are for backward compatibility.
- */
-#include <libxml/HTMLparser.h>
-#include <libxml/parser.h>
-#include <libxml/xmlerror.h>
-#include <libxml/xmlIO.h>
-#include <libxml/xmlsave.h>
-#include <libxml/threads.h>
-
-#endif /* __XML_GLOBALS_H */
+version https://git-lfs.github.com/spec/v1
+oid sha256:347f33c912397172491a9e64d9a2f13a6fab7891063855fa2d83fcd860574656
+size 583

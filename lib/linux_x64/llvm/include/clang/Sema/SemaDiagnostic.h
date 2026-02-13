@@ -1,14 +1,3 @@
-//===--- DiagnosticSema.h - Diagnostics for libsema -------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_SEMA_SEMADIAGNOSTIC_H
-#define LLVM_CLANG_SEMA_SEMADIAGNOSTIC_H
-
-#include "clang/Basic/DiagnosticSema.h"
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:3db9440bd10ca260ad73d796bb37495c2b06903a88c64345d64dc4ea23858da0
+size 501

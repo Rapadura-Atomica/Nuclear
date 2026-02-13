@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0DUnsigned.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject QuantitativeInvisibilityF0D_Type;
-
-#define BPy_QuantitativeInvisibilityF0D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&QuantitativeInvisibilityF0D_Type))
-
-/*---------------------------Python BPy_QuantitativeInvisibilityF0D structure
- * definition----------*/
-typedef struct {
-  BPy_UnaryFunction0DUnsigned py_uf0D_unsigned;
-} BPy_QuantitativeInvisibilityF0D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:31dc3a52d6c89e3bb9817eadeef5dddf45732c5fffd279584334664f3b1861d0
+size 779

@@ -1,25 +1,3 @@
-//===- llvm/CodeGen/PHIElimination.h ----------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_PHIELIMINATION_H
-#define LLVM_CODEGEN_PHIELIMINATION_H
-
-#include "llvm/CodeGen/MachinePassManager.h"
-
-namespace llvm {
-
-class PHIEliminationPass : public PassInfoMixin<PHIEliminationPass> {
-public:
-  PreservedAnalyses run(MachineFunction &MF,
-                        MachineFunctionAnalysisManager &MFAM);
-  static bool isRequired() { return true; }
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_PHIELIMINATION_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:23fc499de0809e1a7bb479c0399fbb977f135c2fe0609617943fa47f583e925d
+size 806

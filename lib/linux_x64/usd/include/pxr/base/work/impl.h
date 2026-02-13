@@ -1,20 +1,3 @@
-//
-// Copyright 2025 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_BASE_WORK_IMPL_H
-#define PXR_BASE_WORK_IMPL_H
-
-#include "pxr/base/work/workTBB/impl.h"
-
-#ifdef WORK_IMPL_NS
-#define PXR_WORK_IMPL_NS WORK_IMPL_NS
-#define PXR_WORK_IMPL_NAMESPACE_USING_DIRECTIVE using namespace PXR_WORK_IMPL_NS;
-#else
-#define PXR_WORK_IMPL_NS
-#define PXR_WORK_IMPL_NAMESPACE_USING_DIRECTIVE
-#endif
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:972e005d788eef73798f400c01690c2b66d930b186260cdc460c61492916d819
+size 474

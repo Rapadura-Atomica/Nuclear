@@ -1,34 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../view_map/Silhouette.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject SShape_Type;
-
-#define BPy_SShape_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&SShape_Type))
-
-/*---------------------------Python BPy_SShape structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-  Freestyle::SShape *ss;
-  bool borrowed; /* true if *ss is a borrowed object */
-} BPy_SShape;
-
-/*---------------------------Python BPy_SShape visible prototypes-----------*/
-
-int SShape_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:e4488a37814e1ec12ed00a683c97a612d37b52ecd76a8a8fd6736a1ba9c905a4
+size 860

@@ -1,6 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: Apache-2.0
-
-#include <nanovdb/util/Util.h>// for NANOVDB_DEPRECATED_HEADER
-#include <nanovdb/math/DitherLUT.h>
-NANOVDB_DEPRECATED_HEADER("Include nanovdb/math/DitherLUT.h instead.")
+version https://git-lfs.github.com/spec/v1
+oid sha256:fce25bb93229070275bdac8df4fc0262b82ea7c703f1ff523ea342cda0ce8f45
+size 259

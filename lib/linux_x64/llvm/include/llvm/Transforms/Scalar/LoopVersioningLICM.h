@@ -1,27 +1,3 @@
-//===- LoopVersioningLICM.h - LICM Loop Versioning ------------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_SCALAR_LOOPVERSIONINGLICM_H
-#define LLVM_TRANSFORMS_SCALAR_LOOPVERSIONINGLICM_H
-
-#include "llvm/Analysis/LoopAnalysisManager.h"
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-class LPMUpdater;
-class Loop;
-
-class LoopVersioningLICMPass : public PassInfoMixin<LoopVersioningLICMPass> {
-public:
-  PreservedAnalyses run(Loop &L, LoopAnalysisManager &AM,
-                        LoopStandardAnalysisResults &LAR, LPMUpdater &U);
-};
-
-} // namespace llvm
-
-#endif // LLVM_TRANSFORMS_SCALAR_LOOPVERSIONINGLICM_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:4ebcda42afff3d106045f2e5c6da62e47d3b25547de854c59d3286cce9946066
+size 901

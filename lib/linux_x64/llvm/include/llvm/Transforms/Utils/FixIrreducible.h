@@ -1,20 +1,3 @@
-//===- FixIrreducible.h - Convert irreducible control-flow into loops -----===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_UTILS_FIXIRREDUCIBLE_H
-#define LLVM_TRANSFORMS_UTILS_FIXIRREDUCIBLE_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-struct FixIrreduciblePass : PassInfoMixin<FixIrreduciblePass> {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-} // namespace llvm
-
-#endif // LLVM_TRANSFORMS_UTILS_FIXIRREDUCIBLE_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:841165a0b359dd7da0288f07a90905c06ceb0cdf0cf0b92302fb052d7905cbe6
+size 720

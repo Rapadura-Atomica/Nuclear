@@ -1,15 +1,3 @@
-//
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) Contributors to the OpenEXR Project.
-//
-// This is the OpenEXR library version information.
-// ImfVersion.h contains version information about the file format.
-#pragma once
-#ifndef INCLUDED_OPENEXR_VERSION_H
-#    define INCLUDED_OPENEXR_VERSION_H
-
-#    define OPENEXR_VERSION_MAJOR 3
-#    define OPENEXR_VERSION_MINOR 3
-#    define OPENEXR_VERSION_PATCH 5
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:91cde11cf2863812b5494edd434515fac18f24693815ba79952105579cffdadb
+size 425

@@ -1,35 +1,3 @@
-//===- TypeSymbolEmitter.h --------------------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_DEBUGINFO_CODEVIEW_TYPESYMBOLEMITTER_H
-#define LLVM_DEBUGINFO_CODEVIEW_TYPESYMBOLEMITTER_H
-
-namespace llvm {
-class StringRef;
-
-namespace codeview {
-class TypeIndex;
-
-class TypeSymbolEmitter {
-private:
-  TypeSymbolEmitter(const TypeSymbolEmitter &) = delete;
-  TypeSymbolEmitter &operator=(const TypeSymbolEmitter &) = delete;
-
-protected:
-  TypeSymbolEmitter() {}
-
-public:
-  virtual ~TypeSymbolEmitter() {}
-
-public:
-  virtual void writeUserDefinedType(TypeIndex TI, StringRef Name) = 0;
-};
-}
-}
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:a955ab1ae9f35743303ec132c16b4f10f59ed8fa638f59e8c62997428d04f5b2
+size 884

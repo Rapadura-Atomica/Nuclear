@@ -1,6 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: Apache-2.0
-
-#include <nanovdb/util/Util.h>// for NANOVDB_DEPRECATED_HEADER
-#include <nanovdb/tools/NanoToOpenVDB.h>
-NANOVDB_DEPRECATED_HEADER("Include nanovdb/tools/NanoToOpenVDB.h instead.")
+version https://git-lfs.github.com/spec/v1
+oid sha256:4da0cd6c4ad43d4108bb44df053dea4ae27ee0336e94bcf14cf6b3bdbfb0febd
+size 269

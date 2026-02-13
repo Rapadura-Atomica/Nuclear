@@ -1,31 +1,3 @@
-//===- PartialInlining.h - Inline parts of functions ------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// This pass performs partial inlining, typically by inlining an if statement
-// that surrounds the body of the function.
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_IPO_PARTIALINLINING_H
-#define LLVM_TRANSFORMS_IPO_PARTIALINLINING_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class Module;
-
-/// Pass to remove unused function declarations.
-class PartialInlinerPass : public PassInfoMixin<PartialInlinerPass> {
-public:
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &);
-};
-
-} // end namespace llvm
-
-#endif // LLVM_TRANSFORMS_IPO_PARTIALINLINING_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:4b517e52be579870420d0bfe5d57dfa232ddcd28fecd65d46d8ff110b8b7783a
+size 1004

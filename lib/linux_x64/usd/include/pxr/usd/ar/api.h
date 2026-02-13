@@ -1,30 +1,3 @@
-//
-// Copyright 2017 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_AR_API_H
-#define PXR_USD_AR_API_H
-
-#include "pxr/base/arch/export.h"
-
-#if defined(PXR_STATIC)
-#   define AR_API
-#   define AR_API_TEMPLATE_CLASS(...)
-#   define AR_API_TEMPLATE_STRUCT(...)
-#   define AR_LOCAL
-#else
-#   if defined(AR_EXPORTS)
-#       define AR_API ARCH_EXPORT
-#       define AR_API_TEMPLATE_CLASS(...) ARCH_EXPORT_TEMPLATE(class, __VA_ARGS__)
-#       define AR_API_TEMPLATE_STRUCT(...) ARCH_EXPORT_TEMPLATE(struct, __VA_ARGS__)
-#   else
-#       define AR_API ARCH_IMPORT
-#       define AR_API_TEMPLATE_CLASS(...) ARCH_IMPORT_TEMPLATE(class, __VA_ARGS__)
-#       define AR_API_TEMPLATE_STRUCT(...) ARCH_IMPORT_TEMPLATE(struct, __VA_ARGS__)
-#   endif
-#   define AR_LOCAL ARCH_HIDDEN
-#endif
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:0e1c6e1c671a7174b0b86c46c054c0fa0e94822b1f81b0cf1a4fa0a01cedf132
+size 868

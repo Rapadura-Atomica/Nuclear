@@ -1,15 +1,3 @@
-//
-// Copyright 2016 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_IMAGING_GARCH_GL_H
-#define PXR_IMAGING_GARCH_GL_H
-
-#include "pxr/pxr.h"
-#include "pxr/base/arch/defines.h"
-
-#include "pxr/imaging/garch/glApi.h"
-
-#endif // PXR_IMAGING_GARCH_GL_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:a5786b774d8bb92497d9ba21943e610687bb86232354698ef55ad3f3fd0a6ee4
+size 331

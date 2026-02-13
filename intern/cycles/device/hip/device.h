@@ -1,29 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/string.h"
-#include "util/unique_ptr.h"
-#include "util/vector.h"
-
-CCL_NAMESPACE_BEGIN
-
-class Device;
-class DeviceInfo;
-class Profiler;
-class Stats;
-
-bool device_hip_init();
-
-unique_ptr<Device> device_hip_create(const DeviceInfo &info,
-                                     Stats &stats,
-                                     Profiler &profiler,
-                                     bool headless);
-
-void device_hip_info(vector<DeviceInfo> &devices);
-
-string device_hip_capabilities();
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:43c2fef82c0428a48945bd7abdea2bcf6940c1cb2aeccc4260b8ce0be85fd0f2
+size 632

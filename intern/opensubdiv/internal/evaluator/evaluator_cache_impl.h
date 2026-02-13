@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2021 Blender Foundation
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#ifndef OPENSUBDIV_EVALUATOR_CACHE_IMPL_H_
-#define OPENSUBDIV_EVALUATOR_CACHE_IMPL_H_
-
-#include "internal/base/memory.h"
-
-#include "opensubdiv_capi_type.hh"
-
-struct OpenSubdiv_EvaluatorCacheImpl {
- public:
-  OpenSubdiv_EvaluatorCacheImpl();
-  ~OpenSubdiv_EvaluatorCacheImpl();
-
-  void *eval_cache;
-  MEM_CXX_CLASS_ALLOC_FUNCS("OpenSubdiv_EvaluatorCacheImpl");
-};
-
-OpenSubdiv_EvaluatorCacheImpl *openSubdiv_createEvaluatorCacheInternal(
-    eOpenSubdivEvaluator evaluator_type);
-
-void openSubdiv_deleteEvaluatorCacheInternal(OpenSubdiv_EvaluatorCacheImpl *evaluator_cache);
-
-#endif  // OPENSUBDIV_EVALUATOR_CACHE_IMPL_H_
+version https://git-lfs.github.com/spec/v1
+oid sha256:a62d9e9cb31c7ce80b26c8a0bdb4d15b5f9b84505893760c03a3f2bf6671c04d
+size 723

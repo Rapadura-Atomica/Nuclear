@@ -1,33 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-#pragma once
-
-/** \file
- * \ingroup balembic
- */
-
-#include "abc_writer_abstract.h"
-
-namespace blender::io::alembic {
-
-/* Writer for Alembic instances, i.e. data that references another Alembic object.
- *
- * Note that the Alembic object created by this writer cannot be used as a
- * parent, because it already instantiates the entire hierarchy of the
- * referenced object. */
-class ABCInstanceWriter : public ABCAbstractWriter {
- public:
-  explicit ABCInstanceWriter(const ABCWriterConstructorArgs &args);
-
-  void create_alembic_objects(const HierarchyContext *context) override;
-  Alembic::Abc::OObject get_alembic_object() const override;
-
- protected:
-  bool is_supported(const HierarchyContext *context) const override;
-  void do_write(HierarchyContext &context) override;
-  void ensure_custom_properties_exporter(const HierarchyContext &context) override;
-  Alembic::Abc::OCompoundProperty abc_prop_for_custom_props() override;
-};
-
-}  // namespace blender::io::alembic
+version https://git-lfs.github.com/spec/v1
+oid sha256:fee43de343d6f57f8035eef16b89e82c43c2721c2718abf2125f65b53557e338
+size 1071

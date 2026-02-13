@@ -1,27 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_ViewVertex.h"
-
-#include "../../../view_map/ViewMap.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject NonTVertex_Type;
-
-#define BPy_NonTVertex_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&NonTVertex_Type))
-
-/*---------------------------Python BPy_NonTVertex structure definition----------*/
-typedef struct {
-  BPy_ViewVertex py_vv;
-  Freestyle::NonTVertex *ntv;
-} BPy_NonTVertex;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:ee52059a70882b822b23344e59f03e864f370acdc4cc9277dbe5c27308d57be0
+size 720

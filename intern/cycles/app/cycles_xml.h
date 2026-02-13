@@ -1,17 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-CCL_NAMESPACE_BEGIN
-
-class Scene;
-
-void xml_read_file(Scene *scene, const char *filepath);
-
-/* macros for importing */
-#define RAD2DEGF(_rad) ((_rad) * (float)(180.0 / M_PI))
-#define DEG2RADF(_deg) ((_deg) * (float)(M_PI / 180.0))
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:fd25046c7c1fa33e4c7e882f3d006ea15a5d3e4ceea232f4c53eff45ab307a85
+size 366

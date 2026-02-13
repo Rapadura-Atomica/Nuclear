@@ -1,15 +1,3 @@
-/*===---- __stddef_wint.h - Definition of wint_t ---------------------------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#ifndef _WINT_T
-#define _WINT_T
-
-typedef __WINT_TYPE__ wint_t;
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:f2ededa38c5454397242aceaefa65b42b292a1b3cc258e7ca6e216f146e51f0d
+size 443

@@ -1,26 +1,3 @@
-//===-- CFGSCCPrinter.h ---------------------------------------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_ANALYSIS_CFGSCCPRINTER_H
-#define LLVM_ANALYSIS_CFGSCCPRINTER_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class CFGSCCPrinterPass : public PassInfoMixin<CFGSCCPrinterPass> {
-  raw_ostream &OS;
-
-public:
-  explicit CFGSCCPrinterPass(raw_ostream &OS) : OS(OS) {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-  static bool isRequired() { return true; }
-};
-} // namespace llvm
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:9368c49fca7a367a658e9073c3ea46fbbc9bfd5023534457529cca54d73c7287
+size 795

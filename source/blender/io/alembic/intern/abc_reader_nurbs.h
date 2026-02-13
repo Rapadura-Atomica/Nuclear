@@ -1,34 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-#pragma once
-
-/** \file
- * \ingroup balembic
- */
-
-#include "abc_reader_object.h"
-
-#include <Alembic/AbcGeom/INuPatch.h>
-
-namespace blender::io::alembic {
-
-class AbcNurbsReader final : public AbcObjectReader {
-  std::vector<std::pair<Alembic::AbcGeom::INuPatchSchema, Alembic::Abc::IObject>> m_schemas;
-
- public:
-  AbcNurbsReader(const Alembic::Abc::IObject &object, ImportSettings &settings);
-
-  bool valid() const override;
-
-  bool accepts_object_type(const Alembic::AbcCoreAbstract::ObjectHeader &alembic_header,
-                           const Object *const ob,
-                           const char **r_err_str) const override;
-
-  void readObjectData(Main *bmain, const Alembic::Abc::ISampleSelector &sample_sel) override;
-
- private:
-  void getNurbsPatches(const Alembic::Abc::IObject &obj);
-};
-
-}  // namespace blender::io::alembic
+version https://git-lfs.github.com/spec/v1
+oid sha256:c5556baf9f22af44d3f653bf83e78c6a9ed6d96ee34306b3179b63e6654ca807
+size 937

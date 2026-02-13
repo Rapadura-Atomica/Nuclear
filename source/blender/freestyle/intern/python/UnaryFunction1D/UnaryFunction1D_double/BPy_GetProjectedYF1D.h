@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction1DDouble.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject GetProjectedYF1D_Type;
-
-#define BPy_GetProjectedYF1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&GetProjectedYF1D_Type))
-
-/*---------------------------Python BPy_GetProjectedYF1D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction1DDouble py_uf1D_double;
-} BPy_GetProjectedYF1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:2fbe040c5d483fcc087a8e99e8e63f76474907667e3b1d9197a5ce37a0879528
+size 715

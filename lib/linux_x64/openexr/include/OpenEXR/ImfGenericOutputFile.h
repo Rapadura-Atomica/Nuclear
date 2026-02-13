@@ -1,34 +1,3 @@
-//
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) Contributors to the OpenEXR Project.
-//
-
-#ifndef IMFGENERICOUTPUTFILE_H_
-#define IMFGENERICOUTPUTFILE_H_
-
-#include "ImfForward.h"
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_ENTER
-
-class IMF_EXPORT_TYPE GenericOutputFile
-{
-public:
-    IMF_EXPORT
-    virtual ~GenericOutputFile ();
-
-protected:
-    IMF_EXPORT
-    GenericOutputFile ();
-    IMF_EXPORT
-    void writeMagicNumberAndVersionField (
-        OPENEXR_IMF_INTERNAL_NAMESPACE::OStream& os, const Header& header);
-    IMF_EXPORT
-    void writeMagicNumberAndVersionField (
-        OPENEXR_IMF_INTERNAL_NAMESPACE::OStream& os,
-        const Header*                            headers,
-        int                                      parts);
-};
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_EXIT
-
-#endif /* GENERICOUTPUTFILE_H_ */
+version https://git-lfs.github.com/spec/v1
+oid sha256:8a270e49332a0c6d331e3b224bd64f936909427a820506d7cb63098ec47666ec
+size 832

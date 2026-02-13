@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0DFloat.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject GetCurvilinearAbscissaF0D_Type;
-
-#define BPy_GetCurvilinearAbscissaF0D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&GetCurvilinearAbscissaF0D_Type))
-
-/*---------------------------Python BPy_GetCurvilinearAbscissaF0D structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction0DFloat py_uf0D_float;
-} BPy_GetCurvilinearAbscissaF0D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:18dd350291baf83f0fec9c1013a9385808200572ef79ab63fa4b0cd176f55a99
+size 757

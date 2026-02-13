@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Iterator.h"
-
-#include "../../view_map/ViewMapIterators.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject SVertexIterator_Type;
-
-#define BPy_SVertexIterator_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&SVertexIterator_Type))
-
-/*---------------------------Python BPy_SVertexIterator structure definition----------*/
-typedef struct {
-  BPy_Iterator py_it;
-  Freestyle::ViewEdgeInternal::SVertexIterator *sv_it;
-} BPy_SVertexIterator;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:8f9fc5f2ec892ec9c9a3f9fbaee3e0bc9a03e119842a0ae8e6a518cafd624f1b
+size 776

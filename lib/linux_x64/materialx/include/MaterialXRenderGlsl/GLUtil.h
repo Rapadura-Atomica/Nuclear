@@ -1,22 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_GLUTIL_H
-#define MATERIALX_GLUTIL_H
-
-/// @file
-/// OpenGL utilities
-
-#include <MaterialXRenderGlsl/Export.h>
-
-#include <MaterialXCore/Library.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-MX_RENDERGLSL_API void checkGlErrors(const string& context);
-
-MATERIALX_NAMESPACE_END
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:ba9b69b85e8eceb8628fc4f4ead034728835354eedab9d30c2784c336ca0ed7e
+size 382

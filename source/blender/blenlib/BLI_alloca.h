@@ -1,19 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup bli
- *
- * Defines alloca and utility macro BLI_array_alloca
- */
-
-/* BLI_array_alloca / alloca */
-
-#include <cstdlib>
-#include <type_traits> /* IWYU pragma: keep */
-
-#define BLI_array_alloca(arr, realsize) \
-  (std::remove_reference_t<decltype(arr)>)alloca(sizeof(*arr) * (realsize))
+version https://git-lfs.github.com/spec/v1
+oid sha256:4130b69a81387a5694e28fa8ff404dba333b474db2c00c3eddc484c02b1ac113
+size 419

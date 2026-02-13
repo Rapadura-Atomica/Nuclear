@@ -1,27 +1,3 @@
-//
-// Copyright 2023 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_IMAGING_USD_IMAGING_FLATTENED_DATA_SOURCE_PROVIDERS_H
-#define PXR_USD_IMAGING_USD_IMAGING_FLATTENED_DATA_SOURCE_PROVIDERS_H
-
-#include "pxr/usdImaging/usdImaging/api.h"
-
-#include "pxr/imaging/hd/dataSource.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-/// Contains all HdFlattenedDataSourceProviders needed for flattening
-/// the output of UsdImagingStageSceneIndex.
-///
-/// Can be given as inputArgs to HdFlatteningSceneIndex.
-///
-USDIMAGING_API
-HdContainerDataSourceHandle
-UsdImagingFlattenedDataSourceProviders();
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:a9e0a51a6735ac1db8b750399fc0a8f2fce1589b94718904d5ab32fdfc0b8bde
+size 691

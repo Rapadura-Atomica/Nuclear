@@ -1,20 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup freestyle
- * \brief Define the float precision used in the program
- */
-
-namespace Freestyle {
-
-typedef double real;
-
-#ifndef SWIG
-static const real M_EPSILON = 0.00000001;
-#endif  // SWIG
-
-} /* namespace Freestyle */
+version https://git-lfs.github.com/spec/v1
+oid sha256:484162178814540efcb4a054661b6561ba6992aa14cddd3b4702809eb0c6ae0b
+size 353

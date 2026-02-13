@@ -1,29 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#ifdef WITH_OPTIX
-
-#  include "device/cuda/queue.h"
-
-CCL_NAMESPACE_BEGIN
-
-class OptiXDevice;
-
-/* Base class for CUDA queues. */
-class OptiXDeviceQueue : public CUDADeviceQueue {
- public:
-  OptiXDeviceQueue(OptiXDevice *device);
-
-  void init_execution() override;
-
-  bool enqueue(DeviceKernel kernel,
-               const int work_size,
-               const DeviceKernelArguments &args) override;
-};
-
-CCL_NAMESPACE_END
-
-#endif /* WITH_OPTIX */
+version https://git-lfs.github.com/spec/v1
+oid sha256:8899459168d376b7203e16b1860e26c4eb1cdae996c01243a4bcd8acc90807c7
+size 559

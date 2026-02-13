@@ -1,26 +1,3 @@
-//
-// Copyright Contributors to the MaterialX Project
-// SPDX-License-Identifier: Apache-2.0
-//
-
-#ifndef MATERIALX_HWPOSITIONNODE_H
-#define MATERIALX_HWPOSITIONNODE_H
-
-#include <MaterialXGenShader/HwShaderGenerator.h>
-
-MATERIALX_NAMESPACE_BEGIN
-
-/// Position node implementation for hardware languages
-class MX_GENSHADER_API HwPositionNode : public HwImplementation
-{
-  public:
-    static ShaderNodeImplPtr create();
-
-    void createVariables(const ShaderNode& node, GenContext& context, Shader& shader) const override;
-
-    void emitFunctionCall(const ShaderNode& node, GenContext& context, ShaderStage& stage) const override;
-};
-
-MATERIALX_NAMESPACE_END
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:dc7e93689c2265b527f5dcb02e0192771be4bb95574c48cb34066c6442a83f98
+size 664

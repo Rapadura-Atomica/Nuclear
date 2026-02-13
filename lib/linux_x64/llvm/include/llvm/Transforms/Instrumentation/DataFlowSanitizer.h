@@ -1,32 +1,3 @@
-//===- DataFlowSanitizer.h - dynamic data flow analysis ---------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-#ifndef LLVM_TRANSFORMS_INSTRUMENTATION_DATAFLOWSANITIZER_H
-#define LLVM_TRANSFORMS_INSTRUMENTATION_DATAFLOWSANITIZER_H
-
-#include "llvm/IR/PassManager.h"
-#include <string>
-#include <vector>
-
-namespace llvm {
-class Module;
-
-class DataFlowSanitizerPass : public PassInfoMixin<DataFlowSanitizerPass> {
-private:
-  std::vector<std::string> ABIListFiles;
-
-public:
-  DataFlowSanitizerPass(
-      const std::vector<std::string> &ABIListFiles = std::vector<std::string>())
-      : ABIListFiles(ABIListFiles) {}
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
-  static bool isRequired() { return true; }
-};
-
-} // namespace llvm
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:6c5ab0727bab5aea1fc9c432187c5973c0961469307f802f022b8c57a4c54f85
+size 1010

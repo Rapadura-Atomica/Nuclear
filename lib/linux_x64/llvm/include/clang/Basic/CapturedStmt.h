@@ -1,24 +1,3 @@
-//===--- CapturedStmt.h - Types for CapturedStmts ---------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-
-#ifndef LLVM_CLANG_BASIC_CAPTUREDSTMT_H
-#define LLVM_CLANG_BASIC_CAPTUREDSTMT_H
-
-namespace clang {
-
-/// The different kinds of captured statement.
-enum CapturedRegionKind {
-  CR_Default,
-  CR_ObjCAtFinally,
-  CR_OpenMP
-};
-
-} // end namespace clang
-
-#endif // LLVM_CLANG_BASIC_CAPTUREDSTMT_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:4a311af1d6302254e7f6fb70ead2693e5681240de96dfeaa15a500d08b93ec2d
+size 662

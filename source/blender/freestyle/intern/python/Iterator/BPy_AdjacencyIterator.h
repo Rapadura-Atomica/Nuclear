@@ -1,29 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Iterator.h"
-
-#include "../../stroke/ChainingIterators.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject AdjacencyIterator_Type;
-
-#define BPy_AdjacencyIterator_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&AdjacencyIterator_Type))
-
-/*---------------------------Python BPy_AdjacencyIterator structure definition----------*/
-typedef struct {
-  BPy_Iterator py_it;
-  Freestyle::AdjacencyIterator *a_it;
-  bool at_start;
-} BPy_AdjacencyIterator;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:cb4d97f361c92b8663e1e02fa037dd9edf0502e496ceeef79c5b278c14c46834
+size 785

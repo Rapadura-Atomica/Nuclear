@@ -1,30 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_Iterator.h"
-
-#include "../../view_map/ViewMapIterators.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject orientedViewEdgeIterator_Type;
-
-#define BPy_orientedViewEdgeIterator_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&orientedViewEdgeIterator_Type))
-
-/*---------------------------Python BPy_orientedViewEdgeIterator structure definition----------*/
-typedef struct {
-  BPy_Iterator py_it;
-  Freestyle::ViewVertexInternal::orientedViewEdgeIterator *ove_it;
-  bool reversed;
-  bool at_start;
-} BPy_orientedViewEdgeIterator;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:f7d7580be402a97e32df7a9188b559bc65da18d1ec507cfaa9758aeadc36b74b
+size 867

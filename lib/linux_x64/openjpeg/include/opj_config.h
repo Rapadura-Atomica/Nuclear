@@ -1,14 +1,3 @@
-#ifndef OPJ_CONFIG_H_INCLUDED
-#define OPJ_CONFIG_H_INCLUDED
-
-/* create opj_config.h for CMake */
-
-/*--------------------------------------------------------------------------*/
-/* OpenJPEG Versioning                                                      */
-
-/* Version number. */
-#define OPJ_VERSION_MAJOR 2
-#define OPJ_VERSION_MINOR 5
-#define OPJ_VERSION_BUILD 3
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:beb036f202229d8db9b045077775b53ffa1b16b3f1942b340cc5e4e941b72dba
+size 371

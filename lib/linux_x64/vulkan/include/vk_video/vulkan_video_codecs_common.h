@@ -1,36 +1,3 @@
-#ifndef VULKAN_VIDEO_CODECS_COMMON_H_
-#define VULKAN_VIDEO_CODECS_COMMON_H_ 1
-
-/*
-** Copyright 2015-2024 The Khronos Group Inc.
-**
-** SPDX-License-Identifier: Apache-2.0
-*/
-
-/*
-** This header is generated from the Khronos Vulkan XML API Registry.
-**
-*/
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
-
-// vulkan_video_codecs_common is a preprocessor guard. Do not pass it to API calls.
-#define vulkan_video_codecs_common 1
-#if !defined(VK_NO_STDINT_H)
-    #include <stdint.h>
-#endif
-
-#define VK_MAKE_VIDEO_STD_VERSION(major, minor, patch) \
-    ((((uint32_t)(major)) << 22) | (((uint32_t)(minor)) << 12) | ((uint32_t)(patch)))
-
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:78cf3c99d3d57afa7ab1782ec6018b4bcdbe273f2843d76e3375282db875b71e
+size 660

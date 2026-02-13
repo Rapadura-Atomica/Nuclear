@@ -1,36 +1,3 @@
-//
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) Weta Digital, Ltd and Contributors to the OpenEXR Project.
-//
-
-#ifndef INCLUDED_IMF_STRINGVECTOR_ATTRIBUTE_H
-#define INCLUDED_IMF_STRINGVECTOR_ATTRIBUTE_H
-
-//-----------------------------------------------------------------------------
-//
-//	class StringVectorAttribute
-//
-//-----------------------------------------------------------------------------
-
-#include "ImfExport.h"
-#include "ImfNamespace.h"
-
-#include "ImfAttribute.h"
-
-#include <string>
-#include <vector>
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_ENTER
-
-typedef std::vector<std::string> StringVector;
-typedef TypedAttribute<OPENEXR_IMF_INTERNAL_NAMESPACE::StringVector>
-    StringVectorAttribute;
-
-#ifndef COMPILING_IMF_STRING_VECTOR_ATTRIBUTE
-extern template class IMF_EXPORT_EXTERN_TEMPLATE
-    TypedAttribute<OPENEXR_IMF_INTERNAL_NAMESPACE::StringVector>;
-#endif
-
-OPENEXR_IMF_INTERNAL_NAMESPACE_HEADER_EXIT
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:fbc76e1086949f0d2b39a67d982b4f01496d096b78c6d7bfb0378d5dd87babb3
+size 938

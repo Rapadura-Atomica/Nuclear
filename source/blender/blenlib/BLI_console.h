@@ -1,18 +1,3 @@
-/* SPDX-FileCopyrightText: 2018 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup bli
- * \brief Set of utility functions and constants to work with consoles.
- */
-
-/* Format string where one could BLI_snprintf() R, G and B values
- * and get proper marker to start colored output in the console.
- */
-#define TRUECOLOR_ANSI_COLOR_FORMAT "\x1b[38;2;%d;%d;%dm"
-
-/* Marker which indicates that colored output is finished. */
-#define TRUECOLOR_ANSI_COLOR_FINISH "\x1b[0m"
+version https://git-lfs.github.com/spec/v1
+oid sha256:c44ddbdd886d6a157a50b45934c2220a9b795454eb25ae9cbfdf5366a0aadee2
+size 519

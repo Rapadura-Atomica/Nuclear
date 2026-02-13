@@ -1,35 +1,3 @@
-/* SPDX-FileCopyrightText: 2015 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-#include "BLI_map.hh"
-#include "BLI_set.hh"
-#include "BLI_string_ref.hh"
-
-namespace blender::deg {
-
-struct RootPChanMap {
-  /** Debug contents of map. */
-  void print_debug();
-
-  /** Add a mapping. */
-  void add_bone(const char *bone, const char *root);
-
-  /** Check if there's a common root bone between two bones. */
-  bool has_common_root(const char *bone1, const char *bone2) const;
-
- protected:
-  /**
-   * The strings are only referenced by this map. Users of RootPChanMap have to make sure that the
-   * life-time of the strings is long enough.
-   */
-  Map<StringRefNull, Set<StringRefNull>> map_;
-};
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:8a9f30fd54a5c59b4b17d4a121ea646ff619e75a92dd604cce90eb7425d4f8fe
+size 788

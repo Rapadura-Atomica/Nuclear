@@ -1,31 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_FEdge.h"
-
-#include "../../../view_map/Silhouette.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject FEdgeSharp_Type;
-
-#define BPy_FEdgeSharp_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&FEdgeSharp_Type))
-
-/*---------------------------Python BPy_FEdgeSharp structure definition----------*/
-typedef struct {
-  BPy_FEdge py_fe;
-  Freestyle::FEdgeSharp *fes;
-} BPy_FEdgeSharp;
-
-/*---------------------------Python BPy_FEdgeSharp visible prototypes-----------*/
-
-void FEdgeSharp_mathutils_register_callback();
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:c605e134bbe9d0f6424b8d02fdaff6f8aeaed490cf1e686db9a9acc63c2cf4b3
+size 845

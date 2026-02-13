@@ -1,35 +1,3 @@
-//===- CodeGenPrepare.h -----------------------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-/// \file
-///
-/// Defines an IR pass for CodeGen Prepare.
-///
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_PREPARE_H
-#define LLVM_CODEGEN_PREPARE_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class Function;
-class TargetMachine;
-
-class CodeGenPreparePass : public PassInfoMixin<CodeGenPreparePass> {
-private:
-  const TargetMachine *TM;
-
-public:
-  CodeGenPreparePass(const TargetMachine *TM) : TM(TM) {}
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-
-} // end namespace llvm
-
-#endif // LLVM_CODEGEN_PREPARE_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:d72a12c1724280dc38eeeafd01f53ed70795a574e7182c0ff87bd372772871fe
+size 968

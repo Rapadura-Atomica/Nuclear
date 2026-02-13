@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0DFloat.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject ReadCompleteViewMapPixelF0D_Type;
-
-#define BPy_ReadCompleteViewMapPixelF0D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&ReadCompleteViewMapPixelF0D_Type))
-
-/*---------------------------Python BPy_ReadCompleteViewMapPixelF0D structure
- * definition----------*/
-typedef struct {
-  BPy_UnaryFunction0DFloat py_uf0D_float;
-} BPy_ReadCompleteViewMapPixelF0D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:e5c49ae332d84f10c12ced3895406cfc72e9e99f723516964db45c8d0b80eaab
+size 770

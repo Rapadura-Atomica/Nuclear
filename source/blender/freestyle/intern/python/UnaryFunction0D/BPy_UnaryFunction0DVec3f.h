@@ -1,31 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryFunction0D.h"
-
-#include "../../geometry/Geom.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject UnaryFunction0DVec3f_Type;
-
-#define BPy_UnaryFunction0DVec3f_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&UnaryFunction0DVec3f_Type))
-
-/*---------------------------Python BPy_UnaryFunction0DVec3f structure definition----------*/
-typedef struct {
-  BPy_UnaryFunction0D py_uf0D;
-  Freestyle::UnaryFunction0D<Freestyle::Geometry::Vec3f> *uf0D_vec3f;
-} BPy_UnaryFunction0DVec3f;
-
-/*---------------------------Python BPy_UnaryFunction0DVec3f visible prototypes-----------*/
-int UnaryFunction0DVec3f_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:882f1c055c33d6c1eef31fb822c4356bc6a37ad6c3431e7fcdff0a471eb803ea
+size 963

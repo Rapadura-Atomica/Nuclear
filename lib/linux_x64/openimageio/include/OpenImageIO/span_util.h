@@ -1,9 +1,3 @@
-// Copyright Contributors to the OpenImageIO project.
-// SPDX-License-Identifier: Apache-2.0
-// https://github.com/AcademySoftwareFoundation/OpenImageIO
-
-#pragma once
-
-#include <OpenImageIO/span.h>
-
-#warning "Deprecated header, you only need span.h"
+version https://git-lfs.github.com/spec/v1
+oid sha256:2aadfff97dbece7cfd95eb6dce43b7dae7c56ca871969a7e4210fbbf5195a38b
+size 250

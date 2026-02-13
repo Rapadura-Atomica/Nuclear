@@ -1,30 +1,3 @@
-/* SPDX-FileCopyrightText: 2021-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "util/string.h"
-#include "util/unique_ptr.h"
-#include "util/vector.h"
-
-CCL_NAMESPACE_BEGIN
-
-class Device;
-class DeviceInfo;
-class Profiler;
-class Stats;
-
-bool device_metal_init();
-void device_metal_exit();
-
-unique_ptr<Device> device_metal_create(const DeviceInfo &info,
-                                       Stats &stats,
-                                       Profiler &profiler,
-                                       bool headless);
-
-void device_metal_info(vector<DeviceInfo> &devices);
-
-string device_metal_capabilities();
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:07eea21ddfa6b1387c795b54d188db62ea47650b55175ea20d562e15f7e9905d
+size 672

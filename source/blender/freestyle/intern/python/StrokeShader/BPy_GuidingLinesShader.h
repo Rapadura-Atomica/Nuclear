@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_StrokeShader.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject GuidingLinesShader_Type;
-
-#define BPy_GuidingLinesShader_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&GuidingLinesShader_Type))
-
-/*---------------------------Python BPy_GuidingLinesShader structure definition----------*/
-typedef struct {
-  BPy_StrokeShader py_ss;
-} BPy_GuidingLinesShader;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:6fe9c3f7fc1a7a59c61a1a8fc026cd7d41f7d2b51ea1003103c9856cf4360c39
+size 698

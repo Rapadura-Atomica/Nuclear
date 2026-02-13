@@ -1,21 +1,3 @@
-//
-// Copyright 2016 Pixar
-//
-// Licensed under the terms set forth in the LICENSE.txt file available at
-// https://openusd.org/license.
-//
-#ifndef PXR_USD_IMAGING_USD_RI_PXR_IMAGING_VERSION_H
-#define PXR_USD_IMAGING_USD_RI_PXR_IMAGING_VERSION_H
-
-#include "pxr/pxr.h"
-
-PXR_NAMESPACE_OPEN_SCOPE
-
-// Version 1 -- clone off PXR_USD_IMAGING_USD_RI_PXR_IMAGING_VERSION_H and add light filter support
-
-#define USD_RI_PXR_IMAGING_API_VERSION 1
-
-
-PXR_NAMESPACE_CLOSE_SCOPE
-
-#endif // PXR_USD_IMAGING_USD_RI_PXR_IMAGING_VERSION_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:88d775ba2829fcbd8a707241e797bc5bbd2b1d49a9b966804b3cb321e9cd5b6b
+size 521

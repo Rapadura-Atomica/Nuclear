@@ -1,14 +1,3 @@
-//===--- DiagnosticFrontend.h - Diagnostics for frontend --------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_FRONTEND_FRONTENDDIAGNOSTIC_H
-#define LLVM_CLANG_FRONTEND_FRONTENDDIAGNOSTIC_H
-
-#include "clang/Basic/DiagnosticFrontend.h"
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:239a875417ee079793c74df8bcd11bbaf86d268e802f2f9069b19b7e6669cbc9
+size 521

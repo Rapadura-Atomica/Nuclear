@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup DNA
- */
-
-#pragma once
-
-/* clang-format off */
-
-/* -------------------------------------------------------------------- */
-/** \name Lattice Struct
- * \{ */
-
-#define _DNA_DEFAULT_Lattice \
-  { \
-    .flag = LT_GRID, \
-    .typeu = KEY_BSPLINE, \
-    .typev = KEY_BSPLINE, \
-    .typew = KEY_BSPLINE, \
-    .actbp = LT_ACTBP_NONE, \
-  }
-
-/** \} */
-
-/* clang-format on */
+version https://git-lfs.github.com/spec/v1
+oid sha256:670791ce7204daa8f16d4da9caa1fa3e7586abf60d902696450f4ee7bc7cc913
+size 491

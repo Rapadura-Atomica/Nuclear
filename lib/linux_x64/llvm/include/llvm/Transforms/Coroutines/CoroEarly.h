@@ -1,32 +1,3 @@
-//===---- CoroEarly.h - Lower early coroutine intrinsics --------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// \file
-// This file provides the interface to the early coroutine intrinsic lowering
-// pass. This pass lowers coroutine intrinsics that hide the details of the
-// exact calling convention for coroutine resume and destroy functions and
-// details of the structure of the coroutine frame.
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_COROUTINES_COROEARLY_H
-#define LLVM_TRANSFORMS_COROUTINES_COROEARLY_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class Module;
-
-struct CoroEarlyPass : PassInfoMixin<CoroEarlyPass> {
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
-  static bool isRequired() { return true; }
-};
-} // end namespace llvm
-
-#endif // LLVM_TRANSFORMS_COROUTINES_COROEARLY_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:6057fe6870304b1c2fbf5274a3c03f9da4b08a75e244c695b5c10d11e1dee15f
+size 1147

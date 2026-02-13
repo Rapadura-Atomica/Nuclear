@@ -1,24 +1,3 @@
-//===-- llvm/CodeGen/FinalizeISel.h -----------------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_FINALIZEISEL_H
-#define LLVM_CODEGEN_FINALIZEISEL_H
-
-#include "llvm/CodeGen/MachinePassManager.h"
-
-namespace llvm {
-
-class FinalizeISelPass : public PassInfoMixin<FinalizeISelPass> {
-public:
-  PreservedAnalyses run(MachineFunction &MF, MachineFunctionAnalysisManager &);
-  static bool isRequired() { return true; }
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_FINALIZEISEL_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:7b91e97fa84e8192ea5400122710492b265e12fc75a5f60cd0c7f6ec2c802b87
+size 768

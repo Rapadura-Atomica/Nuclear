@@ -1,35 +1,3 @@
-//
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) Contributors to the OpenEXR Project.
-//
-
-#ifndef INCLUDED_ILMTHREADFORWARD_H
-#define INCLUDED_ILMTHREADFORWARD_H
-
-#include "IlmThreadConfig.h"
-#include "IlmThreadNamespace.h"
-
-#if ILMTHREAD_THREADING_ENABLED
-namespace std
-{
-class mutex;
-}
-#endif
-
-ILMTHREAD_INTERNAL_NAMESPACE_HEADER_ENTER
-
-class Thread;
-#if ILMTHREAD_THREADING_ENABLED
-using Mutex = std::mutex;
-#else
-class Mutex;
-#endif
-class Lock;
-class ThreadPool;
-class Task;
-class TaskGroup;
-class Semaphore;
-
-ILMTHREAD_INTERNAL_NAMESPACE_HEADER_EXIT
-
-#endif // INCLUDED_ILMTHREADFORWARD_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:d22bd95e71560653f31dfa2cba8a1fb72338fdeb2ad7d82b34cf224f5a4a369f
+size 606

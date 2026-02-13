@@ -1,18 +1,3 @@
-/* SPDX-FileCopyrightText: 2015 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup depsgraph
- */
-
-#pragma once
-
-namespace blender::deg {
-
-struct Depsgraph;
-
-/* Detect and solve dependency cycles. */
-void deg_graph_detect_cycles(Depsgraph *graph);
-
-}  // namespace blender::deg
+version https://git-lfs.github.com/spec/v1
+oid sha256:c730330d1fb5d1efb3d7a575edce3b6969100e583b103fbc804a8cdc18a2893b
+size 316

@@ -1,15 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup bke
- */
-
-#pragma once
-
-struct Object;
-
-void BKE_editlattice_free(struct Object *ob);
-void BKE_editlattice_make(struct Object *obedit);
-void BKE_editlattice_load(struct Object *obedit);
+version https://git-lfs.github.com/spec/v1
+oid sha256:142a397df6879eaf4848ea735dd4d8b276eae770a071b98488300b1ea9cc3177
+size 307

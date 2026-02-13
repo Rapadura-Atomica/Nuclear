@@ -1,33 +1,3 @@
-/* SPDX-FileCopyrightText: 2005 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup nodes
- */
-
-#pragma once
-
-#include "BKE_node.hh"
-
-extern struct blender::bke::bNodeTreeType *ntreeType_Shader;
-
-void register_node_type_sh_custom_group(blender::bke::bNodeType *ntype);
-
-struct bNodeTreeExec *ntreeShaderBeginExecTree(struct bNodeTree *ntree);
-void ntreeShaderEndExecTree(struct bNodeTreeExec *exec);
-
-/**
- * Find an output node of the shader tree.
- *
- * \note it will only return output which is NOT in the group, which isn't how
- * render engines works but it's how the GPU shader compilation works. This we
- * can change in the future and make it a generic function, but for now it stays
- * private here.
- */
-struct bNode *ntreeShaderOutputNode(struct bNodeTree *ntree, int target);
-
-/**
- * This one needs to work on a local tree.
- */
-void ntreeGPUMaterialNodes(struct bNodeTree *localtree, struct GPUMaterial *mat);
+version https://git-lfs.github.com/spec/v1
+oid sha256:15b159e99aa1f1b333b6f6012910cec3cb5a02214440178bd74cdb89afe43c44
+size 956

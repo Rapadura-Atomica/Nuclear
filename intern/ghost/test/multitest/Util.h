@@ -1,8 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-void *memdbl(void *mem, int *size_pr, int item_size);
-
-char *string_dup(char *str);
-void fatal(char *fmt, ...);
+version https://git-lfs.github.com/spec/v1
+oid sha256:eaef20b623bad27bd3fd4a0db15b57058dd2efc787718a2752d45b4dd45e0385
+size 238

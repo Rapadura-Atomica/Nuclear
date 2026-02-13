@@ -1,33 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "scene/image.h"
-
-CCL_NAMESPACE_BEGIN
-
-class OIIOImageLoader : public ImageLoader {
- public:
-  OIIOImageLoader(const string &filepath);
-  ~OIIOImageLoader() override;
-
-  bool load_metadata(const ImageDeviceFeatures &features, ImageMetaData &metadata) override;
-
-  bool load_pixels(const ImageMetaData &metadata,
-                   void *pixels,
-                   const size_t pixels_size,
-                   const bool associate_alpha) override;
-
-  string name() const override;
-
-  ustring osl_filepath() const override;
-
-  bool equals(const ImageLoader &other) const override;
-
- protected:
-  ustring filepath;
-};
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:a9591b4d26d3767e33c9dd5a1f9a901420bdf15cd380f185d56914ff2a3be899
+size 758

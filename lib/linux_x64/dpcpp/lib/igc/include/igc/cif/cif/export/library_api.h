@@ -1,22 +1,3 @@
-/*========================== begin_copyright_notice ============================
-
-Copyright (C) 2017-2021 Intel Corporation
-
-SPDX-License-Identifier: MIT
-
-============================= end_copyright_notice ===========================*/
-
-#pragma once
-
-#pragma once
-#ifdef CIF_EXPORT
-#undef CIF_EXPORT
-#endif
-
-#ifdef CIF_IMPORT
-#undef CIF_IMPORT
-#endif
-
-#define CIF_EXPORT
-#include "cif/common/library_api.h"
-#undef CIF_EXPORT
+version https://git-lfs.github.com/spec/v1
+oid sha256:3a30596134c70eab56c881643a70e6225c32ae703dd3732c7aceaa4f634f1cea
+size 425

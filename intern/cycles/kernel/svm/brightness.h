@@ -1,32 +1,3 @@
-/* SPDX-FileCopyrightText: 2011-2022 Blender Foundation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#pragma once
-
-#include "kernel/svm/color_util.h"
-#include "kernel/svm/util.h"
-
-CCL_NAMESPACE_BEGIN
-
-ccl_device_noinline void svm_node_brightness(ccl_private float *stack,
-                                             const uint in_color,
-                                             const uint out_color,
-                                             const uint node)
-{
-  uint bright_offset;
-  uint contrast_offset;
-  float3 color = stack_load_float3(stack, in_color);
-
-  svm_unpack_node_uchar2(node, &bright_offset, &contrast_offset);
-  const float brightness = stack_load_float(stack, bright_offset);
-  const float contrast = stack_load_float(stack, contrast_offset);
-
-  color = svm_brightness_contrast(color, brightness, contrast);
-
-  if (stack_valid(out_color)) {
-    stack_store_float3(stack, out_color, color);
-  }
-}
-
-CCL_NAMESPACE_END
+version https://git-lfs.github.com/spec/v1
+oid sha256:c34408e1a8971d14df053f7af7dedffbed2b35b00574c42c778213c7b064402a
+size 942

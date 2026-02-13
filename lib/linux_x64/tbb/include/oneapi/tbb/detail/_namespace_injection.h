@@ -1,24 +1,3 @@
-/*
-    Copyright (c) 2020-2021 Intel Corporation
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-*/
-
-// All public entities of the OneAPI Spec are available under oneapi namespace
-
-// Define tbb namespace first as it might not be known yet
-namespace tbb {}
-
-namespace oneapi {
-namespace tbb = ::tbb;
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:07bf91767594417a394c28f4885c736a13b05c1379b15efe3d905b57c66a6ff1
+size 815

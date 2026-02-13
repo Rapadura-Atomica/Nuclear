@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryPredicate1D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject EqualToTimeStampUP1D_Type;
-
-#define BPy_EqualToTimeStampUP1D_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&EqualToTimeStampUP1D_Type))
-
-/*---------------------------Python BPy_EqualToTimeStampUP1D structure definition----------*/
-typedef struct {
-  BPy_UnaryPredicate1D py_up1D;
-} BPy_EqualToTimeStampUP1D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:7af3969dddab7b899a376bf6cd60f52bcfba00a7ee31a94a2c739df46f64c5bc
+size 718

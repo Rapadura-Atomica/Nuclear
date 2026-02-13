@@ -1,28 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../view_map/Interface1D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject IntegrationType_Type;
-
-#define BPy_IntegrationType_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&IntegrationType_Type))
-
-/*---------------------------Python BPy_IntegrationType visible prototypes-----------*/
-
-int IntegrationType_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:efb51c25de50757a78fe2fb449e2a81001aca4c15ca5255d77926b8faaf48d9c
+size 701

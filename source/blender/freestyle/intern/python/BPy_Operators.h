@@ -1,32 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-extern "C" {
-#include <Python.h>
-}
-
-#include "../stroke/Operators.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject Operators_Type;
-
-#define BPy_Operators_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&Operators_Type))
-
-/*---------------------------Python BPy_Operators structure definition----------*/
-typedef struct {
-  PyObject_HEAD
-} BPy_Operators;
-
-/*---------------------------Python BPy_Operators visible prototypes-----------*/
-
-int Operators_Init(PyObject *module);
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:1c79ac58418edacf1fc04e8770534a471214786c342d0f8e521ae93e5b852c32
+size 797

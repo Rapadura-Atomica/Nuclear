@@ -1,35 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup DNA
- */
-
-#pragma once
-
-/* clang-format off */
-
-/* -------------------------------------------------------------------- */
-/** \name Speaker Struct
- * \{ */
-
-#define _DNA_DEFAULT_Speaker \
-  { \
-    .attenuation = 1.0f, \
-    .cone_angle_inner = 360.0f, \
-    .cone_angle_outer = 360.0f, \
-    .cone_volume_outer = 1.0f, \
-    .distance_max = FLT_MAX, \
-    .distance_reference = 1.0f, \
-    .flag = 0, \
-    .pitch = 1.0f, \
-    .sound = NULL, \
-    .volume = 1.0f, \
-    .volume_max = 1.0f, \
-    .volume_min = 0.0f, \
-  }
-
-/** \} */
-
-/* clang-format on */
+version https://git-lfs.github.com/spec/v1
+oid sha256:d40bdc8beeb2beb738ab86b798fd9004668bdfb0d4b6ba80352edd7b2f53afad
+size 680

@@ -1,15 +1,3 @@
-#ifndef LLVM_TRANSFORMS_UTILS_IRNORMALIZER_H
-#define LLVM_TRANSFORMS_UTILS_IRNORMALIZER_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-/// IRNormalizer aims to transform LLVM IR into normal form.
-struct IRNormalizerPass : public PassInfoMixin<IRNormalizerPass> {
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM) const;
-};
-
-} // namespace llvm
-
-#endif // LLVM_TRANSFORMS_UTILS_IRNORMALIZER_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:b4e0cc6d973b056f6153c59b016efb73e8ff457fcfd5894a262d9bceaefdaba0
+size 416

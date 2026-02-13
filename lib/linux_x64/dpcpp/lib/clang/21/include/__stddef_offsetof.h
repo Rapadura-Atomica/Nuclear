@@ -1,17 +1,3 @@
-/*===---- __stddef_offsetof.h - Definition of offsetof ---------------------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-/*
- * When -fbuiltin-headers-in-system-modules is set this is a non-modular header
- * and needs to behave as if it was textual.
- */
-#if !defined(offsetof) ||                                                      \
-    (__has_feature(modules) && !__building_module(_Builtin_stddef))
-#define offsetof(t, d) __builtin_offsetof(t, d)
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:e5f0f4ff8ff5fc6a1cc8b535f5065f1728eadd2bf1e1401f021f803ec7b4222f
+size 708

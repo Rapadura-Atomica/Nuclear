@@ -1,24 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-#pragma once
-
-/** \file
- * \ingroup bli
- *
- * This file only exists to forward declare `blender::ImplicitSharingInfo` in C code.
- */
-
-#ifdef __cplusplus
-
-namespace blender {
-class ImplicitSharingInfo;
-}
-using ImplicitSharingInfoHandle = blender::ImplicitSharingInfo;
-
-#else
-
-typedef struct ImplicitSharingInfoHandle ImplicitSharingInfoHandle;
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:c3e6d2b0c6b23f5ac76651538fc8ca23fc14005cff84c4be3aedbb9dbec951a1
+size 451

@@ -1,23 +1,3 @@
-//===-- llvm/CodeGen/JMCInstrumenter------------------------ ----*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_JMCINSTRUMENTER_H
-#define LLVM_CODEGEN_JMCINSTRUMENTER_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class JMCInstrumenterPass : public PassInfoMixin<JMCInstrumenterPass> {
-public:
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM);
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_JMCINSTRUMENTER_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:1e27f109822a6396caa675e1a8cfcf077edadc49042f1d1f1d45e7f8c7fd273e
+size 711

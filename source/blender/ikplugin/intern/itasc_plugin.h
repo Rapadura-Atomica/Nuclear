@@ -1,26 +1,3 @@
-/* SPDX-FileCopyrightText: 2001-2002 NaN Holding BV. All rights reserved.
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup ikplugin
- */
-
-#pragma once
-
-#include "ikplugin_api.h"
-
-void itasc_initialize_tree(struct Depsgraph *depsgraph,
-                           struct Scene *scene,
-                           struct Object *ob,
-                           float ctime);
-void itasc_execute_tree(struct Depsgraph *depsgraph,
-                        struct Scene *scene,
-                        struct Object *ob,
-                        struct bPoseChannel *pchan_root,
-                        float ctime);
-void itasc_release_tree(struct Scene *scene, struct Object *ob, float ctime);
-void itasc_clear_data(struct bPose *pose);
-void itasc_clear_cache(struct bPose *pose);
-void itasc_update_param(struct bPose *pose);
-void itasc_test_constraint(struct Object *ob, struct bConstraint *cons);
+version https://git-lfs.github.com/spec/v1
+oid sha256:2d5e95e2b18bd940c36c71096b09987eac2c821293543eb6883579af5f59deb8
+size 913

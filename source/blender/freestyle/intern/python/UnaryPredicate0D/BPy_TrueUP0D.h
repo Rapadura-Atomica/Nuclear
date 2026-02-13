@@ -1,24 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_UnaryPredicate0D.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject TrueUP0D_Type;
-
-#define BPy_TrueUP0D_Check(v) (PyObject_IsInstance((PyObject *)v, (PyObject *)&TrueUP0D_Type))
-
-/*---------------------------Python BPy_TrueUP0D structure definition----------*/
-typedef struct {
-  BPy_UnaryPredicate0D py_up0D;
-} BPy_TrueUP0D;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:61d1f2ce5909690946625bfc0901beb8a6333b283f4d1e117dc143a18dfaf9e5
+size 654

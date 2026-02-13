@@ -1,22 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup intern_slim
- */
-
-#pragma once
-
-#include "slim.h"
-
-#include <Eigen/Dense>
-
-using namespace Eigen;
-
-namespace slim {
-
-void correct_map_surface_area_if_necessary(SLIMData &slim_data);
-void correct_mesh_surface_area_if_necessary(SLIMData &slim_data);
-
-}  // namespace slim
+version https://git-lfs.github.com/spec/v1
+oid sha256:c90e4e39c1dc53617aa58a4186ba6d330f139f1f281459779857e0011c0ae707
+size 391

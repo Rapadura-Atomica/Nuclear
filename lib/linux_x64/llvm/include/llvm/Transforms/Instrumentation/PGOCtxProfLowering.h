@@ -1,28 +1,3 @@
-//===-- PGOCtxProfLowering.h - Contextual PGO Instr. Lowering ---*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// This file declares the PGOCtxProfLoweringPass class.
-//
-//===----------------------------------------------------------------------===//
-#ifndef LLVM_TRANSFORMS_INSTRUMENTATION_PGOCTXPROFLOWERING_H
-#define LLVM_TRANSFORMS_INSTRUMENTATION_PGOCTXPROFLOWERING_H
-
-#include "llvm/IR/PassManager.h"
-namespace llvm {
-class Type;
-
-class PGOCtxProfLoweringPass : public PassInfoMixin<PGOCtxProfLoweringPass> {
-public:
-  explicit PGOCtxProfLoweringPass() = default;
-  // True if contextual instrumentation is enabled.
-  static bool isCtxIRPGOInstrEnabled();
-
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM);
-};
-} // namespace llvm
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:8b1c029d94142fcfa61c22f3e1bc4bcbae42d4d47f0415228b77912061b8a9d4
+size 1018

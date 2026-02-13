@@ -1,35 +1,3 @@
-//===-- JITLinkDylib.h - JITLink Dylib type ---------------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// Defines the JITLinkDylib API.
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_EXECUTIONENGINE_JITLINK_JITLINKDYLIB_H
-#define LLVM_EXECUTIONENGINE_JITLINK_JITLINKDYLIB_H
-
-#include <string>
-
-namespace llvm {
-namespace jitlink {
-
-class JITLinkDylib {
-public:
-  JITLinkDylib(std::string Name) : Name(std::move(Name)) {}
-
-  /// Get the name for this JITLinkDylib.
-  const std::string &getName() const { return Name; }
-
-private:
-  std::string Name;
-};
-
-} // end namespace jitlink
-} // end namespace llvm
-
-#endif // LLVM_EXECUTIONENGINE_JITLINK_JITLINKDYLIB_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:d90bbb5e83ba5f513944d2930a6d4f85a6a4d4f5c93423a4ecbb9f1affa35645
+size 978

@@ -1,14 +1,3 @@
-/*========================== begin_copyright_notice ============================
-
-Copyright (C) 2023 Intel Corporation
-
-SPDX-License-Identifier: MIT
-
-============================= end_copyright_notice ===========================*/
-
-// This file stores constants that we use in OpenCL-C builtins for Raytracing and share with Neo.
-
-#pragma once
-
-// Dispatch globals passed as an array will be aligned up to page size = 64 kilobytes.
-const int DISPATCH_GLOBALS_STRIDE = 65536;
+version https://git-lfs.github.com/spec/v1
+oid sha256:0e0a3719f2875c07f74fadcd25ea3f9c624a835533c264ebafbc6daceadea53f
+size 475

@@ -1,29 +1,3 @@
-//===--- ExpandMemCmp.h - Expand memcmp() to load/stores --------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CODEGEN_EXPANDMEMCMP_H
-#define LLVM_CODEGEN_EXPANDMEMCMP_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-
-class TargetMachine;
-
-class ExpandMemCmpPass : public PassInfoMixin<ExpandMemCmpPass> {
-  const TargetMachine *TM;
-
-public:
-  explicit ExpandMemCmpPass(const TargetMachine *TM_) : TM(TM_) {}
-
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM);
-};
-
-} // namespace llvm
-
-#endif // LLVM_CODEGEN_EXPANDMEMCMP_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:ae33054ff1f7fccf177d6e813f44c40cff9415611ba8e5a4f795297653e7e658
+size 818

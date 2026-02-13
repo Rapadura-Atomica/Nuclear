@@ -1,14 +1,3 @@
-//===--- SerializationDiagnostic.h - Serialization Diagnostics -*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_CLANG_SERIALIZATION_SERIALIZATIONDIAGNOSTIC_H
-#define LLVM_CLANG_SERIALIZATION_SERIALIZATIONDIAGNOSTIC_H
-
-#include "clang/Basic/DiagnosticSerialization.h"
-
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:768d17792ec8a1beef07718053a0fbe1446addfd9500afea815a92dc5735068d
+size 545

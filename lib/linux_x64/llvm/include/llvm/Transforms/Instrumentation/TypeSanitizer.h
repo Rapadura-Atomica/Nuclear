@@ -1,30 +1,3 @@
-//===- Transforms/Instrumentation/TypeSanitizer.h - TySan Pass -----------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-//
-// This file defines the type sanitizer pass.
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_INSTRUMENTATION_TYPESANITIZER_H
-#define LLVM_TRANSFORMS_INSTRUMENTATION_TYPESANITIZER_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-class Function;
-class FunctionPass;
-class Module;
-
-struct TypeSanitizerPass : public PassInfoMixin<TypeSanitizerPass> {
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
-  static bool isRequired() { return true; }
-};
-
-} // namespace llvm
-
-#endif /* LLVM_TRANSFORMS_INSTRUMENTATION_TYPESANITIZER_H */
+version https://git-lfs.github.com/spec/v1
+oid sha256:46fd60c9b02371b1054dd107aac8d015958fcc815407329c3ce86c9bc49d8777
+size 979

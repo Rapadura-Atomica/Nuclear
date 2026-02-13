@@ -1,25 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup freestyle
- */
-
-#pragma once
-
-#include "../BPy_StrokeShader.h"
-
-///////////////////////////////////////////////////////////////////////////////////////////
-
-extern PyTypeObject BackboneStretcherShader_Type;
-
-#define BPy_BackboneStretcherShader_Check(v) \
-  (PyObject_IsInstance((PyObject *)v, (PyObject *)&BackboneStretcherShader_Type))
-
-/*---------------------------Python BPy_BackboneStretcherShader structure definition----------*/
-typedef struct {
-  BPy_StrokeShader py_ss;
-} BPy_BackboneStretcherShader;
-
-///////////////////////////////////////////////////////////////////////////////////////////
+version https://git-lfs.github.com/spec/v1
+oid sha256:488a3f4c4135949a02a8a8c41250d920780b7606639ed1301ba99baa81ab8b2e
+size 723

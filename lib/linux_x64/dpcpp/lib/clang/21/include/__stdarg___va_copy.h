@@ -1,12 +1,3 @@
-/*===---- __stdarg___va_copy.h - Definition of __va_copy -------------------===
- *
- * Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
- * See https://llvm.org/LICENSE.txt for license information.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- *
- *===-----------------------------------------------------------------------===
- */
-
-#ifndef __va_copy
-#define __va_copy(d, s) __builtin_va_copy(d, s)
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:f0a8d3c963338173f2d57b2cbc209dde38c90536107b15eb0cf78166d4caee1f
+size 445

@@ -1,23 +1,3 @@
-/* SPDX-FileCopyrightText: 2015 Blender Authors
- *
- * SPDX-License-Identifier: GPL-2.0-or-later */
-
-/** \file
- * \ingroup intern_eigen
- */
-
-#ifndef __EIGEN3_SVD_C_API_H__
-#define __EIGEN3_SVD_C_API_H__
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void EIG_svd_square_matrix(
-    const int size, const float *matrix, float *r_U, float *r_S, float *r_V);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* __EIGEN3_SVD_C_API_H__ */
+version https://git-lfs.github.com/spec/v1
+oid sha256:e92b4a7bb63269710191ecc4a74802d9b152d6006a693ed155da8de41818f7e5
+size 415

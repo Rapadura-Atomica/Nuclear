@@ -1,8 +1,3 @@
-/* SPDX-FileCopyrightText: 2023 Intel Corporation
- *
- * SPDX-License-Identifier: Apache-2.0 */
-
-#if !defined(WITH_ONEAPI_SYCL_HOST_TASK) && defined(WITH_EMBREE_GPU)
-#  undef ccl_gpu_kernel_signature
-#  define ccl_gpu_kernel_signature __ccl_gpu_kernel_signature
-#endif
+version https://git-lfs.github.com/spec/v1
+oid sha256:424eb7e18b0d206c81de73ea9d5fdfe5b33e2baa55b5d0b82944ff99b903134b
+size 268

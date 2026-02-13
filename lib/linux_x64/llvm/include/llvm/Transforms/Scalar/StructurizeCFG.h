@@ -1,29 +1,3 @@
-//===- StructurizeCFG.h ---------------------------------------------------===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_TRANSFORMS_SCALAR_STRUCTURIZECFG_H
-#define LLVM_TRANSFORMS_SCALAR_STRUCTURIZECFG_H
-
-#include "llvm/IR/PassManager.h"
-
-namespace llvm {
-struct StructurizeCFGPass : PassInfoMixin<StructurizeCFGPass> {
-private:
-  bool SkipUniformRegions;
-
-public:
-  StructurizeCFGPass(bool SkipUniformRegions = false);
-
-  void printPipeline(raw_ostream &OS,
-                     function_ref<StringRef(StringRef)> MapClassName2PassName);
-
-  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
-};
-} // namespace llvm
-
-#endif // LLVM_TRANSFORMS_SCALAR_STRUCTURIZECFG_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:679a39b5b44c753b16569c78af0d603f23e23698a17d13ca6c5d168aafee567b
+size 943

@@ -1,32 +1,3 @@
-//===- PDBSymbolTypeFriend.h - friend type info -----------------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
-
-#ifndef LLVM_DEBUGINFO_PDB_PDBSYMBOLTYPEFRIEND_H
-#define LLVM_DEBUGINFO_PDB_PDBSYMBOLTYPEFRIEND_H
-
-#include "PDBSymbol.h"
-#include "PDBTypes.h"
-
-namespace llvm {
-
-namespace pdb {
-
-class PDBSymbolTypeFriend : public PDBSymbol {
-  DECLARE_PDB_SYMBOL_CONCRETE_TYPE(PDB_SymType::Friend)
-public:
-  void dump(PDBSymDumper &Dumper) const override;
-
-  FORWARD_SYMBOL_ID_METHOD(getClassParent)
-  FORWARD_SYMBOL_METHOD(getName)
-  FORWARD_SYMBOL_ID_METHOD(getType)
-};
-
-} // namespace pdb
-} // namespace llvm
-
-#endif // LLVM_DEBUGINFO_PDB_PDBSYMBOLTYPEFRIEND_H
+version https://git-lfs.github.com/spec/v1
+oid sha256:5c21f1204d2f7174a87f30efc19d3421b6dc86206c34c607dfaf86e0c4abe0d4
+size 919
