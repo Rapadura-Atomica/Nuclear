@@ -130,6 +130,7 @@ typedef enum ModifierType {
   eModifierType_GreasePencilBuild = 84,
   eModifierType_GreasePencilSimplify = 85,
   eModifierType_GreasePencilTexture = 86,
+  eModifierType_GreasePencilCurve = 87,
   NUM_MODIFIER_TYPES,
 } ModifierType;
 
@@ -2905,6 +2906,16 @@ typedef struct GreasePencilLatticeModifierData {
   float strength;
   char _pad[4];
 } GreasePencilLatticeModifierData;
+
+typedef struct GreasePencilCurveModifierData {
+  ModifierData modifier;
+  GreasePencilModifierInfluenceData influence;
+  struct Object *object;
+  float strength;
+  /** #CurveModifierDefaultAxis (MOD_CURVE_POSX..). Axis along which the curve deforms. */
+  short deform_axis;
+  char _pad[2];
+} GreasePencilCurveModifierData;
 
 typedef struct GreasePencilDashModifierSegment {
   char name[64];

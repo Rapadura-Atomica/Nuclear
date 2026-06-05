@@ -4062,6 +4062,10 @@ static GreasePencilModifierInfluenceData *influence_data_from_modifier(ModifierD
       auto *lmd = reinterpret_cast<GreasePencilLatticeModifierData *>(md);
       return &lmd->influence;
     }
+    case eModifierType_GreasePencilCurve: {
+      auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(md);
+      return &cmd->influence;
+    }
     case eModifierType_GreasePencilLength: {
       auto *lmd = reinterpret_cast<GreasePencilLengthModifierData *>(md);
       return &lmd->influence;
