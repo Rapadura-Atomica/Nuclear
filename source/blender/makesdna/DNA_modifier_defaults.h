@@ -882,6 +882,13 @@
     .strength = 1.0f, \
   }
 
+#define _DNA_DEFAULT_GreasePencilCurveModifierData \
+  { \
+    .object = NULL, \
+    .strength = 1.0f, \
+    .deform_axis = MOD_CURVE_POSX, \
+  }
+
 #define _DNA_DEFAULT_GreasePencilDashModifierData \
   { \
     .dash_offset = 0, \

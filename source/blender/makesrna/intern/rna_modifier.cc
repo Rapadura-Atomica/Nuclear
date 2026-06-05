@@ -381,6 +381,11 @@ const EnumPropertyItem rna_enum_object_modifier_type_items[] = {
      ICON_MOD_LATTICE,
      "Lattice",
      "Deform strokes using a lattice object"},
+    {eModifierType_GreasePencilCurve,
+     "GREASE_PENCIL_CURVE",
+     ICON_MOD_CURVE,
+     "Curve",
+     "Deform strokes using a curve object"},
     {eModifierType_GreasePencilDash,
      "GREASE_PENCIL_DASH",
      ICON_MOD_DASH,
@@ -1111,6 +1116,7 @@ RNA_MOD_OBJECT_SET(SurfaceDeform, target, OB_MESH);
 RNA_MOD_OBJECT_SET(GreasePencilMirror, object, OB_EMPTY);
 RNA_MOD_OBJECT_SET(GreasePencilTint, object, OB_EMPTY);
 RNA_MOD_OBJECT_SET(GreasePencilLattice, object, OB_LATTICE);
+RNA_MOD_OBJECT_SET(GreasePencilCurve, object, OB_CURVES_LEGACY);
 RNA_MOD_OBJECT_SET(GreasePencilWeightProximity, object, OB_EMPTY);
 RNA_MOD_OBJECT_SET(GreasePencilHook, object, OB_EMPTY);
 RNA_MOD_OBJECT_SET(GreasePencilArmature, object, OB_ARMATURE);
@@ -2113,6 +2119,7 @@ RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilSmooth);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilNoise);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilThick);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilLattice);
+RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilCurve);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilDash);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilMulti);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilLength);
@@ -2134,6 +2141,7 @@ RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilSmooth);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilNoise);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilThick);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilLattice);
+RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilCurve);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilWeightAngle);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilWeightProximity);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilHook);
@@ -9862,6 +9870,62 @@ static void rna_def_modifier_grease_pencil_lattice(BlenderRNA *brna)
   RNA_define_lib_overridable(false);
 }
 
+static void rna_def_modifier_grease_pencil_curve(BlenderRNA *brna)
+{
+  StructRNA *srna;
+  PropertyRNA *prop;
+
+  static const EnumPropertyItem prop_deform_axis_items[] = {
+      {MOD_CURVE_POSX, "POS_X", 0, "X", ""},
+      {MOD_CURVE_POSY, "POS_Y", 0, "Y", ""},
+      {MOD_CURVE_POSZ, "POS_Z", 0, "Z", ""},
+      {MOD_CURVE_NEGX, "NEG_X", 0, "-X", ""},
+      {MOD_CURVE_NEGY, "NEG_Y", 0, "-Y", ""},
+      {MOD_CURVE_NEGZ, "NEG_Z", 0, "-Z", ""},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+
+  srna = RNA_def_struct(brna, "GreasePencilCurveModifier", "Modifier");
+  RNA_def_struct_ui_text(
+      srna, "Grease Pencil Curve Modifier", "Deform strokes using a curve object");
+  RNA_def_struct_sdna(srna, "GreasePencilCurveModifierData");
+  RNA_def_struct_ui_icon(srna, ICON_MOD_CURVE);
+
+  rna_def_modifier_grease_pencil_layer_filter(srna);
+  rna_def_modifier_grease_pencil_material_filter(
+      srna, "rna_GreasePencilCurveModifier_material_filter_set");
+  rna_def_modifier_grease_pencil_vertex_group(
+      srna, "rna_GreasePencilCurveModifier_vertex_group_name_set");
+
+  rna_def_modifier_panel_open_prop(srna, "open_influence_panel", 0);
+
+  RNA_define_lib_overridable(true);
+
+  prop = RNA_def_property(srna, "object", PROP_POINTER, PROP_NONE);
+  RNA_def_property_ui_text(prop, "Object", "Curve object to deform with");
+  RNA_def_property_pointer_funcs(prop,
+                                 nullptr,
+                                 "rna_GreasePencilCurveModifier_object_set",
+                                 nullptr,
+                                 "rna_Curve_object_poll");
+  RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
+  RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
+
+  prop = RNA_def_property(srna, "deform_axis", PROP_ENUM, PROP_NONE);
+  RNA_def_property_enum_sdna(prop, nullptr, "deform_axis");
+  RNA_def_property_enum_items(prop, prop_deform_axis_items);
+  RNA_def_property_ui_text(prop, "Deform Axis", "The axis that the curve deforms along");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  prop = RNA_def_property(srna, "strength", PROP_FLOAT, PROP_NONE);
+  RNA_def_property_range(prop, -FLT_MAX, FLT_MAX);
+  RNA_def_property_ui_range(prop, 0, 1, 10, 2);
+  RNA_def_property_ui_text(prop, "Strength", "Strength of modifier effect");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  RNA_define_lib_overridable(false);
+}
+
 static void rna_def_modifier_grease_pencil_dash_segment(BlenderRNA *brna)
 {
   StructRNA *srna;
@@ -11375,6 +11439,7 @@ void RNA_def_modifier(BlenderRNA *brna)
   rna_def_modifier_grease_pencil_mirror(brna);
   rna_def_modifier_grease_pencil_thickness(brna);
   rna_def_modifier_grease_pencil_lattice(brna);
+  rna_def_modifier_grease_pencil_curve(brna);
   rna_def_modifier_grease_pencil_dash_segment(brna);
   rna_def_modifier_grease_pencil_dash(brna);
   rna_def_modifier_grease_pencil_multiply(brna);

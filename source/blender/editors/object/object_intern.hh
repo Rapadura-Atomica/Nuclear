@@ -232,6 +232,7 @@ void OBJECT_OT_skin_radii_equalize(wmOperatorType *ot);
 void OBJECT_OT_skin_armature_create(wmOperatorType *ot);
 void OBJECT_OT_laplaciandeform_bind(wmOperatorType *ot);
 void OBJECT_OT_surfacedeform_bind(wmOperatorType *ot);
+void OBJECT_OT_greasepencil_curve_bind(wmOperatorType *ot);
 void OBJECT_OT_geometry_nodes_input_attribute_toggle(wmOperatorType *ot);
 void OBJECT_OT_geometry_node_tree_copy_assign(wmOperatorType *ot);
 void OBJECT_OT_grease_pencil_dash_modifier_segment_add(wmOperatorType *ot);

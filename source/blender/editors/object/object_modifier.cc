@@ -13,9 +13,12 @@
 
 #include "MEM_guardedalloc.h"
 
+#include <algorithm>
+
 #include "DNA_armature_types.h"
 #include "DNA_array_utils.hh"
 #include "DNA_curve_types.h"
+#include "DNA_grease_pencil_types.h"
 #include "DNA_defaults.h"
 #include "DNA_key_types.h"
 #include "DNA_lattice_types.h"
@@ -39,7 +42,14 @@
 #include "BKE_anonymous_attribute_id.hh"
 #include "BKE_armature.hh"
 #include "BKE_context.hh"
+#include "BLI_array.hh"
+#include "BLI_math_matrix.hh"
+#include "BLI_math_vector.hh"
+
+#include "BKE_attribute.hh"
 #include "BKE_curve.hh"
+
+#include "MOD_grease_pencil_curve.hh"
 #include "BKE_curves.h"
 #include "BKE_curves.hh"
 #include "BKE_displist.h"
@@ -3477,6 +3487,149 @@ void OBJECT_OT_surfacedeform_bind(wmOperatorType *ot)
   /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
   edit_modifier_properties(ot);
+}
+
+/** \} */
+
+/* ------------------------------------------------------------------- */
+/** \name Grease Pencil Curve Deform Bind Operator
+ * \{ */
+
+static bool greasepencil_curve_bind_poll(bContext *C)
+{
+  return edit_modifier_poll_generic(C, &RNA_GreasePencilCurveModifier, 0, true, false);
+}
+
+static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op)
+{
+  Object *ob = context_active_object(C);
+  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+  GreasePencilCurveModifierData *cmd = (GreasePencilCurveModifierData *)edit_modifier_property_get(
+      op, ob, eModifierType_GreasePencilCurve);
+
+  if (cmd == nullptr || ob->type != OB_GREASE_PENCIL) {
+    return OPERATOR_CANCELLED;
+  }
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(ob->data);
+  const bool unbind = RNA_boolean_get(op->ptr, "unbind");
+
+  if (unbind) {
+    for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
+      if (base->type != GP_DRAWING) {
+        continue;
+      }
+      bke::greasepencil::Drawing &drawing = reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
+      bke::MutableAttributeAccessor attributes = drawing.strokes_for_write().attributes_for_write();
+      attributes.remove(greasepencil_curve::ATTR_U);
+      attributes.remove(greasepencil_curve::ATTR_OFFSET);
+    }
+  }
+  else {
+    if (cmd->object == nullptr || cmd->object->type != OB_CURVES_LEGACY) {
+      BKE_report(op->reports, RPT_ERROR, "Assign a curve object before binding");
+      return OPERATOR_CANCELLED;
+    }
+    const Object *curve_eval = DEG_get_evaluated(depsgraph, cmd->object);
+
+    /* Drawing-plane normal expressed in the curve's local space (the GP local Y axis is the flat
+     * drawing's normal). Used to build a planar, twist-free frame along the curve. */
+    const float4x4 gp_to_curve = curve_eval->world_to_object() * ob->object_to_world();
+    const float3 plane_normal = math::normalize(float3x3(gp_to_curve) * float3(0.0f, 1.0f, 0.0f));
+
+    /* Sample the rest curve evenly by arc length once, in curve-local space. */
+    const int sample_count = 256;
+    Array<float3> sample_pos(sample_count);
+    Array<float3x3> sample_frame(sample_count);
+    Array<float> sample_u(sample_count);
+    int valid = 0;
+    for (int k = 0; k < sample_count; k++) {
+      const float u = float(k) / float(sample_count - 1);
+      float3 pos;
+      float3x3 frame;
+      if (greasepencil_curve::sample_curve(*curve_eval, u, plane_normal, pos, frame)) {
+        sample_u[valid] = u;
+        sample_pos[valid] = pos;
+        sample_frame[valid] = frame;
+        valid++;
+      }
+    }
+    if (valid == 0) {
+      BKE_report(op->reports, RPT_ERROR, "Curve has no evaluated path to bind to");
+      return OPERATOR_CANCELLED;
+    }
+    for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
+      if (base->type != GP_DRAWING) {
+        continue;
+      }
+      bke::greasepencil::Drawing &drawing = reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
+      bke::CurvesGeometry &curves = drawing.strokes_for_write();
+      if (curves.points_num() == 0) {
+        continue;
+      }
+      const Span<float3> positions = curves.positions();
+      bke::MutableAttributeAccessor attributes = curves.attributes_for_write();
+      attributes.remove(greasepencil_curve::ATTR_U);
+      attributes.remove(greasepencil_curve::ATTR_OFFSET);
+      bke::SpanAttributeWriter<float> w_u =
+          attributes.lookup_or_add_for_write_only_span<float>(greasepencil_curve::ATTR_U,
+                                                              bke::AttrDomain::Point);
+      bke::SpanAttributeWriter<float3> w_off =
+          attributes.lookup_or_add_for_write_only_span<float3>(greasepencil_curve::ATTR_OFFSET,
+                                                               bke::AttrDomain::Point);
+      for (const int64_t i : positions.index_range()) {
+        const float3 q = math::transform_point(gp_to_curve, positions[i]);
+        int best = 0;
+        float best_dist = math::distance_squared(q, sample_pos[0]);
+        for (int k = 1; k < valid; k++) {
+          const float d = math::distance_squared(q, sample_pos[k]);
+          if (d < best_dist) {
+            best_dist = d;
+            best = k;
+          }
+        }
+        /* Store the point's offset in the curve frame at its nearest arc-length param, so the
+         * deformer can rebuild it on the posed curve (rest pose stays identical). */
+        w_u.span[i] = sample_u[best];
+        w_off.span[i] = math::transpose(sample_frame[best]) * (q - sample_pos[best]);
+      }
+      w_u.finish();
+      w_off.finish();
+    }
+  }
+
+  DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_curve_bind_invoke(bContext *C,
+                                                       wmOperator *op,
+                                                       const wmEvent * /*event*/)
+{
+  if (edit_modifier_invoke_properties(C, op)) {
+    return greasepencil_curve_bind_exec(C, op);
+  }
+  return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_greasepencil_curve_bind(wmOperatorType *ot)
+{
+  /* identifiers */
+  ot->name = "Curve Deform Bind";
+  ot->description =
+      "Bind the Grease Pencil drawing to the deform curve in its current (rest) pose, so the "
+      "curve can sit on the drawing and deform from there";
+  ot->idname = "OBJECT_OT_greasepencil_curve_bind";
+
+  /* API callbacks. */
+  ot->poll = greasepencil_curve_bind_poll;
+  ot->invoke = greasepencil_curve_bind_invoke;
+  ot->exec = greasepencil_curve_bind_exec;
+
+  /* flags */
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
+  RNA_def_boolean(ot->srna, "unbind", false, "Unbind", "Remove the rest-pose binding instead");
 }
 
 /** \} */
