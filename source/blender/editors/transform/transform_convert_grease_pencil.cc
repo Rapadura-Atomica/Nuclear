@@ -10,13 +10,19 @@
 
 #include "BKE_context.hh"
 #include "BKE_curves_utils.hh"
+#include "BKE_layer.hh"
+#include "BKE_scene.hh"
 
 #include "BLI_index_mask_expression.hh"
+#include "BLI_math_matrix.h"
 
 #include "DEG_depsgraph_query.hh"
 
 #include "ED_curves.hh"
 #include "ED_grease_pencil.hh"
+
+#include "RNA_access.hh"
+#include "RNA_prototypes.hh"
 
 #include "transform.hh"
 #include "transform_convert.hh"
@@ -287,6 +293,132 @@ TransConvertTypeInfo TransConvertType_GreasePencil = {
     /*create_trans_data*/ createTransGreasePencilVerts,
     /*recalc_data*/ recalcData_grease_pencil,
     /*special_aftertrans_update*/ nullptr,
+};
+
+/* -------------------------------------------------------------------- */
+/** \name Grease Pencil Peg (object-mode transform of the active peg layer-group)
+ * \{ */
+
+static void createTransGreasePencilPeg(bContext * /*C*/, TransInfo *t)
+{
+  using namespace blender::bke::greasepencil;
+
+  BKE_view_layer_synced_ensure(t->scene, t->view_layer);
+  Object *object = BKE_view_layer_active_object_get(t->view_layer);
+  if (object == nullptr || object->type != OB_GREASE_PENCIL) {
+    return;
+  }
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(object->data);
+  TreeNode *active = grease_pencil.get_active_node();
+  if (active == nullptr || !active->is_group()) {
+    return;
+  }
+  LayerGroup &group = active->as_group();
+
+  BLI_assert(t->data_container_len == 1);
+  TransDataContainer *tc = t->data_container;
+  tc->data_len = 1;
+  TransData *td = tc->data = MEM_callocN<TransData>(__func__);
+  TransDataExtension *td_ext = tc->data_ext = MEM_callocN<TransDataExtension>(__func__);
+
+  /* The peg's local transform lives in the frame `object_to_world * ancestor pegs`. */
+  const float4x4 peg_to_world = object->object_to_world() * group.to_object_space();
+  const float4x4 peg_local = group.local_transform();
+
+  td->flag = TD_SELECTED;
+  td->extra = object;
+
+  td->loc = group.translation;
+  copy_v3_v3(td->iloc, group.translation);
+
+  td_ext->rot = group.rotation;
+  td_ext->rotAxis = nullptr;
+  td_ext->rotAngle = nullptr;
+  td_ext->quat = nullptr;
+  copy_v3_v3(td_ext->irot, group.rotation);
+  zero_v3(td_ext->drot);
+  td_ext->rotOrder = ROT_MODE_EUL;
+
+  td_ext->scale = group.scale;
+  copy_v3_v3(td_ext->iscale, group.scale);
+  copy_v3_fl(td_ext->dscale, 1.0f);
+
+  copy_v3_v3(td->center, peg_to_world.location());
+
+  /* Orientation axes from the peg's world transform. */
+  copy_m3_m4(td->axismtx, peg_to_world.ptr());
+  normalize_m3(td->axismtx);
+
+  /* Conversion between the peg's local space and world space (cf. a parented object). */
+  float local3[3][3], world3[3][3], world_inv[3][3];
+  copy_m3_m4(local3, peg_local.ptr());
+  copy_m3_m4(world3, peg_to_world.ptr());
+  orthogonalize_m3_zero_axes(local3, 1.0f);
+  orthogonalize_m3_zero_axes(world3, 1.0f);
+  invert_m3_m3_safe_ortho(world_inv, world3);
+  mul_m3_m3m3(td->smtx, local3, world_inv);
+  invert_m3_m3_safe_ortho(td->mtx, td->smtx);
+}
+
+static void recalcData_grease_pencil_peg(TransInfo *t)
+{
+  const TransDataContainer *tc = t->data_container;
+  if (tc->data_len == 0 || tc->data == nullptr) {
+    return;
+  }
+  Object *object = static_cast<Object *>(tc->data[0].extra);
+  if (object == nullptr) {
+    return;
+  }
+  /* The peg transform feeds into the layer-to-object-space evaluation, so the drawings need to be
+   * re-evaluated for the change to show up. */
+  DEG_id_tag_update(static_cast<ID *>(object->data), ID_RECALC_GEOMETRY);
+}
+
+static void special_aftertrans_update_grease_pencil_peg(bContext *C, TransInfo *t)
+{
+  using namespace blender::bke::greasepencil;
+  if (t->state == TRANS_CANCEL) {
+    return;
+  }
+  if (!animrig::is_autokey_on(t->scene)) {
+    return;
+  }
+  const TransDataContainer *tc = t->data_container;
+  if (tc == nullptr || tc->data_len == 0 || tc->data == nullptr) {
+    return;
+  }
+  Object *object = static_cast<Object *>(tc->data[0].extra);
+  if (object == nullptr) {
+    return;
+  }
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(object->data);
+  if (!animrig::autokeyframe_cfra_can_key(t->scene, &grease_pencil.id)) {
+    return;
+  }
+  TreeNode *active = grease_pencil.get_active_node();
+  if (active == nullptr || !active->is_group()) {
+    return;
+  }
+
+  PointerRNA group_ptr = RNA_pointer_create_discrete(
+      &grease_pencil.id, &RNA_GreasePencilLayerGroup, &active->as_group());
+  const float cfra = BKE_scene_frame_get(t->scene);
+  /* Key the whole peg pose (translation, rotation and scale) so cut-out poses have no gaps. */
+  for (const char *prop_name : {"translation", "rotation", "scale"}) {
+    if (PropertyRNA *prop = RNA_struct_find_property(&group_ptr, prop_name)) {
+      animrig::autokeyframe_property(C, t->scene, &group_ptr, prop, -1, cfra, false);
+    }
+  }
+}
+
+/** \} */
+
+TransConvertTypeInfo TransConvertType_GreasePencilPeg = {
+    /*flags*/ 0,
+    /*create_trans_data*/ createTransGreasePencilPeg,
+    /*recalc_data*/ recalcData_grease_pencil_peg,
+    /*special_aftertrans_update*/ special_aftertrans_update_grease_pencil_peg,
 };
 
 }  // namespace blender::ed::transform::greasepencil

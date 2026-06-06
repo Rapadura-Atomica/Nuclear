@@ -24,6 +24,7 @@
 #include "BKE_anim_data.hh"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
+#include "BKE_grease_pencil.hh"
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_modifier.hh"
@@ -1015,6 +1016,15 @@ static TransConvertTypeInfo *convert_type_get(const TransInfo *t, Object **r_obj
   if (ob && (ob->mode & OB_MODE_ALL_PAINT_GPENCIL)) {
     /* In grease pencil all transformations must be canceled if not Object or Edit. */
     return nullptr;
+  }
+  /* In object mode, when a Grease Pencil "peg" group is the active node, transform the peg's
+   * transform instead of the whole object (the cut-out posing workflow). */
+  if (ob && ob->type == OB_GREASE_PENCIL && ob->mode == OB_MODE_OBJECT) {
+    const GreasePencil &grease_pencil = *static_cast<const GreasePencil *>(ob->data);
+    const bke::greasepencil::TreeNode *active = grease_pencil.get_active_node();
+    if (active != nullptr && active->is_group()) {
+      return &greasepencil::TransConvertType_GreasePencilPeg;
+    }
   }
   return &TransConvertType_Object;
 }

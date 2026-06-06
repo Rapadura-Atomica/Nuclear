@@ -333,6 +333,22 @@ class TreeNode : public ::GreasePencilLayerTreeNode {
    * \returns the number of non-null parents of the node.
    */
   int64_t depth() const;
+
+  /**
+   * The accumulated transform of all ancestor "peg" groups, from the outermost group down to
+   * (and including) this node's direct parent group, expressed in object space. The root group is
+   * excluded since it represents the object space itself. \returns identity if the node has no
+   * non-root ancestor groups.
+   */
+  float4x4 ancestors_to_object_space() const;
+
+  /**
+   * \returns the nearest ancestor group flagged as a "peg" (an animation transform controller),
+   * skipping plain organizational folders, or nullptr if this node is not controlled by any peg.
+   * This is what a viewport click on a stroke resolves to in order to find the controller to move.
+   */
+  const LayerGroup *controlling_peg() const;
+  LayerGroup *controlling_peg();
 };
 static_assert(sizeof(TreeNode) == sizeof(::GreasePencilLayerTreeNode));
 
@@ -591,6 +607,12 @@ class Layer : public ::GreasePencilLayer {
   void set_local_transform(const float4x4 &transform);
 
   /**
+   * Returns the transformation from layer space to object space, including the transforms of all
+   * ancestor "peg" groups but *not* external object/bone parenting (see #to_object_space for that).
+   */
+  float4x4 layer_to_object_space() const;
+
+  /**
    * Returns the transformation from layer space to object space.
    */
   float4x4 to_object_space(const Object &object) const;
@@ -687,6 +709,36 @@ class LayerGroup : public ::GreasePencilLayerTreeGroup {
    */
   const TreeNode &as_node() const;
   TreeNode &as_node();
+
+  /**
+   * The local "peg" transform of this group, in its own space (rotation and scale happen around
+   * the group's pivot point).
+   */
+  float4x4 local_transform() const;
+  /**
+   * Updates the local transform of the group based on the matrix.
+   *
+   * \note The matrix is decomposed into location, rotation and scale around the current pivot, so
+   * any skew is lost.
+   */
+  void set_local_transform(const float4x4 &transform);
+
+  /**
+   * Returns the transformation from this group's space to object space, including the transforms
+   * of all ancestor "peg" groups.
+   */
+  float4x4 to_object_space() const;
+  /**
+   * Returns the transformation from this group's space to world space.
+   */
+  float4x4 to_world_space(const Object &object) const;
+
+  /**
+   * Whether this group acts as a "peg" (an animation transform controller) rather than a plain
+   * organizational folder.
+   */
+  bool is_peg() const;
+  void set_is_peg(bool value);
 
   /**
    * Returns true if the group is empty.

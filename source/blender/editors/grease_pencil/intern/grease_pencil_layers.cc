@@ -13,6 +13,7 @@
 
 #include "BKE_attribute_math.hh"
 #include "BKE_context.hh"
+#include "BKE_curves.hh"
 #include "BKE_grease_pencil.hh"
 #include "BKE_object.hh"
 #include "BKE_report.hh"
@@ -20,8 +21,10 @@
 #include "BLT_translation.hh"
 
 #include "DEG_depsgraph.hh"
+#include "DEG_depsgraph_query.hh"
 
 #include "ED_grease_pencil.hh"
+#include "ED_view3d.hh"
 
 #include "RNA_access.hh"
 #include "RNA_define.hh"
@@ -1195,6 +1198,119 @@ static void GREASE_PENCIL_OT_layer_duplicate_object(wmOperatorType *ot)
   ot->prop = RNA_def_enum(ot->srna, "mode", copy_mode, 0, "Mode", "");
 }
 
+/* -------------------------------------------------------------------- */
+/** \name Peg Pick (set the controlling peg under the cursor as active)
+ * \{ */
+
+static wmOperatorStatus grease_pencil_peg_pick_invoke(bContext *C,
+                                                      wmOperator * /*op*/,
+                                                      const wmEvent *event)
+{
+  using namespace blender::bke::greasepencil;
+  Object *object = CTX_data_active_object(C);
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(object->data);
+
+  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+  ViewContext vc = ED_view3d_viewcontext_init(C, depsgraph);
+  if (vc.rv3d == nullptr || vc.region == nullptr) {
+    return OPERATOR_CANCELLED;
+  }
+  const Object &ob_eval = *DEG_get_evaluated(depsgraph, object);
+  const float2 mouse(float(event->mval[0]), float(event->mval[1]));
+
+  /* Find the layer whose stroke is closest to the cursor (within a pixel threshold). */
+  const float threshold_px = 20.0f;
+  float best_dist_sq = threshold_px * threshold_px;
+  int best_layer_index = -1;
+
+  const Vector<DrawingInfo> drawings = retrieve_visible_drawings(*vc.scene, grease_pencil, false);
+  for (const DrawingInfo &info : drawings) {
+    if (info.onion_id != 0) {
+      /* Current frame only. */
+      continue;
+    }
+    const Layer &layer = grease_pencil.layer(info.layer_index);
+    if (!layer.is_visible()) {
+      continue;
+    }
+    const float4x4 layer_to_world = layer.to_world_space(ob_eval);
+    const float4x4 projection = ED_view3d_ob_project_mat_get_from_obmat(vc.rv3d, layer_to_world);
+    const Span<float3> positions = info.drawing.strokes().evaluated_positions();
+    for (const float3 &position : positions) {
+      const float2 co = ED_view3d_project_float_v2_m4(vc.region, position, projection);
+      const float2 delta = co - mouse;
+      const float dist_sq = delta.x * delta.x + delta.y * delta.y;
+      if (dist_sq < best_dist_sq) {
+        best_dist_sq = dist_sq;
+        best_layer_index = info.layer_index;
+      }
+    }
+  }
+
+  if (best_layer_index < 0) {
+    /* Nothing under the cursor: let other operators handle the click. */
+    return OPERATOR_CANCELLED | OPERATOR_PASS_THROUGH;
+  }
+
+  Layer &layer = grease_pencil.layer(best_layer_index);
+  LayerGroup *peg = layer.as_node().controlling_peg();
+  /* Activate the controlling peg, or the layer itself when it has no peg. */
+  TreeNode &target = (peg != nullptr) ? peg->as_node() : layer.as_node();
+  grease_pencil.set_active_node(&target);
+
+  WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_SELECTED, &grease_pencil);
+  return OPERATOR_FINISHED;
+}
+
+static void GREASE_PENCIL_OT_peg_pick(wmOperatorType *ot)
+{
+  ot->name = "Pick Peg";
+  ot->idname = "GREASE_PENCIL_OT_peg_pick";
+  ot->description =
+      "Set the peg controlling the stroke under the cursor as the active node, falling back to "
+      "the stroke's own layer when it is not controlled by a peg";
+
+  ot->invoke = grease_pencil_peg_pick_invoke;
+  ot->poll = active_grease_pencil_poll;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static wmOperatorStatus grease_pencil_peg_select_parent_exec(bContext *C, wmOperator * /*op*/)
+{
+  using namespace blender::bke::greasepencil;
+  Object *object = CTX_data_active_object(C);
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(object->data);
+
+  TreeNode *active = grease_pencil.get_active_node();
+  if (active == nullptr) {
+    return OPERATOR_CANCELLED;
+  }
+  /* Walk up to the nearest ancestor peg of the active node (e.g. hand peg -> arm peg). */
+  LayerGroup *parent_peg = active->controlling_peg();
+  if (parent_peg == nullptr) {
+    return OPERATOR_CANCELLED;
+  }
+  grease_pencil.set_active_node(&parent_peg->as_node());
+
+  WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_SELECTED, &grease_pencil);
+  return OPERATOR_FINISHED;
+}
+
+static void GREASE_PENCIL_OT_peg_select_parent(wmOperatorType *ot)
+{
+  ot->name = "Select Parent Peg";
+  ot->idname = "GREASE_PENCIL_OT_peg_select_parent";
+  ot->description = "Make the parent peg of the active node the active node";
+
+  ot->exec = grease_pencil_peg_select_parent_exec;
+  ot->poll = active_grease_pencil_poll;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/** \} */
+
 }  // namespace blender::ed::greasepencil
 
 void ED_operatortypes_grease_pencil_layers()
@@ -1219,4 +1335,7 @@ void ED_operatortypes_grease_pencil_layers()
   WM_operatortype_append(GREASE_PENCIL_OT_layer_mask_reorder);
   WM_operatortype_append(GREASE_PENCIL_OT_layer_group_color_tag);
   WM_operatortype_append(GREASE_PENCIL_OT_layer_duplicate_object);
+
+  WM_operatortype_append(GREASE_PENCIL_OT_peg_pick);
+  WM_operatortype_append(GREASE_PENCIL_OT_peg_select_parent);
 }

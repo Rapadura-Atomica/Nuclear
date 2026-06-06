@@ -275,6 +275,8 @@ extern TransConvertTypeInfo TransConvertType_Graph;
 
 namespace greasepencil {
 extern TransConvertTypeInfo TransConvertType_GreasePencil;
+/* Transforms the active "peg" layer-group's transform (object mode). */
+extern TransConvertTypeInfo TransConvertType_GreasePencilPeg;
 }
 
 /* `transform_convert_lattice.cc` */

@@ -304,6 +304,27 @@ class _defs_annotate:
         )
 
 
+class _defs_grease_pencil_peg:
+
+    @ToolDef.from_fn
+    def select():
+        return dict(
+            idname="builtin.peg_select",
+            label="Peg Select",
+            description=(
+                "Select pegs only. Click a peg to select it; Shift+B selects its parent peg.\n"
+                "Use the regular select tools for the drawings"
+            ),
+            icon="ops.transform.translate",
+            widget=None,
+            keymap=(
+                ("object.grease_pencil_peg_select", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
+                ("object.grease_pencil_peg_select_parent",
+                 {"type": 'B', "value": 'PRESS', "shift": True}, None),
+            ),
+        )
+
+
 class _defs_transform:
 
     def draw_transform_sculpt_tool_settings(context, layout):
@@ -3701,6 +3722,8 @@ class VIEW3D_PT_tools_active(ToolSelectPanelHelper, Panel):
         ],
         'OBJECT': [
             *_tools_default,
+            None,
+            _defs_grease_pencil_peg.select,
             None,
             _tools_view3d_add,
         ],

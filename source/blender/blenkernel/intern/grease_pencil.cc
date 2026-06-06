@@ -1106,6 +1106,45 @@ TreeNode *TreeNode::parent_node()
   return this->parent_group() ? &this->parent->wrap().as_node() : nullptr;
 }
 
+float4x4 TreeNode::ancestors_to_object_space() const
+{
+  float4x4 result = float4x4::identity();
+  /* Accumulate the local transforms of all ancestor groups, from this node's direct parent up to
+   * (but excluding) the root group. The root group represents object space itself, so its
+   * transform must not be applied. */
+  for (const LayerGroup *group = this->parent_group();
+       group != nullptr && group->as_node().parent_group() != nullptr;
+       group = group->as_node().parent_group())
+  {
+    result = group->local_transform() * result;
+  }
+  return result;
+}
+
+const LayerGroup *TreeNode::controlling_peg() const
+{
+  for (const LayerGroup *group = this->parent_group(); group != nullptr;
+       group = group->as_node().parent_group())
+  {
+    if (group->is_peg()) {
+      return group;
+    }
+  }
+  return nullptr;
+}
+
+LayerGroup *TreeNode::controlling_peg()
+{
+  for (LayerGroup *group = this->parent_group(); group != nullptr;
+       group = group->as_node().parent_group())
+  {
+    if (group->is_peg()) {
+      return group;
+    }
+  }
+  return nullptr;
+}
+
 int64_t TreeNode::depth() const
 {
   const LayerGroup *parent = this->parent_group();
@@ -1531,21 +1570,23 @@ void Layer::update_from_dna_read()
 
 float4x4 Layer::to_world_space(const Object &object) const
 {
+  const float4x4 layer_to_object = this->layer_to_object_space();
   if (this->parent == nullptr) {
-    return object.object_to_world() * this->local_transform();
+    return object.object_to_world() * layer_to_object;
   }
   const Object &parent = *this->parent;
-  return this->parent_to_world(parent) * this->parent_inverse() * this->local_transform();
+  return this->parent_to_world(parent) * this->parent_inverse() * layer_to_object;
 }
 
 float4x4 Layer::to_object_space(const Object &object) const
 {
+  const float4x4 layer_to_object = this->layer_to_object_space();
   if (this->parent == nullptr) {
-    return this->local_transform();
+    return layer_to_object;
   }
   const Object &parent = *this->parent;
   return object.world_to_object() * this->parent_to_world(parent) * this->parent_inverse() *
-         this->local_transform();
+         layer_to_object;
 }
 
 StringRefNull Layer::parent_bone_name() const
@@ -1596,6 +1637,11 @@ void Layer::set_local_transform(const float4x4 &transform)
                                     *reinterpret_cast<float3 *>(this->scale));
 }
 
+float4x4 Layer::layer_to_object_space() const
+{
+  return this->as_node().ancestors_to_object_space() * this->local_transform();
+}
+
 StringRefNull Layer::view_layer_name() const
 {
   return (this->viewlayername != nullptr) ? StringRefNull(this->viewlayername) : StringRefNull();
@@ -1618,6 +1664,11 @@ LayerGroup::LayerGroup()
 
   BLI_listbase_clear(&this->children);
   this->color_tag = LAYERGROUP_COLOR_NONE;
+
+  zero_v3(this->translation);
+  zero_v3(this->rotation);
+  copy_v3_fl(this->scale, 1.0f);
+  zero_v3(this->pivot);
 
   this->runtime = MEM_new<LayerGroupRuntime>(__func__);
 }
@@ -1649,6 +1700,12 @@ LayerGroup::LayerGroup(const LayerGroup &other) : LayerGroup()
   }
 
   this->color_tag = other.color_tag;
+
+  /* The peg flag lives in `base.flag` and is copied by the `TreeNode` copy constructor above. */
+  copy_v3_v3(this->translation, other.translation);
+  copy_v3_v3(this->rotation, other.rotation);
+  copy_v3_v3(this->scale, other.scale);
+  copy_v3_v3(this->pivot, other.pivot);
 }
 
 LayerGroup::~LayerGroup()
@@ -1684,6 +1741,50 @@ LayerGroup &LayerGroup::operator=(const LayerGroup &other)
   new (this) LayerGroup(other);
 
   return *this;
+}
+
+float4x4 LayerGroup::local_transform() const
+{
+  const float3 pivot(this->pivot);
+  /* Rotate and scale around the pivot, then apply the translation:
+   * `T(translation) * T(pivot) * R * S * T(-pivot)`. With a zero pivot this reduces to a plain
+   * loc/rot/scale matrix. */
+  return math::from_loc_rot_scale<float4x4, math::EulerXYZ>(
+             float3(this->translation) + pivot, float3(this->rotation), float3(this->scale)) *
+         math::from_location<float4x4>(-pivot);
+}
+
+void LayerGroup::set_local_transform(const float4x4 &transform)
+{
+  const float3 pivot(this->pivot);
+  /* Undo the pivot offset before decomposing (see #local_transform). */
+  const float4x4 mat = transform * math::from_location<float4x4>(pivot);
+  float3 location;
+  math::to_loc_rot_scale_safe<true>(mat,
+                                    location,
+                                    *reinterpret_cast<math::EulerXYZ *>(this->rotation),
+                                    *reinterpret_cast<float3 *>(this->scale));
+  *reinterpret_cast<float3 *>(this->translation) = location - pivot;
+}
+
+float4x4 LayerGroup::to_object_space() const
+{
+  return this->as_node().ancestors_to_object_space() * this->local_transform();
+}
+
+float4x4 LayerGroup::to_world_space(const Object &object) const
+{
+  return object.object_to_world() * this->to_object_space();
+}
+
+bool LayerGroup::is_peg() const
+{
+  return (this->base.flag & GP_LAYER_TREE_NODE_IS_PEG) != 0;
+}
+
+void LayerGroup::set_is_peg(const bool value)
+{
+  SET_FLAG_FROM_TEST(this->base.flag, value, GP_LAYER_TREE_NODE_IS_PEG);
 }
 
 bool LayerGroup::is_empty() const
@@ -2442,7 +2543,7 @@ void BKE_grease_pencil_point_coords_get(const GreasePencil &grease_pencil,
   int64_t index = 0;
   for (const int layer_i : grease_pencil.layers().index_range()) {
     const bke::greasepencil::Layer &layer = grease_pencil.layer(layer_i);
-    const float4x4 layer_to_object = layer.local_transform();
+    const float4x4 layer_to_object = layer.layer_to_object_space();
     const Map<bke::greasepencil::FramesMapKeyT, GreasePencilFrame> frames = layer.frames();
     frames.foreach_item([&](const bke::greasepencil::FramesMapKeyT /*key*/,
                             const GreasePencilFrame frame) {
@@ -2489,7 +2590,7 @@ void BKE_grease_pencil_point_coords_apply(GreasePencil &grease_pencil,
   int64_t index = 0;
   for (const int layer_i : grease_pencil.layers().index_range()) {
     bke::greasepencil::Layer &layer = grease_pencil.layer(layer_i);
-    const float4x4 layer_to_object = layer.local_transform();
+    const float4x4 layer_to_object = layer.layer_to_object_space();
     const float4x4 object_to_layer = math::invert(layer_to_object);
     const Map<bke::greasepencil::FramesMapKeyT, GreasePencilFrame> frames = layer.frames();
     frames.foreach_item([&](bke::greasepencil::FramesMapKeyT /*key*/, GreasePencilFrame frame) {
@@ -2541,7 +2642,7 @@ void BKE_grease_pencil_point_coords_apply_with_mat4(GreasePencil &grease_pencil,
   int64_t index = 0;
   for (const int layer_i : grease_pencil.layers().index_range()) {
     bke::greasepencil::Layer &layer = grease_pencil.layer(layer_i);
-    const float4x4 layer_to_object = layer.local_transform();
+    const float4x4 layer_to_object = layer.layer_to_object_space();
     const float4x4 object_to_layer = math::invert(layer_to_object);
     const Map<bke::greasepencil::FramesMapKeyT, GreasePencilFrame> frames = layer.frames();
     frames.foreach_item([&](bke::greasepencil::FramesMapKeyT /*key*/, GreasePencilFrame frame) {
@@ -3456,7 +3557,7 @@ std::optional<blender::Bounds<blender::float3>> GreasePencil::bounds_min_max(
   const Span<const bke::greasepencil::Layer *> layers = this->layers();
   for (const int layer_i : layers.index_range()) {
     const bke::greasepencil::Layer &layer = *layers[layer_i];
-    const float4x4 layer_to_object = layer.local_transform();
+    const float4x4 layer_to_object = layer.layer_to_object_space();
     if (!layer.is_visible()) {
       continue;
     }

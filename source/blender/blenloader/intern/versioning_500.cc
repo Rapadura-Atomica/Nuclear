@@ -4370,6 +4370,21 @@ void blo_do_versions_500(FileData *fd, Library * /*lib*/, Main *bmain)
     FOREACH_NODETREE_END;
   }
 
+  if (!MAIN_VERSION_FILE_ATLEAST(bmain, 500, 119)) {
+    using namespace blender::bke::greasepencil;
+    /* Initialize the newly added peg transform on layer groups. Newly added float fields read as
+     * zero from older files, so the scale must be reset to one to avoid a degenerate transform.
+     * Translation, rotation and pivot default to zero, which is correct. */
+    LISTBASE_FOREACH (GreasePencil *, grease_pencil, &bmain->grease_pencils) {
+      if (grease_pencil->root_group_ptr != nullptr) {
+        copy_v3_fl(grease_pencil->root_group_ptr->scale, 1.0f);
+      }
+      for (LayerGroup *group : grease_pencil->layer_groups_for_write()) {
+        copy_v3_fl(group->scale, 1.0f);
+      }
+    }
+  }
+
   /**
    * Always bump subversion in BKE_blender_version.h when adding versioning
    * code here, and wrap it inside a MAIN_VERSION_FILE_ATLEAST check.
