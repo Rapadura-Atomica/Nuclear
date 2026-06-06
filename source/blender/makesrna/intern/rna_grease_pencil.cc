@@ -604,6 +604,20 @@ static void rna_GreasePencilLayer_matrix_parent_inverse_get(PointerRNA *ptr, flo
   std::copy_n(layer.parent_inverse().base_ptr(), 16, values);
 }
 
+static void rna_GreasePencilLayerGroup_matrix_local_get(PointerRNA *ptr, float *values)
+{
+  const blender::bke::greasepencil::LayerGroup &group =
+      static_cast<const GreasePencilLayerTreeGroup *>(ptr->data)->wrap();
+  std::copy_n(group.local_transform().base_ptr(), 16, values);
+}
+
+static void rna_GreasePencilLayerGroup_matrix_to_object_get(PointerRNA *ptr, float *values)
+{
+  const blender::bke::greasepencil::LayerGroup &group =
+      static_cast<const GreasePencilLayerTreeGroup *>(ptr->data)->wrap();
+  std::copy_n(group.to_object_space().base_ptr(), 16, values);
+}
+
 static PointerRNA rna_GreasePencil_active_layer_get(PointerRNA *ptr)
 {
   GreasePencil *grease_pencil = rna_grease_pencil(ptr);
@@ -1255,6 +1269,69 @@ static void rna_def_grease_pencil_layer_group(BlenderRNA *brna)
   prop = RNA_def_property(srna, "color_tag", PROP_ENUM, PROP_NONE);
   RNA_def_property_enum_funcs(prop, "rna_group_color_tag_get", "rna_group_color_tag_set", nullptr);
   RNA_def_property_enum_items(prop, enum_layergroup_color_items);
+
+  /* Peg flag. */
+  prop = RNA_def_property(srna, "is_peg", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(
+      prop, "GreasePencilLayerTreeNode", "flag", GP_LAYER_TREE_NODE_IS_PEG);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_text(
+      prop,
+      "Peg",
+      "Use this group as a peg (an animation transform controller) rather than a plain folder");
+  RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
+
+  /* Peg transform. */
+  static const float scale_defaults[3] = {1.0f, 1.0f, 1.0f};
+
+  prop = RNA_def_property(srna, "translation", PROP_FLOAT, PROP_TRANSLATION);
+  RNA_def_property_array(prop, 3);
+  RNA_def_property_float_sdna(prop, nullptr, "translation");
+  RNA_def_property_ui_range(prop, -FLT_MAX, FLT_MAX, 1, RNA_TRANSLATION_PREC_DEFAULT);
+  RNA_def_property_ui_text(prop, "Translation", "Translation of the peg");
+  RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
+
+  prop = RNA_def_property(srna, "rotation", PROP_FLOAT, PROP_EULER);
+  RNA_def_property_array(prop, 3);
+  RNA_def_property_float_sdna(prop, nullptr, "rotation");
+  RNA_def_property_ui_range(prop, -FLT_MAX, FLT_MAX, 1, RNA_TRANSLATION_PREC_DEFAULT);
+  RNA_def_property_ui_text(prop, "Rotation", "Euler rotation of the peg");
+  RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
+
+  prop = RNA_def_property(srna, "scale", PROP_FLOAT, PROP_XYZ);
+  RNA_def_property_array(prop, 3);
+  RNA_def_property_float_sdna(prop, nullptr, "scale");
+  RNA_def_property_float_array_default(prop, scale_defaults);
+  RNA_def_property_ui_range(prop, -FLT_MAX, FLT_MAX, 1, 3);
+  RNA_def_property_ui_text(prop, "Scale", "Scale of the peg");
+  RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
+
+  prop = RNA_def_property(srna, "pivot", PROP_FLOAT, PROP_TRANSLATION);
+  RNA_def_property_array(prop, 3);
+  RNA_def_property_float_sdna(prop, nullptr, "pivot");
+  RNA_def_property_ui_range(prop, -FLT_MAX, FLT_MAX, 1, RNA_TRANSLATION_PREC_DEFAULT);
+  RNA_def_property_ui_text(
+      prop, "Pivot", "Pivot point that the peg's rotation and scale happen around");
+  RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
+
+  /* Local (peg) transformation matrix. */
+  prop = RNA_def_property(srna, "matrix_local", PROP_FLOAT, PROP_MATRIX);
+  RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop, "Local Matrix", "Local transformation matrix of the peg");
+  RNA_def_property_float_funcs(
+      prop, "rna_GreasePencilLayerGroup_matrix_local_get", nullptr, nullptr);
+
+  /* Transformation from this peg's space to object space (includes ancestor pegs). */
+  prop = RNA_def_property(srna, "matrix_to_object", PROP_FLOAT, PROP_MATRIX);
+  RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(
+      prop,
+      "Object Matrix",
+      "Transformation from this peg's space to object space, including all ancestor pegs");
+  RNA_def_property_float_funcs(
+      prop, "rna_GreasePencilLayerGroup_matrix_to_object_get", nullptr, nullptr);
 }
 
 static void rna_def_grease_pencil_layer_groups(BlenderRNA *brna, PropertyRNA *cprop)

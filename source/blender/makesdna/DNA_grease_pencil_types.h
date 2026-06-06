@@ -246,6 +246,11 @@ typedef enum GreasePencilLayerTreeNodeFlag {
   GP_LAYER_TREE_NODE_HIDE_MASKS = (1 << 7),
   GP_LAYER_TREE_NODE_DISABLE_MASKS_IN_VIEWLAYER = (1 << 8),
   GP_LAYER_TREE_NODE_IGNORE_LOCKED_MATERIALS = (1 << 9),
+  /**
+   * The group acts as a "peg" (an animation transform controller) rather than a plain
+   * organizational folder. Only meaningful on group nodes.
+   */
+  GP_LAYER_TREE_NODE_IS_PEG = (1 << 10),
 } GreasePencilLayerTreeNodeFlag;
 
 struct GreasePencilLayerTreeGroup;
@@ -352,6 +357,16 @@ typedef struct GreasePencilLayerTreeGroup {
    */
   int8_t color_tag;
   char _pad[7];
+  /**
+   * Peg transform UI settings. These should *not* be used to do any computation.
+   * Use the functions in the `bke::greasepencil::LayerGroup` class instead.
+   */
+  float translation[3], rotation[3], scale[3];
+  /**
+   * Pivot point for the peg transform, in the group's local space. Rotation and scale of the
+   * peg happen around this point.
+   */
+  float pivot[3];
   /**
    * Runtime struct pointer.
    */
