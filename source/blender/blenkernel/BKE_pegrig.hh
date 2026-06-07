@@ -30,6 +30,14 @@ PegRig *BKE_pegrig_add(Main *bmain, const char *name);
  */
 int BKE_pegrig_peg_add(PegRig *rig, const char *name, int parent_index);
 
+/**
+ * Remove the peg at `peg_index` from the rig. Children of the removed peg are reparented to its
+ * parent, remaining `parent_index` values are adjusted, and `active_peg_index` is updated.
+ * Constraints that referenced the removed peg by name simply stop following.
+ * \return true if a peg was removed.
+ */
+bool BKE_pegrig_peg_remove(PegRig *rig, int peg_index);
+
 /** \return the peg with the given name, or null. */
 PegRigPeg *BKE_pegrig_peg_find_by_name(PegRig *rig, const char *name);
 /** \return the index of the peg with the given name, or -1. */
