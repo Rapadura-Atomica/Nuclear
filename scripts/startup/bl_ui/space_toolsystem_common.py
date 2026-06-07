@@ -499,6 +499,11 @@ class ToolSelectPanelHelper:
         if km is None:
             km = kc.keymaps.new(km_idname, **km_kwargs)
             keymap_fn[0](km)
+        elif not km.keymap_items and callable(keymap_fn[0]):
+            # The key-map may have been created empty by the tool system before this registration
+            # runs (e.g. an inline-keymap tool that is already active on startup). Populate it now,
+            # otherwise its bindings would be silently lost.
+            keymap_fn[0](km)
         keymap_fn[0] = km.name
 
         # Ensure we have a default key map, so the add-ons keymap is properly overlayed.

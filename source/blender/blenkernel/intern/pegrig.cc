@@ -233,6 +233,23 @@ PegRigPeg *BKE_pegrig_peg_find_by_name(PegRig *rig, const char *name)
   return (index >= 0) ? &rig->pegs[index] : nullptr;
 }
 
+bool BKE_pegrig_peg_is_ancestor(const PegRig *rig, const int ancestor, const int peg)
+{
+  if (ancestor < 0 || peg < 0 || peg >= rig->pegs_num) {
+    return false;
+  }
+  int p = rig->pegs[peg].parent_index;
+  int guard = 0;
+  while (p >= 0 && p < rig->pegs_num && guard <= rig->pegs_num) {
+    if (p == ancestor) {
+      return true;
+    }
+    p = rig->pegs[p].parent_index;
+    guard++;
+  }
+  return false;
+}
+
 bool BKE_pegrig_peg_reparent(PegRig *rig, const int peg_index, const int new_parent_index)
 {
   if (peg_index < 0 || peg_index >= rig->pegs_num) {

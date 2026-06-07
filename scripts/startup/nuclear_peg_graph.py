@@ -18,6 +18,8 @@ Node/socket model: every node has a single "controller" input. A link ``A.output
 """
 
 import bpy
+import mathutils
+from bpy_extras import view3d_utils
 from bpy.types import NodeTree, Node, NodeSocket, Operator, Panel
 from bpy.props import PointerProperty, StringProperty
 
@@ -147,6 +149,65 @@ def _would_cycle(rig, child_index, new_parent_index):
         p = pegs[p].parent_index
         guard += 1
     return False
+
+
+def _is_ancestor(rig, ancestor, peg):
+    """True if `ancestor` is a strict ancestor of `peg` in the parent chain."""
+    pegs = rig.pegs
+    p = pegs[peg].parent_index if 0 <= peg < len(pegs) else -1
+    guard = 0
+    while p >= 0 and p < len(pegs) and guard <= len(pegs):
+        if p == ancestor:
+            return True
+        p = pegs[p].parent_index
+        guard += 1
+    return False
+
+
+def active_peg(context):
+    """Resolve the peg currently controlled by the active object, honouring the Ctrl+B climb
+    (PegRig.active_peg_index) when it is the object's own peg or an ancestor of it.
+    \return (rig, peg) or (None, None)."""
+    ob = context.active_object
+    if ob is None:
+        return None, None
+    con = _followpeg_constraint(ob)
+    if con is None or con.rig is None:
+        return None, None
+    rig = con.rig
+    obj_idx = rig.pegs.find(con.peg_name)
+    if obj_idx < 0:
+        return None, None
+    idx = obj_idx
+    a = rig.active_peg_index
+    if 0 <= a < len(rig.pegs) and (a == obj_idx or _is_ancestor(rig, a, obj_idx)):
+        idx = a
+    return rig, rig.pegs[idx]
+
+
+def _peg_local_matrix(peg):
+    """Replicate BKE_pegrig peg local matrix: T(t+p) * R * S * T(-p)."""
+    from mathutils import Matrix, Vector, Euler
+    p = Vector(peg.pivot)
+    t = Vector(peg.translation)
+    rot = Euler(peg.rotation, 'XYZ').to_matrix().to_4x4()
+    scale = Matrix.Diagonal(Vector((peg.scale[0], peg.scale[1], peg.scale[2], 1.0)))
+    return Matrix.Translation(t + p) @ rot @ scale @ Matrix.Translation(-p)
+
+
+def _peg_world_matrix(rig, idx):
+    """World matrix of peg `idx` = product of local matrices from the root down."""
+    chain = []
+    i = idx
+    guard = 0
+    while 0 <= i < len(rig.pegs) and guard <= len(rig.pegs):
+        chain.append(i)
+        i = rig.pegs[i].parent_index
+        guard += 1
+    m = mathutils.Matrix()
+    for j in reversed(chain):
+        m = m @ _peg_local_matrix(rig.pegs[j])
+    return m
 
 
 # -------------------------------------------------------------------------------------------------
@@ -417,6 +478,122 @@ class NODE_PT_nuclear_peg(Panel):
         col.operator("node.nuclear_peg_bind_selected", icon='LINKED')
 
 
+class OBJECT_OT_pegrig_pivot_reset(Operator):
+    bl_idname = "object.pegrig_pivot_reset"
+    bl_label = "Reset Pivot"
+    bl_description = "Reset the active peg's pivot to its origin"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return active_peg(context)[1] is not None
+
+    def execute(self, context):
+        _rig, peg = active_peg(context)
+        if peg is None:
+            return {'CANCELLED'}
+        peg.pivot = (0.0, 0.0, 0.0)
+        return {'FINISHED'}
+
+
+class OBJECT_OT_pegrig_pivot_grab(Operator):
+    bl_idname = "object.pegrig_pivot_grab"
+    bl_label = "Grab Peg Pivot"
+    bl_description = "Move the active peg's pivot point in the viewport"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        space = context.space_data
+        return (space and space.type == 'VIEW_3D' and context.region_data is not None and
+                active_peg(context)[1] is not None)
+
+    def invoke(self, context, event):
+        rig, peg = active_peg(context)
+        if peg is None:
+            return {'CANCELLED'}
+        self._rig = rig
+        self._idx = rig.pegs.find(peg.name)
+        self._init_pivot = mathutils.Vector(peg.pivot)
+        world = _peg_world_matrix(rig, self._idx)
+        # Project on the plane through the controlled drawing so the drag stays under the cursor.
+        ob = context.active_object
+        self._anchor = ob.matrix_world.translation.copy() if ob else (world @ self._init_pivot)
+        rot = world.to_3x3()
+        try:
+            self._rot_inv = rot.inverted()
+        except ValueError:
+            self._rot_inv = mathutils.Matrix.Identity(3)
+        self._init_mouse = (event.mouse_region_x, event.mouse_region_y)
+        context.window_manager.modal_handler_add(self)
+        context.area.header_text_set("Grab Pivot: move to place, LMB/Enter confirm, RMB/Esc cancel")
+        return {'RUNNING_MODAL'}
+
+    def _project(self, context, mx, my):
+        return view3d_utils.region_2d_to_location_3d(
+            context.region, context.region_data, (mx, my), self._anchor)
+
+    def _finish(self, context):
+        context.area.header_text_set(None)
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        peg = self._rig.pegs[self._idx]
+        if event.type == 'MOUSEMOVE':
+            cur = self._project(context, event.mouse_region_x, event.mouse_region_y)
+            init = self._project(context, *self._init_mouse)
+            delta_local = self._rot_inv @ (cur - init)
+            peg.pivot = self._init_pivot + delta_local
+            self._rig.id_data.update_tag()
+            context.area.tag_redraw()
+        elif event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
+            self._finish(context)
+            return {'FINISHED'}
+        elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
+            peg.pivot = self._init_pivot
+            self._rig.id_data.update_tag()
+            self._finish(context)
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
+class VIEW3D_PT_nuclear_peg(Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Peg"
+    bl_label = "Active Peg"
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and active_peg(context)[1] is not None
+
+    def draw(self, context):
+        layout = self.layout
+        rig, peg = active_peg(context)
+        if peg is None:
+            layout.label(text="No active peg")
+            return
+
+        row = layout.row(align=True)
+        row.label(text=peg.name, icon='EMPTY_AXIS')
+        row.label(text=rig.name, icon='OUTLINER_OB_ARMATURE')
+
+        col = layout.column()
+        col.use_property_split = True
+        col.prop(peg, "translation")
+        col.prop(peg, "rotation")
+        col.prop(peg, "scale")
+
+        box = layout.box()
+        box.label(text="Pivot", icon='PIVOT_BOUNDBOX')
+        col = box.column()
+        col.use_property_split = True
+        col.prop(peg, "pivot", text="")
+        row = box.row(align=True)
+        row.operator("object.pegrig_pivot_grab", text="Grab Pivot (P)", icon='PIVOT_CURSOR')
+        row.operator("object.pegrig_pivot_reset", text="", icon='LOOP_BACK')
+
+
 # -------------------------------------------------------------------------------------------------
 # Auto-refresh handler: rebuild visible peg graphs when the rig structure changes
 # -------------------------------------------------------------------------------------------------
@@ -445,6 +622,40 @@ def _depsgraph_update_post(_scene, _depsgraph):
 
 
 # -------------------------------------------------------------------------------------------------
+# Keep the "Peg Pose" tool keymap populated (the inline-keymap tool can be cleared on file load)
+# -------------------------------------------------------------------------------------------------
+
+_PEG_POSE_KM = "3D View Tool: Object, Peg Pose"
+_PEG_POSE_BINDINGS = (
+    ("object.pegrig_pick", {"type": 'LEFTMOUSE', "value": 'CLICK'}, None),
+    ("transform.translate",
+     {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'},
+     {"properties": [("release_confirm", True)]}),
+    ("object.pegrig_select_parent", {"type": 'B', "value": 'PRESS', "ctrl": True}, None),
+    ("object.pegrig_pivot_grab", {"type": 'P', "value": 'PRESS'}, None),
+)
+
+
+def _ensure_peg_pose_keymap():
+    """Populate the Peg Pose tool keymap if it is missing/empty (e.g. after File > New)."""
+    from bl_keymap_utils.io import keymap_init_from_data
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.default if wm else None
+    if kc is None:
+        return
+    km = kc.keymaps.get(_PEG_POSE_KM)
+    if km is None:
+        km = kc.keymaps.new(_PEG_POSE_KM, space_type='VIEW_3D', region_type='WINDOW', tool=True)
+    if not km.keymap_items:
+        keymap_init_from_data(km, _PEG_POSE_BINDINGS)
+
+
+@bpy.app.handlers.persistent
+def _load_post(*_args):
+    _ensure_peg_pose_keymap()
+
+
+# -------------------------------------------------------------------------------------------------
 # Registration
 # -------------------------------------------------------------------------------------------------
 
@@ -458,6 +669,9 @@ classes = (
     NODE_OT_nuclear_peg_remove,
     NODE_OT_nuclear_peg_bind_selected,
     NODE_PT_nuclear_peg,
+    OBJECT_OT_pegrig_pivot_reset,
+    OBJECT_OT_pegrig_pivot_grab,
+    VIEW3D_PT_nuclear_peg,
 )
 
 
@@ -466,9 +680,14 @@ def register():
         bpy.utils.register_class(cls)
     if _depsgraph_update_post not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_depsgraph_update_post)
+    if _load_post not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_load_post)
+    _ensure_peg_pose_keymap()
 
 
 def unregister():
+    if _load_post in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_load_post)
     if _depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_depsgraph_update_post)
     for cls in reversed(classes):
