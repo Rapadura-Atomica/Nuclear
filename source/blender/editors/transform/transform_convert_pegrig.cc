@@ -53,17 +53,29 @@ static PegRig *pegrig_active_peg_get(Object *object, int *r_peg_index)
   if (data->rig == nullptr) {
     return nullptr;
   }
-  int index = data->peg_index;
-  if (index < 0 || index >= data->rig->pegs_num ||
-      !STREQ(data->rig->pegs[index].name, data->peg_name))
+  PegRig *rig = data->rig;
+  int obj_peg = data->peg_index;
+  if (obj_peg < 0 || obj_peg >= rig->pegs_num ||
+      !STREQ(rig->pegs[obj_peg].name, data->peg_name))
   {
-    index = BKE_pegrig_peg_index_by_name(data->rig, data->peg_name);
+    obj_peg = BKE_pegrig_peg_index_by_name(rig, data->peg_name);
   }
-  if (index < 0) {
+  if (obj_peg < 0) {
     return nullptr;
   }
+
+  /* Prefer the rig's active peg when it is the object's own peg or one of its ancestors (the
+   * Ctrl+B "climb to parent / Peg Master" navigation); otherwise control the object's own peg. */
+  int index = obj_peg;
+  const int active = rig->active_peg_index;
+  if (active >= 0 && active < rig->pegs_num &&
+      (active == obj_peg || BKE_pegrig_peg_is_ancestor(rig, active, obj_peg)))
+  {
+    index = active;
+  }
+
   *r_peg_index = index;
-  return data->rig;
+  return rig;
 }
 
 static void createTransPegRigPeg(bContext * /*C*/, TransInfo *t)

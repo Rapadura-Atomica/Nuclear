@@ -319,7 +319,16 @@ class _defs_pegrig:
             ),
             icon="ops.transform.translate",
             widget=None,
-            keymap="3D View Tool: Tweak",
+            keymap=(
+                ("object.pegrig_pick", {"type": 'LEFTMOUSE', "value": 'CLICK'}, None),
+                ("transform.translate",
+                 {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'},
+                 {"properties": [("release_confirm", True)]}),
+                ("object.pegrig_select_parent",
+                 {"type": 'B', "value": 'PRESS', "ctrl": True}, None),
+                ("object.pegrig_pivot_grab",
+                 {"type": 'P', "value": 'PRESS'}, None),
+            ),
             draw_settings=draw_settings,
         )
 

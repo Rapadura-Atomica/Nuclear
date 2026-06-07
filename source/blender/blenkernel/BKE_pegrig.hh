@@ -43,6 +43,9 @@ PegRigPeg *BKE_pegrig_peg_find_by_name(PegRig *rig, const char *name);
 /** \return the index of the peg with the given name, or -1. */
 int BKE_pegrig_peg_index_by_name(const PegRig *rig, const char *name);
 
+/** \return true if `ancestor` is a strict ancestor of `peg` in the parent chain. */
+bool BKE_pegrig_peg_is_ancestor(const PegRig *rig, int ancestor, int peg);
+
 /**
  * Reparent `peg_index` under `new_parent_index` (-1 for root). Rejects out-of-range indices and
  * any change that would introduce a cycle.

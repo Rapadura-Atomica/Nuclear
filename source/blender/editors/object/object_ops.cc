@@ -165,6 +165,8 @@ void operatortypes_object()
   WM_operatortype_append(OBJECT_OT_ocean_bake);
 
   WM_operatortype_append(OBJECT_OT_pegrig_peg_new);
+  WM_operatortype_append(OBJECT_OT_pegrig_pick);
+  WM_operatortype_append(OBJECT_OT_pegrig_select_parent);
 
   WM_operatortype_append(OBJECT_OT_constraint_add);
   WM_operatortype_append(OBJECT_OT_constraint_add_with_targets);
