@@ -161,6 +161,18 @@ class ConstraintButtonsPanel:
 
         self.draw_influence(layout, con)
 
+    def draw_follow_peg(self, context):
+        layout = self.layout
+        con = self.get_constraint(context)
+        layout.use_property_split = True
+        layout.use_property_decorate = True
+
+        layout.prop(con, "rig")
+        if con.rig is not None:
+            layout.prop_search(con, "peg_name", con.rig, "pegs", text="Peg")
+
+        self.draw_influence(layout, con)
+
     def draw_trackto(self, context):
         layout = self.layout
         con = self.get_constraint(context)
@@ -1704,6 +1716,16 @@ class BONE_PT_bGeometryAttributeConstraint(BoneConstraintPanel, ConstraintButton
         self.draw_geometry_attribute(context)
 
 
+class OBJECT_PT_bFollowPegConstraint(ObjectConstraintPanel, ConstraintButtonsPanel, Panel):
+    def draw(self, context):
+        self.draw_follow_peg(context)
+
+
+class BONE_PT_bFollowPegConstraint(BoneConstraintPanel, ConstraintButtonsPanel, Panel):
+    def draw(self, context):
+        self.draw_follow_peg(context)
+
+
 classes = (
     # Object Panels
     OBJECT_PT_constraints,
@@ -1744,6 +1766,7 @@ classes = (
     OBJECT_PT_bArmatureConstraint,
     OBJECT_PT_bArmatureConstraint_bones,
     OBJECT_PT_bGeometryAttributeConstraint,
+    OBJECT_PT_bFollowPegConstraint,
 
     # Bone panels
     BONE_PT_bChildOfConstraint,
@@ -1785,6 +1808,7 @@ classes = (
     BONE_PT_bArmatureConstraint,
     BONE_PT_bArmatureConstraint_bones,
     BONE_PT_bGeometryAttributeConstraint,
+    BONE_PT_bFollowPegConstraint,
 )
 
 if __name__ == "__main__":  # only for live edit.

@@ -394,6 +394,10 @@ extern TransConvertTypeInfo TransConvertType_Node;
 
 extern TransConvertTypeInfo TransConvertType_Object;
 
+/* `transform_convert_pegrig.cc` */
+
+extern TransConvertTypeInfo TransConvertType_PegRigPeg;
+
 /* `transform_convert_object_texspace.cc` */
 
 extern TransConvertTypeInfo TransConvertType_ObjectTexSpace;

@@ -4945,6 +4945,7 @@ static RNAProcessItem PROCESS_ITEMS[] = {
     {"rna_packedfile.cc", nullptr, RNA_def_packedfile},
     {"rna_palette.cc", nullptr, RNA_def_palette},
     {"rna_particle.cc", nullptr, RNA_def_particle},
+    {"rna_pegrig.cc", nullptr, RNA_def_pegrig},
     {"rna_pointcloud.cc", nullptr, RNA_def_pointcloud},
     {"rna_pose.cc", "rna_pose_api.cc", RNA_def_pose},
     {"rna_curveprofile.cc", nullptr, RNA_def_profile},

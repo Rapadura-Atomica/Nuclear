@@ -10,29 +10,54 @@ Build instructions: https://developer.blender.org/docs/handbook/building_blender
 
 ## Building
 
-Use the top-level `GNUmakefile` wrapper around CMake (run `make help` for the full target list). The build directory defaults to a **sibling** of the source tree: `../build_linux` (so the working copy stays clean). Targets compose, and order is irrelevant.
+The fork builds on both **Linux/macOS** (via the `GNUmakefile` wrapper) and **Windows** (via `make.bat`). Both are thin wrappers around an **out-of-source CMake build** whose directory defaults to a **sibling** of the source tree (e.g. `../build_windows`, `../build_linux`), keeping the working copy clean. Targets/switches compose and order is irrelevant.
+
+### Windows (`make.bat`)
+
+Prerequisites: **Visual Studio** (2019/2022/2026 — auto-detected, MSVC is default on x64), CMake on `PATH`, and the path to the repo must contain **no spaces** (checked by the script). Run from a normal terminal (`make.bat` invokes the MSVC environment itself).
+
+```bat
+make update                  :: FIRST: fetch precompiled libs into lib/ + sync git. Required before first build.
+make                         :: default optimized build into ..\build_windows
+make developer               :: RECOMMENDED for dev: faster builds, error checking, tests enabled
+make debug                   :: unoptimized debuggable build
+make full                    :: release minus CUDA kernels
+make lite                    :: minimal feature set, fast build
+make release                 :: identical to official blender.org builds
+make with_tests              :: enable building unit tests (or use `developer`)
+make 2022                    :: force a specific VS version (2019 / 2022 / 2026, plus b=BuildTools, pre/i variants)
+make ninja                   :: build with ninja instead of msbuild
+make nobuild                 :: only generate the VS project files (open ..\build_windows\Blender.sln)
+make help                    :: full switch list
+```
+
+After configuring, you can also open `..\build_windows\Blender.sln` in Visual Studio and build the `INSTALL` target there. The runnable binary lands in `..\build_windows\bin\<Config>\`.
+
+### Linux / macOS (`GNUmakefile`)
 
 ```sh
+make update                # FIRST: sync repo + precompiled libraries
 make                       # default optimized build into ../build_linux
 make developer             # RECOMMENDED for dev: faster builds, error checking, tests enabled
 make debug                 # debug binary -> ../build_linux_debug
-make full                  # enable all supported deps/options
-make lite                  # minimal feature set, fast build -> ../build_linux_lite
-make ninja ccache          # use ninja + ccache (combine with the above, e.g. `make developer ninja ccache`)
-make config                # open the interactive CMake config tool to toggle options
+make full / make lite      # all options / minimal fast build (own suffixed dirs)
+make ninja ccache          # combine, e.g. `make developer ninja ccache`
+make config                # interactive CMake config tool
 ```
 
-Override with `BUILD_DIR=path`, pass extra CMake args via `BUILD_CMAKE_ARGS='...'`. Each variant (debug/lite/full/bpy) builds into its own suffixed directory, so they don't clobber each other.
+Override the build dir with `builddir <path>` (Windows) / `BUILD_DIR=path` (make), and pass extra CMake args via `BUILD_CMAKE_ARGS='...'`. Each variant builds into its own suffixed directory, so they don't clobber each other.
 
-Library dependencies are normally **pre-built** and pulled into `lib/` (do not rebuild them). `make deps` is only for platform maintainers; locally-built deps in `lib/` override the precompiled ones and must be manually removed to revert.
-
-`make update` syncs both the repo and the precompiled libraries — run it after pulling if the build breaks on missing/outdated libs.
+Library dependencies are **pre-built** and pulled into `lib/` by `make update` (do not rebuild them). `make deps` is only for platform maintainers; locally-built deps in `lib/` override the precompiled ones and must be manually removed to revert. Run `make update` after pulling if the build breaks on missing/outdated libs.
 
 ## Testing
 
 ```sh
-make test                  # run the full ctest suite (build must have tests enabled, e.g. `make developer`)
+make test                  # Linux/macOS: run the full ctest suite
 ```
+```bat
+make test                  :: Windows: same, via make.bat
+```
+The build must have tests enabled (`make developer` or `make with_tests`).
 
 Tests live in `tests/`:
 - `tests/gtests/` — C/C++ unit tests (GoogleTest).

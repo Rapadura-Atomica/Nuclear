@@ -55,6 +55,7 @@ const EnumPropertyItem rna_enum_id_type_items[] = {
     {ID_PC, "PAINTCURVE", ICON_CURVE_BEZCURVE, "Paint Curve", ""},
     {ID_PAL, "PALETTE", ICON_COLOR, "Palette", ""},
     {ID_PA, "PARTICLE", ICON_PARTICLE_DATA, "Particle", ""},
+    {ID_PG, "PEGRIG", ICON_ARMATURE_DATA, "Peg Rig", ""},
     {ID_PT, "POINTCLOUD", ICON_POINTCLOUD_DATA, "Point Cloud", ""},
     {ID_SCE, "SCENE", ICON_SCENE_DATA, "Scene", ""},
     {ID_SCR, "SCREEN", ICON_WORKSPACE, "Screen", ""},
@@ -185,6 +186,7 @@ const IDFilterEnumPropertyItem rna_enum_id_type_filter_items[] = {
      ICON_POINTCLOUD_DATA,
      "Point Clouds",
      "Show/hide Point Cloud data-blocks"},
+    {FILTER_ID_PG, "filter_pegrig", ICON_ARMATURE_DATA, "Peg Rigs", "Show Peg Rig data-blocks"},
     {FILTER_ID_SCE, "filter_scene", ICON_SCENE_DATA, "Scenes", "Show Scene data-blocks"},
     {FILTER_ID_SPK, "filter_speaker", ICON_SPEAKER, "Speakers", "Show Speaker data-blocks"},
     {FILTER_ID_SO, "filter_sound", ICON_SOUND, "Sounds", "Show Sound data-blocks"},
@@ -448,6 +450,9 @@ short RNA_type_to_ID_code(const StructRNA *type)
   if (base_type == &RNA_PaintCurve) {
     return ID_PC;
   }
+  if (base_type == &RNA_PegRig) {
+    return ID_PG;
+  }
   if (base_type == &RNA_PointCloud) {
     return ID_PT;
   }
@@ -548,6 +553,8 @@ StructRNA *ID_code_to_RNA_type(short idcode)
       return &RNA_Palette;
     case ID_PC:
       return &RNA_PaintCurve;
+    case ID_PG:
+      return &RNA_PegRig;
     case ID_PT:
       return &RNA_PointCloud;
     case ID_LP:

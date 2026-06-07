@@ -261,6 +261,7 @@ set(SRC
   intern/pbvh_pixels.cc
   intern/pbvh_pixels_copy.cc
   intern/pbvh_uv_islands.cc
+  intern/pegrig.cc
   intern/pointcache.cc
   intern/pointcloud.cc
   intern/pointcloud_attributes.cc
@@ -493,6 +494,7 @@ set(SRC
   BKE_paint_types.hh
   BKE_particle.h
   BKE_path_templates.hh
+  BKE_pegrig.hh
   BKE_pointcache.h
   BKE_pointcloud.hh
   BKE_pose_backup.h

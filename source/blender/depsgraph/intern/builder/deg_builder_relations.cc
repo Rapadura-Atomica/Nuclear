@@ -51,6 +51,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_sequence_types.h"
 #include "DNA_sound_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_speaker_types.h"
 #include "DNA_texture_types.h"
 #include "DNA_vfont_types.h"
@@ -581,6 +582,9 @@ void DepsgraphRelationBuilder::build_id(ID *id)
       break;
     case ID_SPK:
       build_speaker((Speaker *)id);
+      break;
+    case ID_PG:
+      build_pegrig((PegRig *)id);
       break;
     case ID_SO:
       build_sound((bSound *)id);
@@ -1464,6 +1468,17 @@ void DepsgraphRelationBuilder::build_constraints(ID *id,
       if (data->cache_file) {
         ComponentKey cache_key(&data->cache_file->id, NodeType::CACHE);
         add_relation(cache_key, constraint_op_key, cti->name);
+      }
+    }
+    else if (cti->type == CONSTRAINT_TYPE_FOLLOWPEG) {
+      /* The peg rig is not an object target; depend on its parameters (animated peg transforms),
+       * so the owner re-evaluates when the rig's pegs move. Peg hierarchy is folded into the
+       * peg's world matrix at evaluation time, so a single relation to the rig is enough. */
+      bFollowPegConstraint *data = (bFollowPegConstraint *)con->data;
+      if (data->rig != nullptr) {
+        build_id(&data->rig->id);
+        ComponentKey rig_key(&data->rig->id, NodeType::PARAMETERS);
+        add_relation(rig_key, constraint_op_key, cti->name);
       }
     }
     else if (BKE_constraint_targets_get(con, &targets)) {
@@ -3394,6 +3409,20 @@ void DepsgraphRelationBuilder::build_speaker(Speaker *speaker)
     ComponentKey sound_key(&speaker->sound->id, NodeType::AUDIO);
     add_relation(sound_key, speaker_key, "Sound -> Speaker");
   }
+}
+
+void DepsgraphRelationBuilder::build_pegrig(PegRig *pegrig)
+{
+  if (built_map_.check_is_built_and_tag(pegrig)) {
+    return;
+  }
+
+  const BuilderStack::ScopedEntry stack_entry = stack_.trace(pegrig->id);
+
+  build_idproperties(pegrig->id.properties);
+  build_idproperties(pegrig->id.system_properties);
+  build_animdata(&pegrig->id);
+  build_parameters(&pegrig->id);
 }
 
 void DepsgraphRelationBuilder::build_sound(bSound *sound)

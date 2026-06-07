@@ -251,6 +251,10 @@ void OBJECT_OT_shaderfx_move_up(wmOperatorType *ot);
 void OBJECT_OT_shaderfx_move_down(wmOperatorType *ot);
 void OBJECT_OT_shaderfx_move_to_index(wmOperatorType *ot);
 
+/* `object_pegrig.cc` */
+
+void OBJECT_OT_pegrig_peg_new(wmOperatorType *ot);
+
 /* `object_constraint.cc` */
 
 void OBJECT_OT_constraint_add(wmOperatorType *ot);

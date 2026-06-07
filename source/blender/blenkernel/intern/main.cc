@@ -154,6 +154,7 @@ void BKE_main_clear(Main &bmain)
         CASE_ID_INDEX(INDEX_ID_CA);
         CASE_ID_INDEX(INDEX_ID_SPK);
         CASE_ID_INDEX(INDEX_ID_LP);
+        CASE_ID_INDEX(INDEX_ID_PG);
         CASE_ID_INDEX(INDEX_ID_OB);
         CASE_ID_INDEX(INDEX_ID_GR);
         CASE_ID_INDEX(INDEX_ID_PAL);
@@ -960,6 +961,8 @@ ListBase *which_libbase(Main *bmain, short type)
       return &(bmain->gpencils);
     case ID_GP:
       return &(bmain->grease_pencils);
+    case ID_PG:
+      return &(bmain->pegrigs);
     case ID_MC:
       return &(bmain->movieclips);
     case ID_MSK:
@@ -1001,6 +1004,7 @@ MainListsArray BKE_main_lists_get(Main &bmain)
   /* Referenced by nodes, objects, view, scene etc, before to free after. */
   lb[INDEX_ID_GD_LEGACY] = &bmain.gpencils;
   lb[INDEX_ID_GP] = &bmain.grease_pencils;
+  lb[INDEX_ID_PG] = &bmain.pegrigs;
 
   lb[INDEX_ID_NT] = &bmain.nodetrees;
   lb[INDEX_ID_IM] = &bmain.images;

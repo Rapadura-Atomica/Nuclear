@@ -14,6 +14,7 @@
 #include "DNA_listBase.h"
 
 struct Text;
+struct PegRig;
 
 /** A Constraint. */
 typedef struct bConstraint {
@@ -381,6 +382,20 @@ typedef struct bChildOfConstraint {
   char subtarget[/*MAX_NAME*/ 64];
 } bChildOfConstraint;
 
+/* Follow Peg Constraint (Nuclear): make the owner follow a peg in a peg rig. */
+typedef struct bFollowPegConstraint {
+  /** Peg rig holding the controlling peg. */
+  struct PegRig *rig;
+  /** Name of the peg within the rig; authoritative (peg_index is a resolved cache). */
+  char peg_name[/*MAX_NAME*/ 64];
+  /** Cached index of the peg in #PegRig::pegs, resolved from peg_name. */
+  int peg_index;
+  /** #eFollowPeg_Flags. */
+  int flag;
+  /** Inverse correction matrix, to keep the owner's transform when it is bound to the peg. */
+  float invmat[4][4];
+} bFollowPegConstraint;
+
 /* Generic Transform->Transform Constraint */
 typedef struct bTransformConstraint {
   /** Target (i.e. 'driver' object/bone). */
@@ -663,6 +678,8 @@ typedef enum eBConstraint_Types {
   CONSTRAINT_TYPE_TRANSFORM_CACHE = 29,
   CONSTRAINT_TYPE_ARMATURE = 30,
   CONSTRAINT_TYPE_GEOMETRY_ATTRIBUTE = 31,
+  /** Follow a peg in a peg rig (Nuclear). */
+  CONSTRAINT_TYPE_FOLLOWPEG = 32,
 
   /* This should be the last entry in this list. */
   NUM_CONSTRAINT_TYPES,
@@ -787,6 +804,12 @@ typedef enum eCopyTransforms_Flags {
   /* Remove shear from the target matrix. */
   TRANSLIKE_REMOVE_TARGET_SHEAR = (1 << 0),
 } eCopyTransforms_Flags;
+
+/** #bFollowPegConstraint.flag */
+typedef enum eFollowPeg_Flags {
+  /* Recompute the inverse correction matrix on next evaluation (keep current transform). */
+  FOLLOWPEG_SET_INVERSE = (1 << 0),
+} eFollowPeg_Flags;
 
 /** #bTransLikeConstraint.mix_mode */
 typedef enum eCopyTransforms_MixMode {
