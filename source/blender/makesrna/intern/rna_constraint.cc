@@ -170,6 +170,11 @@ const EnumPropertyItem rna_enum_constraint_type_items[] = {
      ICON_CON_SHRINKWRAP,
      "Shrinkwrap",
      "Restrict movements to surface of target mesh"},
+    {CONSTRAINT_TYPE_FOLLOWPEG,
+     "FOLLOW_PEG",
+     ICON_CONSTRAINT,
+     "Follow Peg",
+     "Make the owner follow a peg in a Nuclear peg rig"},
     {0, nullptr, 0, nullptr, nullptr},
 };
 
@@ -388,6 +393,8 @@ static StructRNA *rna_ConstraintType_refine(PointerRNA *ptr)
       return &RNA_TransformCacheConstraint;
     case CONSTRAINT_TYPE_GEOMETRY_ATTRIBUTE:
       return &RNA_GeometryAttributeConstraint;
+    case CONSTRAINT_TYPE_FOLLOWPEG:
+      return &RNA_FollowPegConstraint;
     default:
       return &RNA_UnknownType;
   }
@@ -3759,6 +3766,40 @@ static void rna_def_constraint_geometry_attribute(BlenderRNA *brna)
   RNA_define_lib_overridable(false);
 }
 
+static void rna_def_constraint_follow_peg(BlenderRNA *brna)
+{
+  StructRNA *srna;
+  PropertyRNA *prop;
+
+  srna = RNA_def_struct(brna, "FollowPegConstraint", "Constraint");
+  RNA_def_struct_ui_text(
+      srna, "Follow Peg Constraint", "Make the owner follow a peg in a Nuclear peg rig");
+  RNA_def_struct_sdna_from(srna, "bFollowPegConstraint", "data");
+  RNA_def_struct_ui_icon(srna, ICON_CONSTRAINT);
+
+  RNA_define_lib_overridable(true);
+
+  prop = RNA_def_property(srna, "rig", PROP_POINTER, PROP_NONE);
+  RNA_def_property_pointer_sdna(prop, nullptr, "rig");
+  RNA_def_property_struct_type(prop, "PegRig");
+  RNA_def_property_flag(prop, PROP_EDITABLE);
+  RNA_def_property_ui_text(prop, "Peg Rig", "Peg rig that holds the controlling peg");
+  RNA_def_property_update(prop, NC_OBJECT | ND_CONSTRAINT, "rna_Constraint_dependency_update");
+
+  prop = RNA_def_property(srna, "peg_name", PROP_STRING, PROP_NONE);
+  RNA_def_property_string_sdna(prop, nullptr, "peg_name");
+  RNA_def_property_ui_text(prop, "Peg", "Name of the peg within the rig to follow");
+  RNA_def_property_update(prop, NC_OBJECT | ND_CONSTRAINT, "rna_Constraint_update");
+
+  prop = RNA_def_property(srna, "set_inverse_pending", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", FOLLOWPEG_SET_INVERSE);
+  RNA_def_property_ui_text(
+      prop, "Set Inverse Pending", "Recalculate the inverse correction on the next evaluation");
+  RNA_def_property_update(prop, NC_OBJECT | ND_CONSTRAINT, "rna_Constraint_update");
+
+  RNA_define_lib_overridable(false);
+}
+
 /* Define the base struct for constraints. */
 
 void RNA_def_constraint(BlenderRNA *brna)
@@ -3917,6 +3958,7 @@ void RNA_def_constraint(BlenderRNA *brna)
   rna_def_constraint_object_solver(brna);
   rna_def_constraint_transform_cache(brna);
   rna_def_constraint_geometry_attribute(brna);
+  rna_def_constraint_follow_peg(brna);
 }
 
 #endif

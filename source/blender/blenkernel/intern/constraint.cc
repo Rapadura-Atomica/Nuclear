@@ -43,6 +43,7 @@
 
 #include "DNA_lattice_types.h"
 #include "DNA_movieclip_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_tracking_types.h"
 
@@ -69,6 +70,7 @@
 #include "BKE_movieclip.h"
 #include "BKE_object.hh"
 #include "BKE_object_types.hh"
+#include "BKE_pegrig.hh"
 #include "BKE_scene.hh"
 #include "BKE_shrinkwrap.hh"
 #include "BKE_tracking.h"
@@ -1155,6 +1157,85 @@ static bConstraintTypeInfo CTI_CHILDOF = {
     /*flush_constraint_targets*/ childof_flush_tars,
     /*get_target_matrix*/ default_get_tarmat,
     /*evaluate_constraint*/ childof_evaluate,
+};
+
+/* -------- Follow Peg Constraint (Nuclear) ------- */
+
+static void followpeg_new_data(void *cdata)
+{
+  bFollowPegConstraint *data = (bFollowPegConstraint *)cdata;
+
+  data->flag = FOLLOWPEG_SET_INVERSE;
+  data->peg_index = -1;
+  unit_m4(data->invmat);
+}
+
+static void followpeg_id_looper(bConstraint *con, ConstraintIDFunc func, void *userdata)
+{
+  bFollowPegConstraint *data = static_cast<bFollowPegConstraint *>(con->data);
+
+  /* The peg rig is the (non-object) target. Reporting it here is what lets copy-on-eval remap
+   * the pointer to the evaluated rig and what makes the dependency visible to the depsgraph. */
+  func(con, (ID **)&data->rig, false, userdata);
+}
+
+static void followpeg_evaluate(bConstraint *con, bConstraintOb *cob, ListBase * /*targets*/)
+{
+  bFollowPegConstraint *data = static_cast<bFollowPegConstraint *>(con->data);
+
+  if (data->rig == nullptr) {
+    return;
+  }
+
+  /* Resolve (and cache) the peg index from its authoritative name. */
+  int index = data->peg_index;
+  if (index < 0 || index >= data->rig->pegs_num ||
+      !STREQ(data->rig->pegs[index].name, data->peg_name))
+  {
+    index = BKE_pegrig_peg_index_by_name(data->rig, data->peg_name);
+    data->peg_index = index;
+  }
+  if (index < 0) {
+    return;
+  }
+
+  /* The peg's world matrix, computed read-only (safe across objects sharing the rig). */
+  float parmat[4][4];
+  BKE_pegrig_peg_compute_world_matrix(data->rig, index, parmat);
+
+  /* Compute the inverse correction matrix once, so binding keeps the owner's current transform. */
+  if (data->flag & FOLLOWPEG_SET_INVERSE) {
+    invert_m4_m4(data->invmat, parmat);
+    data->flag &= ~FOLLOWPEG_SET_INVERSE;
+
+    /* Write the computed matrix back to the master copy during copy-on-eval evaluation. */
+    bConstraint *orig_con = constraint_find_original_for_update(cob, con);
+    if (orig_con != nullptr) {
+      bFollowPegConstraint *orig_data = static_cast<bFollowPegConstraint *>(orig_con->data);
+      copy_m4_m4(orig_data->invmat, data->invmat);
+      orig_data->flag &= ~FOLLOWPEG_SET_INVERSE;
+    }
+  }
+
+  /* Parent the owner to the peg: owner = peg_world * inverse_correction * owner. */
+  float orig_cob_matrix[4][4];
+  copy_m4_m4(orig_cob_matrix, cob->matrix);
+  mul_m4_series(cob->matrix, parmat, data->invmat, orig_cob_matrix);
+}
+
+static bConstraintTypeInfo CTI_FOLLOWPEG = {
+    /*type*/ CONSTRAINT_TYPE_FOLLOWPEG,
+    /*size*/ sizeof(bFollowPegConstraint),
+    /*name*/ N_("Follow Peg"),
+    /*struct_name*/ "bFollowPegConstraint",
+    /*free_data*/ nullptr,
+    /*id_looper*/ followpeg_id_looper,
+    /*copy_data*/ nullptr,
+    /*new_data*/ followpeg_new_data,
+    /*get_constraint_targets*/ nullptr,
+    /*flush_constraint_targets*/ nullptr,
+    /*get_target_matrix*/ nullptr,
+    /*evaluate_constraint*/ followpeg_evaluate,
 };
 
 /* -------- TrackTo Constraint ------- */
@@ -5768,6 +5849,7 @@ static void constraints_init_typeinfo()
   constraintsTypeInfo[29] = &CTI_TRANSFORM_CACHE; /* Transform Cache Constraint */
   constraintsTypeInfo[30] = &CTI_ARMATURE;        /* Armature Constraint */
   constraintsTypeInfo[31] = &CTI_ATTRIBUTE;       /* Attribute Transform Constraint */
+  constraintsTypeInfo[32] = &CTI_FOLLOWPEG;       /* Follow Peg Constraint (Nuclear) */
 }
 
 const bConstraintTypeInfo *BKE_constraint_typeinfo_from_type(int type)

@@ -107,6 +107,7 @@
 #include "DNA_movieclip_types.h"
 #include "DNA_object_types.h"
 #include "DNA_particle_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_pointcloud_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_space_types.h"
@@ -140,6 +141,7 @@
 #include "DNA_movieclip_defaults.h"
 #include "DNA_object_defaults.h"
 #include "DNA_particle_defaults.h"
+#include "DNA_pegrig_defaults.h"
 #include "DNA_pointcloud_defaults.h"
 #include "DNA_scene_defaults.h"
 #include "DNA_space_defaults.h"
@@ -227,6 +229,9 @@ SDNA_DEFAULT_DECL_STRUCT(Object);
 
 /* DNA_particle_defaults.h */
 SDNA_DEFAULT_DECL_STRUCT(ParticleSettings);
+
+/* DNA_pegrig_defaults.h */
+SDNA_DEFAULT_DECL_STRUCT(PegRig);
 
 /* DNA_pointcloud_defaults.h */
 SDNA_DEFAULT_DECL_STRUCT(PointCloud);
@@ -489,6 +494,9 @@ const void *DNA_default_table[SDNA_TYPE_MAX] = {
 
     /* DNA_particle_defaults.h */
     SDNA_DEFAULT_DECL(ParticleSettings),
+
+    /* DNA_pegrig_defaults.h */
+    SDNA_DEFAULT_DECL(PegRig),
 
     /* DNA_pointcloud_defaults.h */
     SDNA_DEFAULT_DECL(PointCloud),

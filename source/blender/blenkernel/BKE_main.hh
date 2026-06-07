@@ -308,6 +308,8 @@ struct Main : blender::NonCopyable, blender::NonMovable {
   /** Legacy Grease Pencil. */
   ListBase gpencils = {};
   ListBase grease_pencils = {};
+  /** Nuclear peg rigs. */
+  ListBase pegrigs = {};
   ListBase movieclips = {};
   ListBase masks = {};
   ListBase linestyles = {};

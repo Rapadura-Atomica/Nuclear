@@ -28,6 +28,7 @@
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_modifier.hh"
+#include "BKE_pegrig.hh"
 #include "BKE_nla.hh"
 #include "BKE_scene.hh"
 
@@ -1025,6 +1026,13 @@ static TransConvertTypeInfo *convert_type_get(const TransInfo *t, Object **r_obj
     if (active != nullptr && active->is_group()) {
       return &greasepencil::TransConvertType_GreasePencilPeg;
     }
+  }
+  /* A drawing object bound to a peg (Follow Peg constraint) is posed through its peg, so transform
+   * the peg instead of the object itself (Nuclear cut-out workflow). */
+  if (ob && ob->type == OB_GREASE_PENCIL && ob->mode == OB_MODE_OBJECT &&
+      BKE_object_find_followpeg_constraint(ob) != nullptr)
+  {
+    return &TransConvertType_PegRigPeg;
   }
   return &TransConvertType_Object;
 }

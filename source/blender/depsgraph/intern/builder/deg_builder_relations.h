@@ -51,6 +51,7 @@ struct MovieClip;
 struct Object;
 struct ParticleSettings;
 struct ParticleSystem;
+struct PegRig;
 struct Scene;
 struct Speaker;
 struct Tex;
@@ -252,6 +253,7 @@ class DepsgraphRelationBuilder : public DepsgraphBuilder {
   virtual void build_movieclip(MovieClip *clip);
   virtual void build_lightprobe(LightProbe *probe);
   virtual void build_speaker(Speaker *speaker);
+  virtual void build_pegrig(PegRig *pegrig);
   virtual void build_sound(bSound *sound);
   virtual void build_scene_sequencer(Scene *scene);
   virtual void build_scene_audio(Scene *scene);

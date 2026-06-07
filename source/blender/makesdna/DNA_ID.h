@@ -1235,6 +1235,7 @@ typedef enum IDRecalcFlag {
 #define FILTER_ID_LI (1ULL << 39)
 #define FILTER_ID_GP (1ULL << 40)
 #define FILTER_ID_IP (1ULL << 41)
+#define FILTER_ID_PG (1ULL << 42)
 
 #define FILTER_ID_ALL \
   (FILTER_ID_AC | FILTER_ID_AR | FILTER_ID_BR | FILTER_ID_CA | FILTER_ID_CU_LEGACY | \
@@ -1244,7 +1245,7 @@ typedef enum IDRecalcFlag {
    FILTER_ID_SPK | FILTER_ID_SO | FILTER_ID_TE | FILTER_ID_TXT | FILTER_ID_VF | FILTER_ID_WO | \
    FILTER_ID_CF | FILTER_ID_WS | FILTER_ID_LP | FILTER_ID_CV | FILTER_ID_PT | FILTER_ID_VO | \
    FILTER_ID_SIM | FILTER_ID_KE | FILTER_ID_SCR | FILTER_ID_WM | FILTER_ID_LI | FILTER_ID_GP | \
-   FILTER_ID_IP)
+   FILTER_ID_IP | FILTER_ID_PG)
 
 /**
  * This enum defines the index assigned to each type of IDs in the array returned by
@@ -1334,6 +1335,9 @@ typedef enum eID_Index {
   INDEX_ID_SPK,
   INDEX_ID_LP,
   INDEX_ID_GP,
+
+  /* Peg rig: referenced by objects through a Follow Peg constraint, owns no other ID. */
+  INDEX_ID_PG,
 
   /* Collection and object types. */
   INDEX_ID_OB,

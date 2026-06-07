@@ -304,24 +304,23 @@ class _defs_annotate:
         )
 
 
-class _defs_grease_pencil_peg:
+class _defs_pegrig:
 
     @ToolDef.from_fn
-    def select():
+    def pose():
+        def draw_settings(_context, layout, _tool):
+            layout.operator("object.pegrig_peg_new", text="New Peg")
         return dict(
-            idname="builtin.peg_select",
-            label="Peg Select",
+            idname="builtin.peg_pose",
+            label="Peg Pose",
             description=(
-                "Select pegs only. Click a peg to select it; Shift+B selects its parent peg.\n"
-                "Use the regular select tools for the drawings"
+                "Pose the Nuclear peg rig. Click a drawing to select it, then drag to move the\n"
+                "peg that controls it. Use \"New Peg\" to bind the selected drawings to a new peg"
             ),
             icon="ops.transform.translate",
             widget=None,
-            keymap=(
-                ("object.grease_pencil_peg_select", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
-                ("object.grease_pencil_peg_select_parent",
-                 {"type": 'B', "value": 'PRESS', "shift": True}, None),
-            ),
+            keymap="3D View Tool: Tweak",
+            draw_settings=draw_settings,
         )
 
 
@@ -3723,7 +3722,7 @@ class VIEW3D_PT_tools_active(ToolSelectPanelHelper, Panel):
         'OBJECT': [
             *_tools_default,
             None,
-            _defs_grease_pencil_peg.select,
+            _defs_pegrig.pose,
             None,
             _tools_view3d_add,
         ],

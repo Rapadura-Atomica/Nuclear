@@ -43,6 +43,7 @@
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_sequence_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_sound_types.h"
 #include "DNA_speaker_types.h"
 #include "DNA_texture_types.h"
@@ -641,6 +642,9 @@ void DepsgraphNodeBuilder::build_id(ID *id, const bool force_be_visible)
       break;
     case ID_SPK:
       build_speaker((Speaker *)id);
+      break;
+    case ID_PG:
+      build_pegrig((PegRig *)id);
       break;
     case ID_SO:
       build_sound((bSound *)id);
@@ -2271,6 +2275,19 @@ void DepsgraphNodeBuilder::build_speaker(Speaker *speaker)
   if (speaker->sound != nullptr) {
     build_sound(speaker->sound);
   }
+}
+
+void DepsgraphNodeBuilder::build_pegrig(PegRig *pegrig)
+{
+  if (built_map_.check_is_built_and_tag(pegrig)) {
+    return;
+  }
+  /* Pegs are resolved on the fly when objects following them evaluate, so the rig only needs its
+   * animation and parameters in the graph; objects depend on the PARAMETERS component. */
+  build_idproperties(pegrig->id.properties);
+  build_idproperties(pegrig->id.system_properties);
+  build_animdata(&pegrig->id);
+  build_parameters(&pegrig->id);
 }
 
 void DepsgraphNodeBuilder::build_sound(bSound *sound)

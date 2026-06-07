@@ -178,6 +178,7 @@ RNA_MAIN_LISTBASE_FUNCS_DEF(screens)
 RNA_MAIN_LISTBASE_FUNCS_DEF(shapekeys)
 RNA_MAIN_LISTBASE_FUNCS_DEF(sounds)
 RNA_MAIN_LISTBASE_FUNCS_DEF(speakers)
+RNA_MAIN_LISTBASE_FUNCS_DEF(pegrigs)
 RNA_MAIN_LISTBASE_FUNCS_DEF(texts)
 RNA_MAIN_LISTBASE_FUNCS_DEF(textures)
 RNA_MAIN_LISTBASE_FUNCS_DEF(volumes)
@@ -400,6 +401,12 @@ void RNA_def_main(BlenderRNA *brna)
        "Speakers",
        "Speaker data-blocks",
        RNA_def_main_speakers},
+      {"pegrigs",
+       "PegRig",
+       "rna_Main_pegrigs_begin",
+       "Peg Rigs",
+       "Peg Rig data-blocks",
+       RNA_def_main_pegrigs},
       {"sounds",
        "Sound",
        "rna_Main_sounds_begin",
