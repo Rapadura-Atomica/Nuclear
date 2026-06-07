@@ -46,9 +46,11 @@
 #include "DNA_meta_types.h"
 #include "DNA_movieclip_types.h"
 #include "DNA_node_types.h"
+#include "DNA_constraint_types.h"
 #include "DNA_object_force_types.h"
 #include "DNA_object_types.h"
 #include "DNA_particle_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_pointcloud_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
@@ -83,6 +85,7 @@
 #include "BKE_material.hh"
 #include "BKE_modifier.hh"
 #include "BKE_node.hh"
+#include "BKE_pegrig.hh"
 #include "BKE_node_runtime.hh"
 
 #include "ED_anim_api.hh"
@@ -3333,6 +3336,17 @@ static size_t animdata_filter_dopesheet_ob(bAnimContext *ac,
     if (ob->type == OB_GREASE_PENCIL && (ob->data) && !(ads_filterflag & ADS_FILTER_NOGPENCIL)) {
       tmp_items += animdata_filter_grease_pencil_data(
           ac, &tmp_data, static_cast<GreasePencil *>(ob->data), filter_mode);
+    }
+
+    /* Nuclear peg rig: surface the controlling rig's animation under the bound drawing object, so
+     * selecting the drawing shows/edits its peg keyframes in the Dope Sheet. */
+    if (ob->constraints.first != nullptr) {
+      if (bConstraint *con = BKE_object_find_followpeg_constraint(ob)) {
+        bFollowPegConstraint *fpeg = static_cast<bFollowPegConstraint *>(con->data);
+        if (fpeg->rig != nullptr && fpeg->rig->adt != nullptr) {
+          tmp_items += animfilter_block_data(ac, &tmp_data, &fpeg->rig->id, filter_mode);
+        }
+      }
     }
   }
   END_ANIMFILTER_SUBCHANNELS;
