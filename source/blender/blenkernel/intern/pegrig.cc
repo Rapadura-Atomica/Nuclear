@@ -168,6 +168,52 @@ int BKE_pegrig_peg_add(PegRig *rig, const char *name, const int parent_index)
   return new_index;
 }
 
+bool BKE_pegrig_peg_remove(PegRig *rig, const int peg_index)
+{
+  if (peg_index < 0 || peg_index >= rig->pegs_num) {
+    return false;
+  }
+
+  /* Fix up parent references: children of the removed peg are reparented to its parent, and any
+   * index greater than the removed one shifts down by one. */
+  const int removed_parent = rig->pegs[peg_index].parent_index;
+  for (int i = 0; i < rig->pegs_num; i++) {
+    int *parent = &rig->pegs[i].parent_index;
+    if (*parent == peg_index) {
+      *parent = (removed_parent > peg_index) ? removed_parent - 1 : removed_parent;
+    }
+    else if (*parent > peg_index) {
+      *parent -= 1;
+    }
+  }
+
+  /* Shift the tail down over the removed element and shrink the array. */
+  const int new_num = rig->pegs_num - 1;
+  if (peg_index < new_num) {
+    memmove(&rig->pegs[peg_index],
+            &rig->pegs[peg_index + 1],
+            sizeof(PegRigPeg) * (new_num - peg_index));
+  }
+  if (new_num == 0) {
+    MEM_SAFE_FREE(rig->pegs);
+  }
+  else {
+    rig->pegs = static_cast<PegRigPeg *>(MEM_recallocN(rig->pegs, sizeof(PegRigPeg) * new_num));
+  }
+  rig->pegs_num = new_num;
+
+  if (rig->active_peg_index == peg_index) {
+    rig->active_peg_index = -1;
+  }
+  else if (rig->active_peg_index > peg_index) {
+    rig->active_peg_index -= 1;
+  }
+
+  /* Constraints still referencing the removed peg by name resolve to -1 at evaluation time and
+   * simply stop following, so no fixup is needed here. */
+  return true;
+}
+
 int BKE_pegrig_peg_index_by_name(const PegRig *rig, const char *name)
 {
   if (name == nullptr) {
