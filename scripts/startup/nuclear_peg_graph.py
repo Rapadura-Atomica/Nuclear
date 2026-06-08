@@ -219,13 +219,26 @@ def rebuild(tree):
     rig = tree.rig
     _SYNCING = True
     try:
+        # Preserve the user's manual node layout: remember existing node positions (by peg name /
+        # object name) so adding or removing a peg only auto-places the NEW nodes.
+        saved_loc = {}
+        for n in tree.nodes:
+            if n.bl_idname == _PEG_NODE_ID:
+                saved_loc[('peg', n.peg_name)] = tuple(n.location)
+            elif n.bl_idname == _DRAWING_NODE_ID:
+                saved_loc[('draw', n.object_name)] = tuple(n.location)
+
         tree.nodes.clear()
         if rig is None:
             return
 
         rows = {}
 
-        def place(node, depth):
+        def place(node, depth, key):
+            loc = saved_loc.get(key)
+            if loc is not None:
+                node.location = loc
+                return
             row = rows.get(depth, 0)
             rows[depth] = row + 1
             node.location = (depth * 240.0, -row * 150.0)
@@ -235,7 +248,7 @@ def rebuild(tree):
         for i, peg in enumerate(rig.pegs):
             node = tree.nodes.new(_PEG_NODE_ID)
             node.peg_name = peg.name
-            place(node, _peg_depth(rig, i))
+            place(node, _peg_depth(rig, i), ('peg', peg.name))
             peg_nodes.append(node)
 
         # Parent links (parent.output -> child.input).
@@ -250,7 +263,7 @@ def rebuild(tree):
         for ob, peg_name in _bound_objects(rig):
             dn = tree.nodes.new(_DRAWING_NODE_ID)
             dn.object_name = ob.name
-            place(dn, max_depth + 1)
+            place(dn, max_depth + 1, ('draw', ob.name))
             peg_node = peg_node_by_name.get(peg_name)
             if peg_node is not None:
                 tree.links.new(peg_node.outputs[0], dn.inputs[0])
