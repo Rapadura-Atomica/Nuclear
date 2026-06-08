@@ -5,10 +5,12 @@
 /** \file
  * \ingroup modifiers
  *
- * Grease Pencil "Curve" deform modifier: deforms strokes along a curve object,
- * reusing the same spline deformation math as the mesh Curve modifier
- * (`BKE_curve_deform_coords`). Lets 2D animators bend a drawing by editing a
- * bezier curve, without needing an armature.
+ * Grease Pencil "Curve" deform modifier: deforms strokes along a curve object.
+ * The artist creates a bezier curve over the drawing, positions/shapes it, then
+ * binds it (see OBJECT_OT_greasepencil_curve_bind): each point stores its rest-pose
+ * offset in the curve's local frame, so bending the curve bends the drawing locally
+ * (Toon Boom style) while the rest pose stays identical. Until bound the modifier is
+ * a pass-through, letting 2D animators bend a drawing without needing an armature.
  */
 
 #include <algorithm>
@@ -90,8 +92,8 @@ static void update_depsgraph(ModifierData *md, const ModifierUpdateDepsgraphCont
 {
   auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(md);
   if (cmd->object != nullptr) {
-    /* The curve modifier needs the evaluated curve path/anim data, so request it explicitly
-     * (otherwise `BKE_curve_deform_coords` has nothing to follow). */
+    /* The bound-mode deform samples the evaluated curve path (via BKE_where_on_path), so request
+     * the curve's geometry/path eval explicitly otherwise there is nothing to follow. */
     DEG_add_object_relation(
         ctx->node, cmd->object, DEG_OB_COMP_TRANSFORM, "Grease Pencil Curve Modifier");
     DEG_add_object_relation(
@@ -180,24 +182,10 @@ static void modify_curves(ModifierData *md, const ModifierEvalContext *ctx, Draw
     });
   }
   else {
-    /* Legacy direct deform; `defaxis` is off-by-one vs. the DNA enum (see mesh Curve mod). */
-    Array<float3> deformed(positions.as_span());
-    const short defaxis = short(std::clamp<int>(cmd->deform_axis - 1, 0, 5));
-    BKE_curve_deform_coords(cmd->object,
-                            ctx->object,
-                            reinterpret_cast<float (*)[3]>(deformed.data()),
-                            deformed.size(),
-                            nullptr,
-                            -1,
-                            0,
-                            defaxis);
-    curves_mask.foreach_index(GrainSize(512), [&](const int64_t curve_i) {
-      const IndexRange points = points_by_curve[curve_i];
-      for (const int64_t point_i : points) {
-        const float factor = cmd->strength * vgroup_weights[point_i];
-        positions[point_i] = math::interpolate(positions[point_i], deformed[point_i], factor);
-      }
-    });
+    /* Unbound: leave the drawing untouched so the artist can freely position and shape the curve
+     * over it first. The modifier only starts influencing the drawing once "Bind to Rest Pose"
+     * stores the per-point binding (see OBJECT_OT_greasepencil_curve_bind). */
+    return;
   }
 
   drawing.tag_positions_changed();
@@ -235,21 +223,28 @@ static void panel_draw(const bContext *C, Panel *panel)
 
   PointerRNA ob_ptr;
   PointerRNA *ptr = modifier_panel_get_property_pointers(panel, &ob_ptr);
+  const auto *cmd = static_cast<const GreasePencilCurveModifierData *>(ptr->data);
 
   layout->use_property_split_set(true);
 
   layout->prop(ptr, "object", UI_ITEM_NONE, std::nullopt, ICON_NONE);
-  layout->prop(ptr, "deform_axis", UI_ITEM_NONE, std::nullopt, ICON_NONE);
   layout->prop(ptr, "strength", UI_ITEM_R_SLIDER, std::nullopt, ICON_NONE);
 
-  /* Bind / Unbind to rest pose: lets the curve sit on the drawing and deform from there. */
-  uiLayout *bind_row = &layout->row(true);
-  PointerRNA bind_ptr = bind_row->op(
-      "OBJECT_OT_greasepencil_curve_bind", IFACE_("Bind to Rest Pose"), ICON_NONE);
-  RNA_boolean_set(&bind_ptr, "unbind", false);
-  PointerRNA unbind_ptr = bind_row->op("OBJECT_OT_greasepencil_curve_bind", IFACE_("Unbind"),
-                                       ICON_NONE);
-  RNA_boolean_set(&unbind_ptr, "unbind", true);
+  if (cmd->object == nullptr) {
+    /* No curve yet: one click builds a fitted curve, assigns it and binds, so the artist can
+     * start bending immediately instead of setting everything up by hand. */
+    layout->op("OBJECT_OT_greasepencil_curve_setup", IFACE_("Create Deform Curve"), ICON_NONE);
+  }
+  else {
+    /* Bind / Unbind to rest pose: lets the curve sit on the drawing and deform from there. */
+    uiLayout *bind_row = &layout->row(true);
+    PointerRNA bind_ptr = bind_row->op(
+        "OBJECT_OT_greasepencil_curve_bind", IFACE_("Bind to Rest Pose"), ICON_NONE);
+    RNA_boolean_set(&bind_ptr, "unbind", false);
+    PointerRNA unbind_ptr = bind_row->op("OBJECT_OT_greasepencil_curve_bind", IFACE_("Unbind"),
+                                         ICON_NONE);
+    RNA_boolean_set(&unbind_ptr, "unbind", true);
+  }
 
   if (uiLayout *influence_panel = layout->panel_prop(
           C, ptr, "open_influence_panel", IFACE_("Influence")))
