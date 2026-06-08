@@ -321,7 +321,7 @@ class _defs_pegrig:
                 "\"New Peg\" adds an unbound peg to that rig"
             ),
             icon="ops.transform.translate",
-            widget=None,
+            widget="NUCLEAR_GGT_curve_deform_points",
             keymap=(
                 ("object.pegrig_pick", {"type": 'LEFTMOUSE', "value": 'CLICK'}, None),
                 ("transform.translate",
