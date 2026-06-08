@@ -309,13 +309,16 @@ class _defs_pegrig:
     @ToolDef.from_fn
     def pose():
         def draw_settings(_context, layout, _tool):
-            layout.operator("object.pegrig_peg_new", text="New Peg")
+            col = layout.column(align=True)
+            col.operator("object.pegrig_new", text="New Rig")
+            col.operator("object.pegrig_peg_new", text="New Peg")
         return dict(
             idname="builtin.peg_pose",
             label="Peg Pose",
             description=(
                 "Pose the Nuclear peg rig. Click a drawing to select it, then drag to move the\n"
-                "peg that controls it. Use \"New Peg\" to bind the selected drawings to a new peg"
+                "peg that controls it. \"New Rig\" makes a rig from the selected drawings;\n"
+                "\"New Peg\" adds an unbound peg to that rig"
             ),
             icon="ops.transform.translate",
             widget=None,
