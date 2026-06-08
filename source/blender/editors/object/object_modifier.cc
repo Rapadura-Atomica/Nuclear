@@ -44,7 +44,9 @@
 #include "BKE_armature.hh"
 #include "BKE_context.hh"
 #include "BLI_array.hh"
+#include "BLI_math_matrix.h"
 #include "BLI_math_matrix.hh"
+#include "BLI_math_rotation.h"
 #include "BLI_math_vector.hh"
 
 #include "BKE_attribute.hh"
@@ -3715,14 +3717,18 @@ static Object *greasepencil_curve_create_for_drawing(bContext *C, Object *ob, Re
 
   Object *curve_ob = add_type(C, OB_CURVES_LEGACY, "Deform Curve", ob->loc, ob->rot, false, 0);
 
-  /* Match the GP object's transform so curve-local space lines up with the drawing (keeps the
-   * bind's GP->curve mapping a pure translation, i.e. an identity rest pose). */
-  copy_v3_v3(curve_ob->loc, ob->loc);
-  copy_v3_v3(curve_ob->rot, ob->rot);
-  copy_v3_v3(curve_ob->scale, ob->scale);
-  for (int i = 0; i < 4; i++) {
-    curve_ob->quat[i] = ob->quat[i];
-  }
+  /* Parent the curve to the Grease Pencil with an identity local transform. This makes curve-local
+   * space exactly GP-local space, so the fitted control points sit on the drawing and the bind's
+   * GP->curve mapping stays an identity rest pose. Parenting also makes the curve track every
+   * motion of the drawing object - including a Follow Peg constraint - so moving a peg carries the
+   * deform curve along and the arc-length binding remains valid. */
+  curve_ob->parent = ob;
+  curve_ob->partype = PAROBJECT;
+  zero_v3(curve_ob->loc);
+  zero_v3(curve_ob->rot);
+  unit_qt(curve_ob->quat);
+  copy_v3_fl(curve_ob->scale, 1.0f);
+  unit_m4(curve_ob->parentinv);
   curve_ob->rotmode = ob->rotmode;
 
   Curve *cu = static_cast<Curve *>(curve_ob->data);
