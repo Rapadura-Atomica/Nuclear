@@ -164,6 +164,7 @@ void operatortypes_object()
   WM_operatortype_append(OBJECT_OT_explode_refresh);
   WM_operatortype_append(OBJECT_OT_ocean_bake);
 
+  WM_operatortype_append(OBJECT_OT_pegrig_new);
   WM_operatortype_append(OBJECT_OT_pegrig_peg_new);
   WM_operatortype_append(OBJECT_OT_pegrig_pick);
   WM_operatortype_append(OBJECT_OT_pegrig_select_parent);

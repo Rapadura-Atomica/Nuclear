@@ -13,8 +13,14 @@ keeps those two directions from re-entering each other.
 
 Node/socket model: every node has a single "controller" input. A link ``A.output -> B.input`` means
 "B is controlled by A":
-  * parent peg -> child peg   sets ``child.parent_index``
-  * peg        -> drawing     binds the drawing's Follow Peg constraint to that peg
+  * rig (composite) -> root peg   the peg is a root (``parent_index == -1``)
+  * parent peg      -> child peg  sets ``child.parent_index``
+  * peg             -> drawing    binds the drawing's Follow Peg constraint to that peg
+  * rig (composite) -> drawing    the drawing is a member of the rig but follows no peg
+                                  (Follow Peg constraint with the rig set and an empty peg name)
+
+The "rig" node is a single composite hub (Toon Boom-style): every root peg and every loose member
+drawing hangs from it. It owns no transform.
 """
 
 import bpy
@@ -24,6 +30,7 @@ from bpy.types import NodeTree, Node, NodeSocket, Operator, Panel
 from bpy.props import PointerProperty, StringProperty
 
 _TREE_ID = "NuclearPegTree"
+_RIG_NODE_ID = "NuclearRigNode"
 _PEG_NODE_ID = "NuclearPegNode"
 _DRAWING_NODE_ID = "NuclearDrawingNode"
 _SOCK_ID = "NuclearPegSocket"
@@ -70,6 +77,22 @@ class _PegGraphNode:
     @classmethod
     def poll(cls, ntree):
         return ntree.bl_idname == _TREE_ID
+
+
+class NuclearRigNode(_PegGraphNode, Node):
+    """The rig's composite hub: root pegs and loose member drawings hang from it. No transform."""
+    bl_idname = _RIG_NODE_ID
+    bl_label = "Rig"
+    bl_icon = 'OUTLINER_OB_ARMATURE'
+
+    def init(self, _context):
+        self.outputs.new(_SOCK_ID, "Composite")
+        self.use_custom_color = True
+        self.color = (0.18, 0.16, 0.10)
+
+    def draw_label(self):
+        rig = getattr(self.id_data, "rig", None)
+        return rig.name if rig is not None else "Rig"
 
 
 class NuclearPegNode(_PegGraphNode, Node):
@@ -227,6 +250,8 @@ def rebuild(tree):
                 saved_loc[('peg', n.peg_name)] = tuple(n.location)
             elif n.bl_idname == _DRAWING_NODE_ID:
                 saved_loc[('draw', n.object_name)] = tuple(n.location)
+            elif n.bl_idname == _RIG_NODE_ID:
+                saved_loc[('rig', '')] = tuple(n.location)
 
         tree.nodes.clear()
         if rig is None:
@@ -243,6 +268,10 @@ def rebuild(tree):
             rows[depth] = row + 1
             node.location = (depth * 240.0, -row * 150.0)
 
+        # The composite hub (one per rig); root pegs and loose members connect to it.
+        rig_node = tree.nodes.new(_RIG_NODE_ID)
+        place(rig_node, -1, ('rig', ''))
+
         # Peg nodes, indexed to match rig.pegs.
         peg_nodes = []
         for i, peg in enumerate(rig.pegs):
@@ -251,22 +280,26 @@ def rebuild(tree):
             place(node, _peg_depth(rig, i), ('peg', peg.name))
             peg_nodes.append(node)
 
-        # Parent links (parent.output -> child.input).
+        # Parent links: child peg <- parent peg, or root peg <- composite hub.
         for i, peg in enumerate(rig.pegs):
             parent = peg.parent_index
             if 0 <= parent < len(peg_nodes) and parent != i:
                 tree.links.new(peg_nodes[parent].outputs[0], peg_nodes[i].inputs[0])
+            else:
+                tree.links.new(rig_node.outputs[0], peg_nodes[i].inputs[0])
 
-        # Drawing nodes linked to their controlling peg.
+        # Drawing nodes linked to their controlling peg, or to the composite hub when loose.
         peg_node_by_name = {n.peg_name: n for n in peg_nodes}
         max_depth = max(rows.keys(), default=0)
         for ob, peg_name in _bound_objects(rig):
             dn = tree.nodes.new(_DRAWING_NODE_ID)
             dn.object_name = ob.name
             place(dn, max_depth + 1, ('draw', ob.name))
-            peg_node = peg_node_by_name.get(peg_name)
+            peg_node = peg_node_by_name.get(peg_name) if peg_name else None
             if peg_node is not None:
                 tree.links.new(peg_node.outputs[0], dn.inputs[0])
+            else:
+                tree.links.new(rig_node.outputs[0], dn.inputs[0])
     finally:
         _SYNCING = False
 
@@ -325,6 +358,12 @@ def _apply_graph_to_rig(tree):
                     con.rig = rig
                     con.peg_name = src.peg_name
                     con.set_inverse_pending = True
+                elif src is not None and src.bl_idname == _RIG_NODE_ID:
+                    # Member of the rig, but following no peg.
+                    if con is None:
+                        con = ob.constraints.new('FOLLOW_PEG')
+                    con.rig = rig
+                    con.peg_name = ""
                 elif con is not None:
                     ob.constraints.remove(con)
 
@@ -675,6 +714,7 @@ def _load_post(*_args):
 classes = (
     NuclearPegSocket,
     NuclearPegTree,
+    NuclearRigNode,
     NuclearPegNode,
     NuclearDrawingNode,
     NODE_OT_nuclear_peg_sync,

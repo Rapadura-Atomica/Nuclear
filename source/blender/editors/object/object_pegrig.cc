@@ -47,10 +47,9 @@
 
 namespace blender::ed::object {
 
-static wmOperatorStatus pegrig_peg_new_exec(bContext *C, wmOperator *op)
+/* Collect the selected Grease Pencil objects. */
+static Vector<Object *> selected_grease_pencil(bContext *C)
 {
-  Main *bmain = CTX_data_main(C);
-
   Vector<Object *> targets;
   CTX_DATA_BEGIN (C, Object *, ob, selected_objects) {
     if (ob->type == OB_GREASE_PENCIL) {
@@ -58,13 +57,89 @@ static wmOperatorStatus pegrig_peg_new_exec(bContext *C, wmOperator *op)
     }
   }
   CTX_DATA_END;
+  return targets;
+}
 
+/* Make `ob` a member of `rig` (a Follow Peg constraint targeting the rig). When `peg_index` is -1
+ * the object belongs to the rig's composite but follows no peg: `followpeg_evaluate` no-ops on an
+ * unresolved peg, so the drawing keeps its own transform until a peg is assigned later. */
+static void object_bind_to_rig(Object *ob, PegRig *rig, int peg_index)
+{
+  bConstraint *con = BKE_object_find_followpeg_constraint(ob);
+  if (con == nullptr) {
+    con = BKE_constraint_add_for_object(ob, "Follow Peg", CONSTRAINT_TYPE_FOLLOWPEG);
+  }
+  bFollowPegConstraint *data = static_cast<bFollowPegConstraint *>(con->data);
+  if (data->rig != rig) {
+    if (data->rig != nullptr) {
+      id_us_min(&data->rig->id);
+    }
+    data->rig = rig;
+    id_us_plus(&rig->id);
+  }
+  if (peg_index >= 0 && peg_index < rig->pegs_num) {
+    STRNCPY(data->peg_name, rig->pegs[peg_index].name);
+    data->peg_index = peg_index;
+    data->flag |= FOLLOWPEG_SET_INVERSE;
+  }
+  else {
+    /* Loose member: belongs to the rig, follows no peg. */
+    data->peg_name[0] = '\0';
+    data->peg_index = -1;
+  }
+  DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
+}
+
+static wmOperatorStatus pegrig_new_exec(bContext *C, wmOperator *op)
+{
+  Main *bmain = CTX_data_main(C);
+
+  Vector<Object *> targets = selected_grease_pencil(C);
   if (targets.is_empty()) {
     BKE_report(op->reports, RPT_ERROR, "Select one or more Grease Pencil objects");
     return OPERATOR_CANCELLED;
   }
 
-  /* Reuse the rig already used by any selected object, otherwise create a new one. */
+  char name[64];
+  RNA_string_get(op->ptr, "name", name);
+  PegRig *rig = BKE_pegrig_add(bmain, name[0] ? name : "PegRig");
+  id_us_min(&rig->id);
+
+  /* The rig is the composite: bind the selected drawings as members, without any peg yet. */
+  for (Object *ob : targets) {
+    object_bind_to_rig(ob, rig, -1);
+  }
+  rig->active_peg_index = -1;
+
+  DEG_id_tag_update(&rig->id, ID_RECALC_PARAMETERS);
+  DEG_relations_tag_update(bmain);
+  WM_event_add_notifier(C, NC_OBJECT | ND_CONSTRAINT, nullptr);
+  WM_event_add_notifier(C, NC_ID | NA_ADDED, nullptr);
+  return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_pegrig_new(wmOperatorType *ot)
+{
+  ot->name = "New Rig";
+  ot->description = "Create a peg rig (composite) from the selected Grease Pencil drawings";
+  ot->idname = "OBJECT_OT_pegrig_new";
+
+  ot->exec = pegrig_new_exec;
+  ot->poll = ED_operator_objectmode;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+  RNA_def_string(ot->srna, "name", "PegRig", MAX_NAME, "Name", "Name for the new rig");
+}
+
+static wmOperatorStatus pegrig_peg_new_exec(bContext *C, wmOperator *op)
+{
+  Main *bmain = CTX_data_main(C);
+
+  Vector<Object *> targets = selected_grease_pencil(C);
+
+  /* A peg is added to the rig the selected drawings already belong to. The rig must exist first
+   * (created with "New Rig"); the peg is born loose and receives drawings later (Peg Graph). */
   PegRig *rig = nullptr;
   for (Object *ob : targets) {
     if (bConstraint *con = BKE_object_find_followpeg_constraint(ob)) {
@@ -76,8 +151,10 @@ static wmOperatorStatus pegrig_peg_new_exec(bContext *C, wmOperator *op)
     }
   }
   if (rig == nullptr) {
-    rig = BKE_pegrig_add(bmain, "PegRig");
-    id_us_min(&rig->id);
+    BKE_report(op->reports,
+               RPT_ERROR,
+               "No peg rig for the selection: use \"New Rig\" first to create one");
+    return OPERATOR_CANCELLED;
   }
 
   /* If the active object already follows a peg in this rig, nest the new peg under it. */
@@ -86,7 +163,7 @@ static wmOperatorStatus pegrig_peg_new_exec(bContext *C, wmOperator *op)
     if (bConstraint *con = BKE_object_find_followpeg_constraint(active)) {
       bFollowPegConstraint *data = static_cast<bFollowPegConstraint *>(con->data);
       if (data->rig == rig) {
-        parent_index = data->peg_index;
+        parent_index = BKE_pegrig_peg_index_by_name(rig, data->peg_name);
       }
     }
   }
@@ -94,26 +171,6 @@ static wmOperatorStatus pegrig_peg_new_exec(bContext *C, wmOperator *op)
   char name[64];
   RNA_string_get(op->ptr, "name", name);
   const int peg_index = BKE_pegrig_peg_add(rig, name[0] ? name : "Peg", parent_index);
-
-  for (Object *ob : targets) {
-    bConstraint *con = BKE_object_find_followpeg_constraint(ob);
-    if (con == nullptr) {
-      con = BKE_constraint_add_for_object(ob, "Follow Peg", CONSTRAINT_TYPE_FOLLOWPEG);
-    }
-    bFollowPegConstraint *data = static_cast<bFollowPegConstraint *>(con->data);
-    if (data->rig != rig) {
-      if (data->rig != nullptr) {
-        id_us_min(&data->rig->id);
-      }
-      data->rig = rig;
-      id_us_plus(&rig->id);
-    }
-    STRNCPY(data->peg_name, rig->pegs[peg_index].name);
-    data->peg_index = peg_index;
-    data->flag |= FOLLOWPEG_SET_INVERSE;
-    DEG_id_tag_update(&ob->id, ID_RECALC_TRANSFORM);
-  }
-
   rig->active_peg_index = peg_index;
 
   DEG_id_tag_update(&rig->id, ID_RECALC_PARAMETERS);
@@ -126,7 +183,7 @@ static wmOperatorStatus pegrig_peg_new_exec(bContext *C, wmOperator *op)
 void OBJECT_OT_pegrig_peg_new(wmOperatorType *ot)
 {
   ot->name = "New Peg";
-  ot->description = "Create a peg controlling the selected Grease Pencil drawings";
+  ot->description = "Add a peg to the rig of the selected drawings (the peg starts unbound)";
   ot->idname = "OBJECT_OT_pegrig_peg_new";
 
   ot->exec = pegrig_peg_new_exec;
