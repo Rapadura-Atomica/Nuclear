@@ -14,6 +14,7 @@
 #include "MEM_guardedalloc.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "DNA_armature_types.h"
 #include "DNA_array_utils.hh"
@@ -1425,6 +1426,16 @@ void modifier_register_use_selected_objects_prop(wmOperatorType *ot)
 /** \name Add Modifier Operator
  * \{ */
 
+/* Defined with the Grease Pencil Curve setup operator below; used here to auto-build the deform
+ * curve the moment the modifier is added through the Add Modifier menu. */
+static bool greasepencil_curve_create_and_assign(bContext *C,
+                                                  Main *bmain,
+                                                  Scene *scene,
+                                                  Object *ob,
+                                                  GreasePencilCurveModifierData *cmd,
+                                                  ReportList *reports);
+static bool greasepencil_has_any_point(const Object *ob);
+
 static wmOperatorStatus modifier_add_exec(bContext *C, wmOperator *op)
 {
   Main *bmain = CTX_data_main(C);
@@ -1434,10 +1445,20 @@ static wmOperatorStatus modifier_add_exec(bContext *C, wmOperator *op)
   bool changed = false;
   for (const PointerRNA &ptr : modifier_get_edit_objects(*C, *op)) {
     Object *ob = static_cast<Object *>(ptr.data);
-    if (!modifier_add(op->reports, bmain, scene, ob, nullptr, type)) {
+    ModifierData *new_md = modifier_add(op->reports, bmain, scene, ob, nullptr, type);
+    if (new_md == nullptr) {
       continue;
     }
     changed = true;
+    /* For the Grease Pencil Curve deform modifier, immediately build a fitted deform curve (left
+     * unbound) so the artist can shape it right away instead of needing a separate "Add Deform
+     * Curve" click. Skipped while the drawing is still empty (nothing to fit to yet). */
+    if (type == eModifierType_GreasePencilCurve && ob->type == OB_GREASE_PENCIL &&
+        greasepencil_has_any_point(ob))
+    {
+      greasepencil_curve_create_and_assign(
+          C, bmain, scene, ob, reinterpret_cast<GreasePencilCurveModifierData *>(new_md), op->reports);
+    }
     WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER | NA_ADDED, ob);
   }
   if (!changed) {
@@ -3500,18 +3521,16 @@ static bool greasepencil_curve_bind_poll(bContext *C)
   return edit_modifier_poll_generic(C, &RNA_GreasePencilCurveModifier, 0, true, false);
 }
 
-static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op)
+/* Core of the bind: store (or clear, when `unbind`) the per-point rest-pose binding of `ob`'s
+ * drawings against `curve_ob`. Shared by the manual Bind button and the one-click setup operator
+ * below. Returns false (and reports) on failure. */
+static bool greasepencil_curve_bind_drawings(Depsgraph *depsgraph,
+                                             Object *ob,
+                                             Object *curve_ob,
+                                             const bool unbind,
+                                             ReportList *reports)
 {
-  Object *ob = context_active_object(C);
-  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
-  GreasePencilCurveModifierData *cmd = (GreasePencilCurveModifierData *)edit_modifier_property_get(
-      op, ob, eModifierType_GreasePencilCurve);
-
-  if (cmd == nullptr || ob->type != OB_GREASE_PENCIL) {
-    return OPERATOR_CANCELLED;
-  }
   GreasePencil &grease_pencil = *static_cast<GreasePencil *>(ob->data);
-  const bool unbind = RNA_boolean_get(op->ptr, "unbind");
 
   if (unbind) {
     for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
@@ -3523,78 +3542,96 @@ static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op
       attributes.remove(greasepencil_curve::ATTR_U);
       attributes.remove(greasepencil_curve::ATTR_OFFSET);
     }
+    return true;
   }
-  else {
-    if (cmd->object == nullptr || cmd->object->type != OB_CURVES_LEGACY) {
-      BKE_report(op->reports, RPT_ERROR, "Assign a curve object before binding");
-      return OPERATOR_CANCELLED;
-    }
-    const Object *curve_eval = DEG_get_evaluated(depsgraph, cmd->object);
 
-    /* Drawing-plane normal expressed in the curve's local space (the GP local Y axis is the flat
-     * drawing's normal). Used to build a planar, twist-free frame along the curve. */
-    const float4x4 gp_to_curve = curve_eval->world_to_object() * ob->object_to_world();
-    const float3 plane_normal = math::normalize(float3x3(gp_to_curve) * float3(0.0f, 1.0f, 0.0f));
+  if (curve_ob == nullptr || curve_ob->type != OB_CURVES_LEGACY) {
+    BKE_report(reports, RPT_ERROR, "Assign a curve object before binding");
+    return false;
+  }
+  const Object *curve_eval = DEG_get_evaluated(depsgraph, curve_ob);
 
-    /* Sample the rest curve evenly by arc length once, in curve-local space. */
-    const int sample_count = 256;
-    Array<float3> sample_pos(sample_count);
-    Array<float3x3> sample_frame(sample_count);
-    Array<float> sample_u(sample_count);
-    int valid = 0;
-    for (int k = 0; k < sample_count; k++) {
-      const float u = float(k) / float(sample_count - 1);
-      float3 pos;
-      float3x3 frame;
-      if (greasepencil_curve::sample_curve(*curve_eval, u, plane_normal, pos, frame)) {
-        sample_u[valid] = u;
-        sample_pos[valid] = pos;
-        sample_frame[valid] = frame;
-        valid++;
-      }
+  /* Drawing-plane normal expressed in the curve's local space (the GP local Y axis is the flat
+   * drawing's normal). Used to build a planar, twist-free frame along the curve. */
+  const float4x4 gp_to_curve = curve_eval->world_to_object() * ob->object_to_world();
+  const float3 plane_normal = math::normalize(float3x3(gp_to_curve) * float3(0.0f, 1.0f, 0.0f));
+
+  /* Sample the rest curve evenly by arc length once, in curve-local space. */
+  const int sample_count = 256;
+  Array<float3> sample_pos(sample_count);
+  Array<float3x3> sample_frame(sample_count);
+  Array<float> sample_u(sample_count);
+  int valid = 0;
+  for (int k = 0; k < sample_count; k++) {
+    const float u = float(k) / float(sample_count - 1);
+    float3 pos;
+    float3x3 frame;
+    if (greasepencil_curve::sample_curve(*curve_eval, u, plane_normal, pos, frame)) {
+      sample_u[valid] = u;
+      sample_pos[valid] = pos;
+      sample_frame[valid] = frame;
+      valid++;
     }
-    if (valid == 0) {
-      BKE_report(op->reports, RPT_ERROR, "Curve has no evaluated path to bind to");
-      return OPERATOR_CANCELLED;
+  }
+  if (valid == 0) {
+    BKE_report(reports, RPT_ERROR, "Curve has no evaluated path to bind to");
+    return false;
+  }
+  for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
+    if (base->type != GP_DRAWING) {
+      continue;
     }
-    for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
-      if (base->type != GP_DRAWING) {
-        continue;
-      }
-      bke::greasepencil::Drawing &drawing = reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
-      bke::CurvesGeometry &curves = drawing.strokes_for_write();
-      if (curves.points_num() == 0) {
-        continue;
-      }
-      const Span<float3> positions = curves.positions();
-      bke::MutableAttributeAccessor attributes = curves.attributes_for_write();
-      attributes.remove(greasepencil_curve::ATTR_U);
-      attributes.remove(greasepencil_curve::ATTR_OFFSET);
-      bke::SpanAttributeWriter<float> w_u =
-          attributes.lookup_or_add_for_write_only_span<float>(greasepencil_curve::ATTR_U,
-                                                              bke::AttrDomain::Point);
-      bke::SpanAttributeWriter<float3> w_off =
-          attributes.lookup_or_add_for_write_only_span<float3>(greasepencil_curve::ATTR_OFFSET,
-                                                               bke::AttrDomain::Point);
-      for (const int64_t i : positions.index_range()) {
-        const float3 q = math::transform_point(gp_to_curve, positions[i]);
-        int best = 0;
-        float best_dist = math::distance_squared(q, sample_pos[0]);
-        for (int k = 1; k < valid; k++) {
-          const float d = math::distance_squared(q, sample_pos[k]);
-          if (d < best_dist) {
-            best_dist = d;
-            best = k;
-          }
+    bke::greasepencil::Drawing &drawing = reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
+    bke::CurvesGeometry &curves = drawing.strokes_for_write();
+    if (curves.points_num() == 0) {
+      continue;
+    }
+    const Span<float3> positions = curves.positions();
+    bke::MutableAttributeAccessor attributes = curves.attributes_for_write();
+    attributes.remove(greasepencil_curve::ATTR_U);
+    attributes.remove(greasepencil_curve::ATTR_OFFSET);
+    bke::SpanAttributeWriter<float> w_u =
+        attributes.lookup_or_add_for_write_only_span<float>(greasepencil_curve::ATTR_U,
+                                                            bke::AttrDomain::Point);
+    bke::SpanAttributeWriter<float3> w_off =
+        attributes.lookup_or_add_for_write_only_span<float3>(greasepencil_curve::ATTR_OFFSET,
+                                                             bke::AttrDomain::Point);
+    for (const int64_t i : positions.index_range()) {
+      const float3 q = math::transform_point(gp_to_curve, positions[i]);
+      int best = 0;
+      float best_dist = math::distance_squared(q, sample_pos[0]);
+      for (int k = 1; k < valid; k++) {
+        const float d = math::distance_squared(q, sample_pos[k]);
+        if (d < best_dist) {
+          best_dist = d;
+          best = k;
         }
-        /* Store the point's offset in the curve frame at its nearest arc-length param, so the
-         * deformer can rebuild it on the posed curve (rest pose stays identical). */
-        w_u.span[i] = sample_u[best];
-        w_off.span[i] = math::transpose(sample_frame[best]) * (q - sample_pos[best]);
       }
-      w_u.finish();
-      w_off.finish();
+      /* Store the point's offset in the curve frame at its nearest arc-length param, so the
+       * deformer can rebuild it on the posed curve (rest pose stays identical). */
+      w_u.span[i] = sample_u[best];
+      w_off.span[i] = math::transpose(sample_frame[best]) * (q - sample_pos[best]);
     }
+    w_u.finish();
+    w_off.finish();
+  }
+  return true;
+}
+
+static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op)
+{
+  Object *ob = context_active_object(C);
+  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+  GreasePencilCurveModifierData *cmd = (GreasePencilCurveModifierData *)edit_modifier_property_get(
+      op, ob, eModifierType_GreasePencilCurve);
+
+  if (cmd == nullptr || ob->type != OB_GREASE_PENCIL) {
+    return OPERATOR_CANCELLED;
+  }
+  const bool unbind = RNA_boolean_get(op->ptr, "unbind");
+
+  if (!greasepencil_curve_bind_drawings(depsgraph, ob, cmd->object, unbind, op->reports)) {
+    return OPERATOR_CANCELLED;
   }
 
   DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
@@ -3630,6 +3667,221 @@ void OBJECT_OT_greasepencil_curve_bind(wmOperatorType *ot)
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
   edit_modifier_properties(ot);
   RNA_def_boolean(ot->srna, "unbind", false, "Unbind", "Remove the rest-pose binding instead");
+}
+
+/** \} */
+
+/* ------------------------------------------------------------------- */
+/** \name Grease Pencil Curve Deform Setup Operator
+ *
+ * One-click helper for 2D animators: builds a bezier curve fitted to the active drawing and
+ * assigns it to the Curve modifier (left unbound), replacing the manual "create curve -> align ->
+ * assign" dance. The artist then shapes the curve over the drawing and presses Bind to Rest Pose.
+ * \{ */
+
+/* Create a legacy bezier curve object spanning the drawing horizontally, lying in the drawing
+ * plane (GP local XZ; local Y is the drawing normal). Returns the new object (already active and
+ * selected via add_type), or null on failure. */
+static Object *greasepencil_curve_create_for_drawing(bContext *C, Object *ob, ReportList *reports)
+{
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(ob->data);
+
+  /* Union bounding box of every stroke point, in GP-local space. */
+  float3 bb_min(std::numeric_limits<float>::max());
+  float3 bb_max(std::numeric_limits<float>::lowest());
+  bool has_points = false;
+  for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
+    if (base->type != GP_DRAWING) {
+      continue;
+    }
+    const bke::greasepencil::Drawing &drawing =
+        reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
+    for (const float3 &p : drawing.strokes().positions()) {
+      bb_min = math::min(bb_min, p);
+      bb_max = math::max(bb_max, p);
+      has_points = true;
+    }
+  }
+  if (!has_points) {
+    BKE_report(reports, RPT_ERROR, "Grease Pencil has no points to fit a curve to");
+    return nullptr;
+  }
+
+  const float3 center = (bb_min + bb_max) * 0.5f;
+  const float x0 = bb_min.x;
+  const float x1 = bb_max.x;
+  /* Guard a zero-width drawing so the handles are not degenerate. */
+  const float width = std::max(x1 - x0, 1e-4f);
+
+  Object *curve_ob = add_type(C, OB_CURVES_LEGACY, "Deform Curve", ob->loc, ob->rot, false, 0);
+
+  /* Match the GP object's transform so curve-local space lines up with the drawing (keeps the
+   * bind's GP->curve mapping a pure translation, i.e. an identity rest pose). */
+  copy_v3_v3(curve_ob->loc, ob->loc);
+  copy_v3_v3(curve_ob->rot, ob->rot);
+  copy_v3_v3(curve_ob->scale, ob->scale);
+  for (int i = 0; i < 4; i++) {
+    curve_ob->quat[i] = ob->quat[i];
+  }
+  curve_ob->rotmode = ob->rotmode;
+
+  Curve *cu = static_cast<Curve *>(curve_ob->data);
+  /* 3D so the path keeps the drawing-plane (Z) offsets instead of flattening them. */
+  cu->flag |= CU_3D;
+
+  const int points_num = 3;
+  Nurb *nu = MEM_callocN<Nurb>(__func__);
+  nu->type = CU_BEZIER;
+  nu->resolu = 12;
+  nu->pntsu = points_num;
+  nu->pntsv = 1;
+  nu->bezt = MEM_calloc_arrayN<BezTriple>(points_num, __func__);
+  for (int i = 0; i < points_num; i++) {
+    BezTriple *bezt = &nu->bezt[i];
+    const float t = float(i) / float(points_num - 1);
+    const float x = x0 + (x1 - x0) * t;
+    /* Spread the handles along X; BKE_nurb_handles_calc then refines them to a smooth line. */
+    const float hx = width / float(points_num - 1) * 0.3f;
+    bezt->vec[0][0] = x - hx;
+    bezt->vec[1][0] = x;
+    bezt->vec[2][0] = x + hx;
+    for (int h = 0; h < 3; h++) {
+      bezt->vec[h][1] = center.y;
+      bezt->vec[h][2] = center.z;
+    }
+    bezt->h1 = bezt->h2 = HD_AUTO;
+    bezt->f1 = bezt->f2 = bezt->f3 = SELECT;
+    bezt->radius = 1.0f;
+    bezt->weight = 1.0f;
+  }
+  BLI_addtail(&cu->nurb, nu);
+  BKE_nurb_handles_calc(nu);
+
+  return curve_ob;
+}
+
+/* True when any drawing of the Grease Pencil object has at least one stroke point, i.e. there is
+ * something to fit a deform curve to. */
+static bool greasepencil_has_any_point(const Object *ob)
+{
+  const GreasePencil &grease_pencil = *static_cast<const GreasePencil *>(ob->data);
+  for (const GreasePencilDrawingBase *base : grease_pencil.drawings()) {
+    if (base->type != GP_DRAWING) {
+      continue;
+    }
+    const bke::greasepencil::Drawing &drawing =
+        reinterpret_cast<const GreasePencilDrawing *>(base)->wrap();
+    if (!drawing.strokes().positions().is_empty()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* Build a deform curve fitted to `ob`'s drawing and assign it to `cmd` (left unbound), keeping the
+ * Grease Pencil the active object. Shared by the one-click "Add Deform Curve" button and the
+ * auto-setup performed when the modifier is added through the Add Modifier menu. Returns false
+ * (and may report) when the curve could not be built, e.g. the drawing has no points yet. */
+static bool greasepencil_curve_create_and_assign(bContext *C,
+                                                  Main *bmain,
+                                                  Scene *scene,
+                                                  Object *ob,
+                                                  GreasePencilCurveModifierData *cmd,
+                                                  ReportList *reports)
+{
+  Object *curve_ob = greasepencil_curve_create_for_drawing(C, ob, reports);
+  if (curve_ob == nullptr) {
+    return false;
+  }
+  cmd->object = curve_ob;
+  cmd->deform_axis = MOD_CURVE_POSX;
+
+  /* add_type() made the new curve the active object; re-activate the Grease Pencil so its modifier
+   * panel (with the Bind button) stays in view. The curve stays selected, so the artist can still
+   * click it to shape it before binding. */
+  ViewLayer *view_layer = CTX_data_view_layer(C);
+  BKE_view_layer_synced_ensure(scene, view_layer);
+  if (Base *gp_base = BKE_view_layer_base_find(view_layer, ob)) {
+    base_activate(C, gp_base);
+    /* base_activate() only refreshes the data; without this notifier the Properties editor keeps
+     * showing the freshly added curve (which add_type made active) instead of the Grease Pencil,
+     * so the new modifier would appear to be missing from the drawing object. */
+    WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+  }
+
+  /* Intentionally left *unbound*: the artist positions and shapes the curve over the drawing first,
+   * then presses "Bind to Rest Pose". Until bound the modifier is a pass-through, so the drawing is
+   * not influenced while the curve is being placed. Register the new object and its modifier
+   * relation so the curve shows up and can be edited right away. */
+  DEG_relations_tag_update(bmain);
+  DEG_id_tag_update(&curve_ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
+  DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+  WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, curve_ob);
+  return true;
+}
+
+static wmOperatorStatus greasepencil_curve_setup_exec(bContext *C, wmOperator *op)
+{
+  Main *bmain = CTX_data_main(C);
+  Scene *scene = CTX_data_scene(C);
+  Object *ob = context_active_object(C);
+
+  if (ob == nullptr || ob->type != OB_GREASE_PENCIL) {
+    return OPERATOR_CANCELLED;
+  }
+
+  /* Reuse the modifier the button belongs to, or add a fresh one when invoked without one. */
+  GreasePencilCurveModifierData *cmd = (GreasePencilCurveModifierData *)edit_modifier_property_get(
+      op, ob, eModifierType_GreasePencilCurve);
+  if (cmd == nullptr) {
+    cmd = (GreasePencilCurveModifierData *)modifier_add(
+        op->reports, bmain, scene, ob, nullptr, eModifierType_GreasePencilCurve);
+    if (cmd == nullptr) {
+      return OPERATOR_CANCELLED;
+    }
+  }
+  if (cmd->object != nullptr) {
+    BKE_report(op->reports, RPT_ERROR, "The modifier already has a curve assigned");
+    return OPERATOR_CANCELLED;
+  }
+
+  if (!greasepencil_curve_create_and_assign(C, bmain, scene, ob, cmd, op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
+  BKE_report(op->reports,
+             RPT_INFO,
+             "Created a deform curve - shape it over the drawing, then press Bind to Rest Pose");
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_curve_setup_invoke(bContext *C,
+                                                        wmOperator *op,
+                                                        const wmEvent * /*event*/)
+{
+  if (edit_modifier_invoke_properties(C, op)) {
+    return greasepencil_curve_setup_exec(C, op);
+  }
+  return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_greasepencil_curve_setup(wmOperatorType *ot)
+{
+  /* identifiers */
+  ot->name = "Add Deform Curve";
+  ot->description =
+      "Create a bezier curve fitted to the drawing and assign it to this modifier, leaving it "
+      "unbound so it can be shaped over the drawing before binding";
+  ot->idname = "OBJECT_OT_greasepencil_curve_setup";
+
+  /* API callbacks. */
+  ot->poll = greasepencil_curve_bind_poll;
+  ot->invoke = greasepencil_curve_setup_invoke;
+  ot->exec = greasepencil_curve_setup_exec;
+
+  /* flags */
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
 }
 
 /** \} */
