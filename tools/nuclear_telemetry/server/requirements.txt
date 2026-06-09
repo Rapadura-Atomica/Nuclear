@@ -1,0 +1,5 @@
+Flask>=3.0
+# For production behind your hosting, also install one of:
+#   gunicorn      (Linux VPS)
+#   mod_wsgi      (Apache)
+# Passenger-based shared hosting needs no extra package - point it at app.py:app
