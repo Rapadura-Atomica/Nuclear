@@ -1,0 +1,80 @@
+<!-- SPDX-FileCopyrightText: 2026 Blender Authors -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- auto-refresh every 30s so the page stays current without manual reload -->
+  <meta http-equiv="refresh" content="30">
+  <title>Nuclear — máquinas conectadas</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+           background: #15171c; color: #e6e8eb; margin: 0; padding: 2rem; }
+    h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+    .sub { color: #9aa0a6; margin-bottom: 1.5rem; font-size: .9rem; }
+    .summary { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+    .card { background: #1e2128; border: 1px solid #2a2e37; border-radius: 10px;
+            padding: .9rem 1.2rem; }
+    .card .n { font-size: 1.6rem; font-weight: 700; }
+    .card .l { color: #9aa0a6; font-size: .8rem; }
+    table { width: 100%; border-collapse: collapse; background: #1e2128;
+            border-radius: 10px; overflow: hidden; }
+    th, td { text-align: left; padding: .7rem 1rem; border-bottom: 1px solid #2a2e37; }
+    th { color: #9aa0a6; font-weight: 600; font-size: .8rem; text-transform: uppercase;
+         letter-spacing: .03em; }
+    tr:last-child td { border-bottom: none; }
+    .dot { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%;
+           margin-right: .5rem; vertical-align: middle; }
+    .on  { background: #2ecc71; box-shadow: 0 0 8px #2ecc71aa; }
+    .off { background: #5a606b; }
+    .status-on  { color: #2ecc71; }
+    .status-off { color: #9aa0a6; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #9aa0a6;
+            font-size: .85rem; }
+    .empty { color: #9aa0a6; padding: 2rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Nuclear — máquinas conectadas</h1>
+  <div class="sub">
+    "Online" = enviou sinal nos últimos {{ online_secs // 60 }} min. Atualiza sozinho a cada 30s.
+  </div>
+
+  <div class="summary">
+    <div class="card"><div class="n status-on">{{ online_count }}</div><div class="l">online agora</div></div>
+    <div class="card"><div class="n">{{ total_count }}</div><div class="l">máquinas no total</div></div>
+  </div>
+
+  {% if machines %}
+  <table>
+    <thead>
+      <tr>
+        <th>Status</th><th>Máquina</th><th>Usuário</th><th>Versão</th>
+        <th>Último evento</th><th>Visto por último</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in machines %}
+      <tr>
+        <td>
+          <span class="dot {{ 'on' if m.online else 'off' }}"></span>
+          <span class="{{ 'status-on' if m.online else 'status-off' }}">
+            {{ 'Online' if m.online else 'Offline' }}
+          </span>
+        </td>
+        <td>{{ m.hostname or '—' }}<div class="mono">{{ m.machine_id[:12] }}</div></td>
+        <td>{{ m.username or '—' }}</td>
+        <td>{{ m.version or '—' }}</td>
+        <td>{{ m.last_event or '—' }}</td>
+        <td class="mono">{{ m.last_seen }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Nenhuma máquina registrada ainda. Assim que um Nuclear abrir e apontar para este servidor, ela aparece aqui.</div>
+  {% endif %}
+</body>
+</html>
