@@ -34,8 +34,8 @@ _HR = 'HR'        # right tangent handle
 
 # colors (RGB)
 _COL_POINT = (0.12, 0.6, 1.0)      # blue: control point
-_COL_HANDLE = (1.0, 0.6, 0.1)      # orange: tangent handle
-_COL_LINE = (1.0, 0.6, 0.1, 0.6)   # RGBA: handle arms
+_COL_HANDLE = (1.0, 0.05, 0.05)    # vivid red: tangent handle
+_COL_LINE = (1.0, 0.1, 0.1, 0.7)   # RGBA: handle arms (red)
 
 
 def _find_curve_modifier(ob):
@@ -83,7 +83,8 @@ class NUCLEAR_GGT_curve_deform_points(GizmoGroup):
         return self._curve_ob.matrix_world @ local
 
     def _autokey(self, curve_ob, si, pi):
-        if not bpy.context.tool_settings.use_keyframe_insert_auto:
+        scene = bpy.context.scene
+        if scene is None or not scene.tool_settings.use_keyframe_insert_auto:
             return
         base = "splines[%d].bezier_points[%d]" % (si, pi)
         for prop in (".co", ".handle_left", ".handle_right"):
