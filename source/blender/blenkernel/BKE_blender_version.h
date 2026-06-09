@@ -39,6 +39,11 @@
 #define BLENDER_FILE_MIN_VERSION 405
 #define BLENDER_FILE_MIN_SUBVERSION 85
 
+/* Nuclear fork branding (shown in the window title bar instead of "Blender <version>").
+ * Kept separate from the Blender version defines above, which are parsed by build scripts. */
+#define NUCLEAR_NAME "Nuclear"
+#define NUCLEAR_VERSION_STRING "Nuclear 1.0.0 (Beta)"
+
 /** User readable version string. */
 const char *BKE_blender_version_string(void);
 
