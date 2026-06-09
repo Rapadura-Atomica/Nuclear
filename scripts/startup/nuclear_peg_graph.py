@@ -806,7 +806,7 @@ def _draw_pivot_overlay():
     vm = rv3d.view_matrix
     right = mathutils.Vector((vm[0][0], vm[0][1], vm[0][2]))
     up = mathutils.Vector((vm[1][0], vm[1][1], vm[1][2]))
-    s = max(rv3d.view_distance, 0.001) * 0.05
+    s = max(rv3d.view_distance, 0.001) * 0.025
 
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     gpu.state.blend_set('ALPHA')
@@ -825,15 +825,13 @@ def _draw_pivot_overlay():
         shader.uniform_float("color", (1.0, 0.7, 0.1, 0.35))
         batch_for_shader(shader, 'LINES', {"pos": others}).draw(shader)
 
-    # Active peg pivot: bright ring + crosshair at its real world position.
+    # Active peg pivot: a simple bright ring at its real world position.
     c = _peg_pivot_world(rig, active_idx)
     ring = [c + (right * math.cos(a) + up * math.sin(a)) * s
             for a in (i / 32.0 * 2.0 * math.pi for i in range(33))]
-    cross = [c - right * s * 1.5, c + right * s * 1.5, c - up * s * 1.5, c + up * s * 1.5]
     gpu.state.line_width_set(2.0)
     shader.uniform_float("color", (1.0, 0.75, 0.1, 1.0))
     batch_for_shader(shader, 'LINE_STRIP', {"pos": ring}).draw(shader)
-    batch_for_shader(shader, 'LINES', {"pos": cross}).draw(shader)
 
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
