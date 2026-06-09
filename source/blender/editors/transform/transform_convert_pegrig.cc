@@ -119,7 +119,20 @@ static void createTransPegRigPeg(bContext * /*C*/, TransInfo *t)
   copy_v3_v3(td_ext->iscale, peg.scale);
   copy_v3_fl(td_ext->dscale, 1.0f);
 
-  copy_v3_v3(td->center, peg_to_world.location());
+  /* Rotation and scale happen about the pivot, not the peg's origin. In world space that centre is
+   * the parent's world frame applied to (pivot + translation) - the exact point the viewport pivot
+   * overlay marks - so the mouse measures the rotation/scale around the visible pivot instead of the
+   * peg origin (which is offset from it by the pivot vector). */
+  float parent_world[4][4];
+  if (peg.parent_index >= 0 && peg.parent_index < rig->pegs_num) {
+    BKE_pegrig_peg_compute_world_matrix(rig, peg.parent_index, parent_world);
+  }
+  else {
+    unit_m4(parent_world);
+  }
+  float pivot_local[3];
+  add_v3_v3v3(pivot_local, peg.pivot, peg.translation);
+  mul_v3_m4v3(td->center, parent_world, pivot_local);
 
   copy_m3_m4(td->axismtx, peg_to_world.ptr());
   normalize_m3(td->axismtx);
