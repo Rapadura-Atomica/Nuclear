@@ -3632,6 +3632,20 @@ static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op
   }
   const bool unbind = RNA_boolean_get(op->ptr, "unbind");
 
+  /* Ensure the deform curve is parented to the drawing, so it tracks every motion of the object -
+   * including a Follow Peg constraint - and the binding stays valid. Curves built by the setup
+   * operator already are; this self-heals older/hand-made curves on (re)bind. The world-preserving
+   * parentinv keeps the curve from jumping, so the binding sampled below is unchanged. */
+  if (!unbind && cmd->object != nullptr && cmd->object->parent != ob) {
+    Main *bmain = CTX_data_main(C);
+    cmd->object->parent = ob;
+    cmd->object->partype = PAROBJECT;
+    const blender::float4x4 parentinv = blender::math::invert(ob->object_to_world());
+    copy_m4_m4(cmd->object->parentinv, reinterpret_cast<const float(*)[4]>(parentinv.ptr()));
+    DEG_relations_tag_update(bmain);
+    DEG_id_tag_update(&cmd->object->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
+  }
+
   if (!greasepencil_curve_bind_drawings(depsgraph, ob, cmd->object, unbind, op->reports)) {
     return OPERATOR_CANCELLED;
   }
