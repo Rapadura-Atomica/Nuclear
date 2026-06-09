@@ -275,7 +275,8 @@ static void pegrig_peg_local_matrix(const PegRigPeg *peg, float r_mat[4][4])
 {
   using namespace blender;
   const float3 pivot(peg->pivot);
-  /* Rotate and scale around the pivot, then translate (matches LayerGroup::local_transform). */
+  /* Rotate and scale around the pivot, then translate (matches LayerGroup::local_transform). The
+   * rotation centre is pivot+translation, so a dragged drawing keeps spinning about itself. */
   const float4x4 mat = math::from_loc_rot_scale<float4x4, math::EulerXYZ>(
                            float3(peg->translation) + pivot,
                            float3(peg->rotation),
