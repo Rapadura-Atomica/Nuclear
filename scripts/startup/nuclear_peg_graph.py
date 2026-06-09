@@ -23,8 +23,12 @@ The "rig" node is a single composite hub (Toon Boom-style): every root peg and e
 drawing hangs from it. It owns no transform.
 """
 
+import math
+
 import bpy
+import gpu
 import mathutils
+from gpu_extras.batch import batch_for_shader
 from bpy_extras import view3d_utils
 from bpy.types import NodeTree, Node, NodeSocket, Operator, Panel
 from bpy.props import PointerProperty, StringProperty
@@ -209,7 +213,8 @@ def active_peg(context):
 
 
 def _peg_local_matrix(peg):
-    """Replicate BKE_pegrig peg local matrix: T(t+p) * R * S * T(-p)."""
+    """Replicate BKE_pegrig peg local matrix: T(t+p) * R * S * T(-p). The rotation centre is
+    pivot+translation, so a dragged drawing keeps spinning about itself."""
     from mathutils import Matrix, Vector, Euler
     p = Vector(peg.pivot)
     t = Vector(peg.translation)
@@ -231,6 +236,36 @@ def _peg_world_matrix(rig, idx):
     for j in reversed(chain):
         m = m @ _peg_local_matrix(rig.pegs[j])
     return m
+
+
+def _drawing_center_world(ob):
+    """World-space centre of a Grease Pencil object's bounding box."""
+    corners = [ob.matrix_world @ mathutils.Vector(c) for c in ob.bound_box]
+    return sum(corners, mathutils.Vector()) / 8.0
+
+
+def _set_peg_pivot_to_drawing(rig, peg_name, ob):
+    """Place the peg's pivot at the bound drawing's centre (in the peg's parent frame) so it
+    rotates in place instead of orbiting the parent origin."""
+    idx = rig.pegs.find(peg_name)
+    if idx < 0:
+        return
+    peg = rig.pegs[idx]
+    parent = peg.parent_index
+    pw = _peg_world_matrix(rig, parent) if 0 <= parent < len(rig.pegs) else mathutils.Matrix.Identity(4)
+    peg.pivot = pw.inverted() @ _drawing_center_world(ob)
+
+
+def _auto_pivot_on_bind(rig, peg_name, ob):
+    """On first binding a drawing to a peg, snap the peg's pivot to that drawing — unless the user
+    has already placed a pivot (non-zero)."""
+    idx = rig.pegs.find(peg_name)
+    if idx < 0:
+        return
+    piv = rig.pegs[idx].pivot
+    if piv[0] or piv[1] or piv[2]:
+        return
+    _set_peg_pivot_to_drawing(rig, peg_name, ob)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -358,6 +393,7 @@ def _apply_graph_to_rig(tree):
                     con.rig = rig
                     con.peg_name = src.peg_name
                     con.set_inverse_pending = True
+                    _auto_pivot_on_bind(rig, src.peg_name, ob)
                 elif src is not None and src.bl_idname == _RIG_NODE_ID:
                     # Member of the rig, but following no peg.
                     if con is None:
@@ -490,6 +526,7 @@ class NODE_OT_nuclear_peg_bind_selected(Operator):
             con.rig = rig
             con.peg_name = peg_name
             con.set_inverse_pending = True
+            _auto_pivot_on_bind(rig, peg_name, ob)
             count += 1
         if count == 0:
             self.report({'WARNING'}, "No Grease Pencil objects selected")
@@ -548,6 +585,28 @@ class OBJECT_OT_pegrig_pivot_reset(Operator):
         return {'FINISHED'}
 
 
+class OBJECT_OT_pegrig_pivot_to_drawing(Operator):
+    bl_idname = "object.pegrig_pivot_to_drawing"
+    bl_label = "Pivot to Drawing"
+    bl_description = "Place the active peg's pivot at the centre of its controlled drawing"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return active_peg(context)[1] is not None and context.active_object is not None
+
+    def execute(self, context):
+        rig, peg = active_peg(context)
+        ob = context.active_object
+        if peg is None or ob is None:
+            return {'CANCELLED'}
+        _set_peg_pivot_to_drawing(rig, peg.name, ob)
+        rig.id_data.update_tag()
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
 class OBJECT_OT_pegrig_pivot_grab(Operator):
     bl_idname = "object.pegrig_pivot_grab"
     bl_label = "Grab Peg Pivot"
@@ -567,13 +626,20 @@ class OBJECT_OT_pegrig_pivot_grab(Operator):
         self._rig = rig
         self._idx = rig.pegs.find(peg.name)
         self._init_pivot = mathutils.Vector(peg.pivot)
-        world = _peg_world_matrix(rig, self._idx)
+        # The pivot lives in the peg's PARENT frame: in the local matrix T(t+p)*R*S*T(-p) the
+        # T(-p) is applied before the peg's own rotation/scale. So the cursor delta must be mapped
+        # through the parent's world rotation, NOT the peg's own (which is skewed by R*S once the
+        # peg has been posed). Using the parent's frame keeps the pivot under the cursor.
+        parent_idx = rig.pegs[self._idx].parent_index
+        if 0 <= parent_idx < len(rig.pegs):
+            parent_world = _peg_world_matrix(rig, parent_idx)
+        else:
+            parent_world = mathutils.Matrix.Identity(4)
         # Project on the plane through the controlled drawing so the drag stays under the cursor.
         ob = context.active_object
-        self._anchor = ob.matrix_world.translation.copy() if ob else (world @ self._init_pivot)
-        rot = world.to_3x3()
+        self._anchor = ob.matrix_world.translation.copy() if ob else (parent_world @ self._init_pivot)
         try:
-            self._rot_inv = rot.inverted()
+            self._rot_inv = parent_world.to_3x3().inverted()
         except ValueError:
             self._rot_inv = mathutils.Matrix.Identity(3)
         self._init_mouse = (event.mouse_region_x, event.mouse_region_y)
@@ -641,6 +707,7 @@ class VIEW3D_PT_nuclear_peg(Panel):
         col = box.column()
         col.use_property_split = True
         col.prop(peg, "pivot", text="")
+        box.operator("object.pegrig_pivot_to_drawing", text="Pivot to Drawing", icon='OBJECT_ORIGIN')
         row = box.row(align=True)
         row.operator("object.pegrig_pivot_grab", text="Grab Pivot (P)", icon='PIVOT_CURSOR')
         row.operator("object.pegrig_pivot_reset", text="", icon='LOOP_BACK')
@@ -708,6 +775,85 @@ def _load_post(*_args):
 
 
 # -------------------------------------------------------------------------------------------------
+# Viewport overlay (GPU): draw peg pivots so the rotation centre is visible
+# -------------------------------------------------------------------------------------------------
+
+_PIVOT_DRAW_HANDLE = None
+
+
+def _peg_pivot_world(rig, idx):
+    """World position of the point peg `idx` actually rotates/scales about. With the local matrix
+    T(t+p)*R*S*T(-p) that centre is pivot+translation, mapped through the parent's world frame."""
+    peg = rig.pegs[idx]
+    parent = peg.parent_index
+    pw = _peg_world_matrix(rig, parent) if 0 <= parent < len(rig.pegs) else mathutils.Matrix.Identity(4)
+    return pw @ (mathutils.Vector(peg.pivot) + mathutils.Vector(peg.translation))
+
+
+def _draw_pivot_overlay():
+    context = bpy.context
+    if context.mode != 'OBJECT':
+        return
+    rv3d = context.region_data
+    if rv3d is None:
+        return
+    rig, peg = active_peg(context)
+    if peg is None:
+        return
+    active_idx = rig.pegs.find(peg.name)
+
+    # View-facing axes so the marker keeps its shape from any angle, sized stable on screen.
+    vm = rv3d.view_matrix
+    right = mathutils.Vector((vm[0][0], vm[0][1], vm[0][2]))
+    up = mathutils.Vector((vm[1][0], vm[1][1], vm[1][2]))
+    s = max(rv3d.view_distance, 0.001) * 0.05
+
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    gpu.state.depth_test_set('NONE')  # always visible, like a pivot gizmo
+    shader.bind()
+
+    # Other pegs of the rig: small faint dots, for context.
+    others = []
+    for i in range(len(rig.pegs)):
+        if i == active_idx:
+            continue
+        c = _peg_pivot_world(rig, i)
+        others += [c - right * s * 0.4, c + right * s * 0.4, c - up * s * 0.4, c + up * s * 0.4]
+    if others:
+        gpu.state.line_width_set(1.0)
+        shader.uniform_float("color", (1.0, 0.7, 0.1, 0.35))
+        batch_for_shader(shader, 'LINES', {"pos": others}).draw(shader)
+
+    # Active peg pivot: bright ring + crosshair at its real world position.
+    c = _peg_pivot_world(rig, active_idx)
+    ring = [c + (right * math.cos(a) + up * math.sin(a)) * s
+            for a in (i / 32.0 * 2.0 * math.pi for i in range(33))]
+    cross = [c - right * s * 1.5, c + right * s * 1.5, c - up * s * 1.5, c + up * s * 1.5]
+    gpu.state.line_width_set(2.0)
+    shader.uniform_float("color", (1.0, 0.75, 0.1, 1.0))
+    batch_for_shader(shader, 'LINE_STRIP', {"pos": ring}).draw(shader)
+    batch_for_shader(shader, 'LINES', {"pos": cross}).draw(shader)
+
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set('NONE')
+
+
+def _add_pivot_overlay():
+    global _PIVOT_DRAW_HANDLE
+    if _PIVOT_DRAW_HANDLE is None:
+        _PIVOT_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_pivot_overlay, (), 'WINDOW', 'POST_VIEW')
+
+
+def _remove_pivot_overlay():
+    global _PIVOT_DRAW_HANDLE
+    if _PIVOT_DRAW_HANDLE is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(_PIVOT_DRAW_HANDLE, 'WINDOW')
+        _PIVOT_DRAW_HANDLE = None
+
+
+# -------------------------------------------------------------------------------------------------
 # Registration
 # -------------------------------------------------------------------------------------------------
 
@@ -723,6 +869,7 @@ classes = (
     NODE_OT_nuclear_peg_bind_selected,
     NODE_PT_nuclear_peg,
     OBJECT_OT_pegrig_pivot_reset,
+    OBJECT_OT_pegrig_pivot_to_drawing,
     OBJECT_OT_pegrig_pivot_grab,
     VIEW3D_PT_nuclear_peg,
 )
@@ -735,10 +882,12 @@ def register():
         bpy.app.handlers.depsgraph_update_post.append(_depsgraph_update_post)
     if _load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_load_post)
+    _add_pivot_overlay()
     _ensure_peg_pose_keymap()
 
 
 def unregister():
+    _remove_pivot_overlay()
     if _load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post)
     if _depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
