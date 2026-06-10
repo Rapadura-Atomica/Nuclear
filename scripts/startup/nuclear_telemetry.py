@@ -45,7 +45,7 @@ import bpy
 
 # Default endpoint. Point this at your hosting, e.g. "https://studio.example.com/api/ping".
 # Can be overridden at runtime with the NUCLEAR_TELEMETRY_URL environment variable.
-SERVER_URL = "https://rapaduraatomica.com.br/nuclear/api/ping"
+SERVER_URL = "https://rapaduraatomica.com.br/nuclear/nuclear-api/ping.php"
 
 # Shared secret sent as the "X-Nuclear-Token" header so random clients cannot spam
 # your dashboard. Must match NUCLEAR_TOKEN on the server. Override with the
@@ -132,7 +132,13 @@ def _send(event):
     def worker():
         try:
             data = json.dumps(payload).encode("utf-8")
-            headers = {"Content-Type": "application/json"}
+            # A custom User-Agent is REQUIRED: many shared hosts (e.g. HostGator
+            # mod_security) reject the default "Python-urllib/x.y" agent with HTTP
+            # 406, which would silently drop every ping.
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Nuclear-Telemetry/1.0",
+            }
             token = _config_token()
             if token:
                 headers["X-Nuclear-Token"] = token
