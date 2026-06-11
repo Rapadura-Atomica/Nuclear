@@ -284,8 +284,14 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
 
 1. **Bump de versão** em `BKE_blender_version.h`: ajuste MAJOR/MINOR/PATCH conforme o tipo
    de mudança e **incremente `NUCLEAR_BUILD`**.
-2. **Rebuild** do Nuclear (externo — o agente não compila; ~40min; cuidado com builds
-   concorrentes em outros processos).
+2. **Rebuild** do Nuclear. O Claude **pode** compilar nesta máquina via o container
+   distrobox `blender` (o blocker de ownership do `build/` foi resolvido em 2026-06-08):
+   ```sh
+   distrobox enter blender -- bash -lc 'cd <repo>/Nuclear/build && ninja && ninja install'
+   ```
+   (`ninja install` sincroniza os scripts Python/UI no `bin/5.0`). É demorado (~20min
+   incremental sem ccache, mais para um full) e pode haver build concorrente em outro
+   processo, então **confirme antes de disparar**. Rodar externamente continua sendo opção.
 3. **Carimbar** o build: `python tools/nuclear_release.py stamp <pasta-do-build>`
    → grava `nuclear_version.json` ao lado do binário.
 4. **Empacotar** o zip portátil (topo `Nuclear/<ver>/…`).
