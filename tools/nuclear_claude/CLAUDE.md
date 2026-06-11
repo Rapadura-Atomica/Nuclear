@@ -43,8 +43,20 @@ PegRig (peg-based cut-out rig), Follow Peg constraint, Grease Pencil "Curve" mod
 - **Prefer upper layers over C** for UI/branding: Application Template + `bpy.app.translations`
   (rename UI labels in bulk) + theme/startup data, before editing C.
 
+**Naming conventions (two tiers — keep consistent, don't rename existing to churn):**
+- *Project identity* → `nuclear` / `Nuclear` / `NUCLEAR_`: app name, app template, startup
+  add-ons (`nuclear_*.py`), Python classes (`Nuclear*`, `NUCLEAR_GGT_*`), telemetry,
+  `tools/nuclear_*`.
+- *Feature / domain* → the feature name (reads naturally in UI/API): tool `builtin.peg_pose`,
+  operators `object.pegrig_*` / `GREASE_PENCIL_OT_peg_*`, data types `PegRig`/`PegRigPeg`,
+  modifier "Curve". New features pick the tier that fits; never mix both in one identifier.
+
 **Active project:** an extreme UI overhaul + rebranding to make Nuclear look like its own
-software (hide/relocate native functions, complete the identity). Full plan:
+software (hide/relocate native functions, complete the identity). The UI/branding work is
+funneled through the **Nuclear application template**
+(`scripts/startup/bl_app_templates_system/Nuclear/`) — its `__init__.py` is the seam for
+label remapping and panel hiding/relocation, so the overhaul does not edit
+`scripts/startup/bl_ui/*` in place. Full plan:
 `~/.claude/plans/infelizmente-para-meu-azar-cryptic-rivest.md` (per-machine, local).
 
 ---

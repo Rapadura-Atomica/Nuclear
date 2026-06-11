@@ -450,27 +450,22 @@ static uiBlock *wm_block_about_create(bContext *C, ARegion *region, void * /*arg
                                                0,
                                                style);
 
-/* Blender logo. */
+/* Nuclear: use the splash artwork instead of the Blender logo. */
 #ifndef WITH_HEADLESS
-  constexpr bool show_color = false;
-  const float size = 0.2f * dialog_width;
-
-  ImBuf *ibuf = UI_svg_icon_bitmap(ICON_BLENDER_LOGO_LARGE, size, show_color);
+  int image_height = 0;
+  ImBuf *ibuf = wm_block_splash_image(dialog_width, &image_height);
 
   if (ibuf) {
-    bTheme *btheme = UI_GetTheme();
-    const uchar *color = btheme->tui.wcol_menu_back.text_sel;
-
     /* The top margin. */
     uiLayout *row = &layout.row(false);
     row->separator(0.2f);
 
-    /* The logo image. */
+    /* The splash image. */
     row = &layout.row(false);
     row->alignment_set(blender::ui::LayoutAlign::Left);
-    uiDefButImage(block, ibuf, 0, U.widget_unit, ibuf->x, ibuf->y, show_color ? nullptr : color);
+    uiDefButImage(block, ibuf, 0, U.widget_unit, ibuf->x, image_height, nullptr);
 
-    /* Padding below the logo. */
+    /* Padding below the image. */
     row = &layout.row(false);
     row->separator(2.7f);
   }
@@ -478,7 +473,7 @@ static uiBlock *wm_block_about_create(bContext *C, ARegion *region, void * /*arg
 
   uiLayout *col = &layout.column(true);
 
-  uiItemL_ex(col, IFACE_("Blender"), ICON_NONE, true, false);
+  uiItemL_ex(col, IFACE_("Nuclear"), ICON_NONE, true, false);
 
   MenuType *mt = WM_menutype_find("WM_MT_splash_about", true);
   if (mt) {
@@ -501,9 +496,9 @@ static wmOperatorStatus wm_splash_about_invoke(bContext *C,
 
 void WM_OT_splash_about(wmOperatorType *ot)
 {
-  ot->name = "About Blender";
+  ot->name = "About Nuclear";
   ot->idname = "WM_OT_splash_about";
-  ot->description = "Open a window with information about Blender";
+  ot->description = "Open a window with information about Nuclear";
 
   ot->invoke = wm_splash_about_invoke;
   ot->poll = WM_operator_winactive;
