@@ -349,6 +349,13 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
 
   int mat_ofs = 0;
   MaterialPool *matpool = gpencil_material_pool_create(this, ob, &mat_ofs, is_vertex_mode);
+  /* Number of material slots reserved for this object in the (shared) material pool. The pool is
+   * sized from the current evaluated frame's max material index, but the draw loop below also
+   * iterates onion-skin/multi-frame/time-offset drawings whose strokes may reference a higher
+   * index. Clamping to this count keeps `mat_ofs + material_index` inside the object's reserved
+   * pool region and avoids walking off the end of the pool chain (crash in
+   * gpencil_material_resources_get). */
+  const int mat_pool_len = BKE_object_material_used_with_fallback_eval(*ob);
 
   gpu::Texture *tex_fill = this->dummy_tx;
   gpu::Texture *tex_stroke = this->dummy_tx;
@@ -479,8 +486,11 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
       const IndexRange points = points_by_curve[stroke_i];
       /* The material index is allowed to be negative as it's stored as a generic attribute. We
        * clamp it here to avoid crashing in the rendering code. Any stroke with a material < 0 will
-       * use the first material in the first material slot. */
-      const int material_index = std::max(stroke_materials[stroke_i], 0);
+       * use the first material in the first material slot. The upper bound clamps to the materials
+       * reserved for this object in the pool, so strokes coming from onion-skin/multi-frame/
+       * time-offset drawings with a higher index reuse the last valid material instead of
+       * overflowing the pool. */
+      const int material_index = std::clamp(stroke_materials[stroke_i], 0, mat_pool_len - 1);
       const MaterialGPencilStyle *gp_style = BKE_gpencil_material_settings(ob, material_index + 1);
 
       const bool is_fill_guide_stroke = is_fill_guide[stroke_i];
