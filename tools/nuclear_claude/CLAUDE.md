@@ -295,8 +295,15 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
      --notes "o que mudou" -o version.json
    ```
 6. **Subir os dois juntos** pra `estacao/`: `nuclear.zip` **e** `version.json`.
-7. **Atualizar ESTE CLAUDE.md** (a tabela de versão atual, a data, o que mudou).
-8. **Commit** das mudanças do repo (header, version.json espelho, este doc).
+7. **Conferir que o zip contém o updater** (passo 4.1, regra de ouro nº3 abaixo).
+8. **Atualizar ESTE CLAUDE.md** (a tabela de versão atual, a data, o que mudou).
+9. **Commit** das mudanças do repo (header, version.json espelho, este doc).
+
+> ⚠️ Regra de ouro nº3: **o zip empacotado TEM que conter
+> `Nuclear/5.0/scripts/startup/nuclear_update.py`** (e `Nuclear/nuclear_version.json` ao
+> lado do binário). Em 2026-06-11 o build publicado foi empacotado **sem** o updater —
+> instalações limpas ficavam sem auto-update nenhum. Antes de publicar, confira:
+> `unzip -l nuclear.zip | grep nuclear_update.py`
 
 ### Atalho: só corrigir o manifesto de um zip que já está no servidor
 Se o zip mudou mas a versão não, recalcule e regrave só o manifesto:
@@ -304,6 +311,19 @@ Se o zip mudou mas a versão não, recalcule e regrave só o manifesto:
 ssh araga286 'sha256sum ~/public_html/addon/rapaduraatomica/estacao/nuclear.zip; \
               stat -c %s ~/public_html/addon/rapaduraatomica/estacao/nuclear.zip'
 # edite sha256 + size no version.json e suba só ele
+```
+
+### Atalho: injetar o updater num zip já buildado (sem rebuild)
+Se o build saiu sem o `nuclear_update.py`, dá pra adicionar sem recompilar (foi como o
+build de 2026-06-11 foi consertado). Backup, injeta nos caminhos internos certos, e
+**regera o manifesto** (o sha256 muda):
+```sh
+# staging local com a estrutura interna do zip:
+#   Nuclear/5.0/scripts/startup/nuclear_update.py   e   Nuclear/nuclear_version.json
+ssh araga286 'cd ~/public_html/addon/rapaduraatomica/estacao && cp -n nuclear.zip nuclear.zip.bak'
+cd <staging> && zip -g <…>/estacao/nuclear.zip \
+  Nuclear/5.0/scripts/startup/nuclear_update.py Nuclear/nuclear_version.json
+# recalcular sha256+size e atualizar version.json (regra de ouro nº2)
 ```
 
 ## 6. Restrições de deploy (IMPORTANTE)
@@ -326,10 +346,19 @@ Esquema versionado com symlink atômico (Linux) / junction (Windows):
 Apply = baixar → verificar sha256 → extrair → mover pra `versions/` → trocar `current` →
 prune (mantém os 3 mais novos + o atual + o que está rodando) → oferecer reiniciar.
 
+**Instaladores no servidor:**
+- `https://rapaduraatomica.com.br/instalarNuclear.sh` — antigo, **layout flat** (não
+  versionado). Quem instala por ele não se auto-atualiza (cai no fallback de abrir a
+  página).
+- `https://rapaduraatomica.com.br/instalarNuclear-versionado.sh` — **novo, layout
+  versionado** (`versions/` + `current`). É o que habilita o apply real. (Subido como
+  arquivo additivo porque sobrescrever o antigo é bloqueado; trocar o canônico precisa de
+  aprovação manual.)
+
 **Pendência conhecida:** instalações "flat" antigas (binário solto em `~/Nuclear/blender`,
 sem `current`) NÃO se auto-atualizam — caem no fallback de abrir a página. Precisam ser
-reinstaladas com `instalarNuclear.sh` (layout versionado) ou ter a `_detect_layout`
-adaptada. Ver `[[nuclear-auto-update]]` na memória do projeto.
+reinstaladas com o instalador versionado. Ver `[[nuclear-auto-update]]` na memória do
+projeto.
 
 ## 8. Troubleshooting
 
@@ -351,6 +380,17 @@ adaptada. Ver `[[nuclear-auto-update]]` na memória do projeto.
 
 ## 10. Estado atual
 
+Atualizado em 2026-06-11.
+
 - **Versão publicada:** Nuclear 1.0.0 (Beta) — `NUCLEAR_BUILD = 1`.
-- **nuclear.zip:** 728.581.557 bytes, sha256 `64c03233b01f1dc51e0d1cda6c41a5499a1f516ee73b7e3ba6a315aede303c99`.
-- **Telas:** diálogos fixos (`invoke_props_dialog`); primeira checagem 3 s após abrir.
+- **nuclear.zip:** 728.591.126 bytes, sha256
+  `ae25f99160a2fe597cf887d4994932c7e758b3a566c2e3ae01f9ef3e23667f7a`. **Agora contém o
+  updater** (`nuclear_update.py` + `nuclear_version.json` injetados no zip — regra de ouro
+  nº3), então instalações limpas já trazem o auto-update. Backup no servidor:
+  `nuclear.zip.bak-pre-updater`.
+- **Instalador versionado:** publicado em `instalarNuclear-versionado.sh` (o `.sh` antigo
+  segue sendo o flat).
+- **Telas:** diálogos fixos (`invoke_props_dialog`); primeira checagem 3 s após abrir;
+  re-checagem a cada 6 h enquanto aberto.
+- **Pendente de aprovação manual (deploy de código):** trocar o `instalarNuclear.sh`
+  canônico pelo versionado; deploy do `ping.php` com eco do manifesto (opcional).
