@@ -5,8 +5,8 @@
   "stage": "Beta",
   "version_string": "Nuclear 1.0.0 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "ae25f99160a2fe597cf887d4994932c7e758b3a566c2e3ae01f9ef3e23667f7a",
-  "size": 728591126,
+  "sha256": "cf57a3fc49cac7bbe3de1bb22f93c39c65168da302d857a60929c4cdd88998fb",
+  "size": 810050744,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
   "notes": "Primeira versão com auto-atualização embutida."
