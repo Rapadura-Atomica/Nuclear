@@ -34,12 +34,17 @@ Se a tarefa não disser qual é o bump, **decida pelo tipo de mudança**, declar
 a suposição ("assumi MINOR 1.0.0→1.1.0 porque há recurso novo") e siga. Você não pode
 perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
 
-# As duas regras de ouro
+# As três regras de ouro
 
 1. **Toda release incrementa `NUCLEAR_BUILD`.**
 2. **`nuclear.zip` e `version.json` andam SEMPRE em par.** Nunca atualize um sem o outro.
    `sha256` e `size` do manifesto têm que casar exatamente com o zip servido. (Foi o que
    causou o "checksum não confere" em 2026-06-11.)
+3. **O zip empacotado TEM que conter `Nuclear/5.0/scripts/startup/nuclear_update.py`** (e
+   `Nuclear/nuclear_version.json` ao lado do binário). Antes de publicar, confira:
+   `unzip -l nuclear.zip | grep nuclear_update.py`. Em 2026-06-11 o build foi empacotado
+   SEM o updater — instalações limpas ficavam sem auto-update. Se faltar, dá pra injetar
+   sem rebuild (`zip -g` nos caminhos internos + regerar o manifesto).
 
 # Fluxo de release (siga em ordem)
 
@@ -51,7 +56,8 @@ perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
 4. Carimbar: `python tools/nuclear_release.py stamp <pasta-do-build>`.
 5. Gerar manifesto do zip empacotado:
    `python tools/nuclear_release.py manifest --zip <nuclear.zip> --notes "..." -o version.json`.
-6. **Verificar** que `sha256`/`size` do manifesto batem com o zip (recalcule e compare).
+6. **Verificar** que `sha256`/`size` do manifesto batem com o zip (recalcule e compare)
+   **e** que o zip contém `scripts/startup/nuclear_update.py` (regra de ouro nº3).
 7. Publicar zip + manifesto juntos em `estacao/`.
 8. Atualizar `tools/nuclear_claude/CLAUDE.md` e o espelho `tools/nuclear_telemetry/server/version.json`.
 9. Commit no repo (mensagem clara; termine com a linha Co-Authored-By padrão do projeto).
