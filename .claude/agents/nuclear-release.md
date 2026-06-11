@@ -56,9 +56,13 @@ perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
 
 1. Ler `tools/nuclear_claude/CLAUDE.md` (estado atual, build vigente).
 2. Bump em `BKE_blender_version.h`: ajuste MAJOR/MINOR/PATCH e **+1 no NUCLEAR_BUILD**.
-3. Rebuild é EXTERNO — você não compila (leva ~40min e pode haver build concorrente em
-   outro processo). Se a tarefa exige um zip novo e ele ainda não existe, deixe isso claro
-   no seu relatório e pare no ponto que depende do build.
+3. Rebuild: você **pode** compilar nesta máquina via o container distrobox `blender`
+   (blocker de ownership do `build/` resolvido em 2026-06-08):
+   `distrobox enter blender -- bash -lc 'cd <repo>/Nuclear/build && ninja && ninja install'`
+   (`ninja install` sincroniza os scripts no `bin/5.0`). É demorado (~20min incremental,
+   mais para full) e pode haver build concorrente — então **confirme com o usuário antes de
+   disparar**, não builde por conta própria. Se a tarefa exige um zip novo e o build não foi
+   autorizado/feito, deixe isso claro no relatório e pare no ponto que depende do build.
 4. Carimbar: `python tools/nuclear_release.py stamp <pasta-do-build>`.
 5. Gerar manifesto do zip empacotado:
    `python tools/nuclear_release.py manifest --zip <nuclear.zip> --notes "..." -o version.json`.
@@ -92,4 +96,4 @@ rebuild nem bump se a versão não mudou.
 - Sempre que tocar em versão/manifesto/fluxo, reflita isso no CLAUDE.md de
   `tools/nuclear_claude/`.
 - No relatório final, diga: o que mudou, o build/versão resultante, o que foi publicado, o
-  que ficou pendente de aprovação ou de rebuild externo.
+  que ficou pendente de aprovação (rebuild não autorizado, deploy de código em produção).
