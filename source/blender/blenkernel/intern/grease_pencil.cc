@@ -233,6 +233,14 @@ static void grease_pencil_copy_data(Main * /*bmain*/,
         *grease_pencil_src->runtime->bake_materials);
   }
 
+  /* The #Drawing copy constructor gives every duplicated drawing a fresh runtime, whose user count
+   * defaults to 1 regardless of how many frames actually reference the source drawing. Recompute
+   * the counts from the copied layer tree (as the blend-read path does), otherwise the copy's
+   * counts diverge from reality whenever a drawing is referenced by other than exactly one frame
+   * (e.g. an instanced/duplicated keyframe). On evaluation, removing a hidden layer then trips
+   * #validate_drawing_user_counts (and can drop still-referenced drawings). */
+  grease_pencil_initialize_drawing_user_counts_after_read(*grease_pencil_dst);
+
   grease_pencil_set_runtime_visibilities(*id_dst, *grease_pencil_dst);
 }
 
