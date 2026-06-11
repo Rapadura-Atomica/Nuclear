@@ -114,3 +114,14 @@ Major source areas under `source/blender/`:
 - Every file carries an SPDX license header (checked by `make check_licenses`).
 - The `.blend` file format is a hard compatibility contract — treat DNA/RNA/blenloader changes with the versioning discipline described above.
 - Generated docs: `make doc_py` (Python API), `make doc_doxy` (C/C++ Doxygen), `make doc_dna` (file-format/DNA).
+
+## Nuclear auto-update / releases
+
+The fork ships an in-app updater. Fork version is single-sourced in the `NUCLEAR_*`
+defines in `source/blender/blenkernel/BKE_blender_version.h` (`NUCLEAR_BUILD` is the
+integer the updater compares — **always bump it on every release**). Anything touching
+versions, the `estacao/version.json` manifest, packaging, or a checksum/update problem
+should follow — and keep current — the living reference at
+**`tools/nuclear_claude/CLAUDE.md`**, and is best delegated to the **`nuclear-release`**
+subagent (`.claude/agents/nuclear-release.md`). Golden rule: `nuclear.zip` and
+`version.json` are always published together.
