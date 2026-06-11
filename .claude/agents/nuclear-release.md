@@ -34,7 +34,7 @@ Se a tarefa não disser qual é o bump, **decida pelo tipo de mudança**, declar
 a suposição ("assumi MINOR 1.0.0→1.1.0 porque há recurso novo") e siga. Você não pode
 perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
 
-# As três regras de ouro
+# As quatro regras de ouro
 
 1. **Toda release incrementa `NUCLEAR_BUILD`.**
 2. **`nuclear.zip` e `version.json` andam SEMPRE em par.** Nunca atualize um sem o outro.
@@ -45,6 +45,12 @@ perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
    `unzip -l nuclear.zip | grep nuclear_update.py`. Em 2026-06-11 o build foi empacotado
    SEM o updater — instalações limpas ficavam sem auto-update. Se faltar, dá pra injetar
    sem rebuild (`zip -g` nos caminhos internos + regerar o manifesto).
+4. **O zip tem que ser AUTO-CONTIDO**: além do updater, traz as deps Python do fork
+   (pyclipper, triangle, scipy, scikit-image + transitivas) em
+   `Nuclear/5.0/python/lib/python3.11/site-packages/`. Senão **todo auto-update perde
+   essas libs** (a apply troca a pasta da versão pela extraída do zip) e features 2D
+   quebram. Confira `unzip -l nuclear.zip | grep -c site-packages/scipy` (> 0). Não
+   duplique a `numpy` (o Blender já bundla a dele).
 
 # Fluxo de release (siga em ordem)
 
