@@ -1,38 +1,33 @@
 <!--
-Keep this document short & concise,
-linking to external resources instead of including content in-line.
-See 'release/text/readme.html' for the end user read-me.
+Keep this document short & concise.
 -->
 
-Blender
+Nuclear
 =======
 
-Blender is the free and open source 3D creation suite.
-It supports the entirety of the 3D pipeline—modeling, rigging, animation, simulation, rendering, compositing,
-motion tracking and video editing.
+![Nuclear](https://rapaduraatomica.com.br/addon/rapaduraatomica/nuclear/images/splash-v1.0.png "Nuclear")
 
-![Blender screenshot](https://code.blender.org/wp-content/uploads/2018/12/springrg.jpg "Blender screenshot")
+**Nuclear** é o software de animação desenvolvido pelo estúdio cearense **Rapadura Atômica**.
 
-Project Pages
--------------
+Conta com modificações internas e um repositório de addons próprios que agilizam o
+**workflow 2D**, inspirados em ferramentas já consolidadas do mercado.
 
-- [Main Website](http://www.blender.org)
-- [Reference Manual](https://docs.blender.org/manual/en/latest/index.html)
-- [User Community](https://www.blender.org/community/)
+> 🧪 **Versão beta** — novas funções estão em desenvolvimento ativo.
 
-Development
------------
+Orgulhosamente derivado do [Blender](https://www.blender.org).
 
-- [Build Instructions](https://developer.blender.org/docs/handbook/building_blender/)
-- [Code Review & Bug Tracker](https://projects.blender.org)
-- [Developer Forum](https://devtalk.blender.org)
-- [Developer Documentation](https://developer.blender.org/docs/)
+Links
+-----
 
+- 🌐 **Site principal:** https://rapaduraatomica.com.br
+- ☢️ **Nuclear:** https://rapaduraatomica.com.br/nuclear
+- 📚 **Documentação e backlog:** _em desenvolvimento_
 
-License
+Licença
 -------
 
-Blender as a whole is licensed under the GNU General Public License, Version 3.
-Individual files may have a different but compatible license.
+Por ser derivado do Blender, o Nuclear como um todo é licenciado sob a
+**GNU General Public License, versão 3**. Arquivos individuais podem ter
+licenças diferentes, porém compatíveis.
 
-See [blender.org/about/license](https://www.blender.org/about/license) for details.
+Veja [blender.org/about/license](https://www.blender.org/about/license) para detalhes.
