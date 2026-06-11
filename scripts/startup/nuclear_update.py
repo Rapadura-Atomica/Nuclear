@@ -408,12 +408,21 @@ def _prune_versions(versions_dir, keep_paths, keep=KEEP_VERSIONS):
 
 
 def _can_apply(layout):
-    """Self-apply on Linux and Windows into a writable versioned layout (macOS: page)."""
+    """Self-apply on Linux/Windows ONLY into a real versioned layout we control.
+
+    A flat/legacy install (binary sitting directly in its folder, no `current` pointer)
+    is intentionally excluded: self-applying there would scatter a `versions/` dir into an
+    unexpected place, so those fall back to opening the download page until re-installed
+    with the versioned installer. macOS always falls back too (phase 3+).
+    """
     if platform.system() not in ("Linux", "Windows"):
         return False
-    if not layout:
+    if not layout or not os.access(layout["base"], os.W_OK):
         return False
-    return os.access(layout["base"], os.W_OK)
+    parent = os.path.basename(os.path.dirname(layout["install_root"]))
+    return (parent == "versions"
+            or os.path.lexists(layout["current"])
+            or os.path.isdir(layout["versions"]))
 
 
 def _run_apply(manifest, layout):
@@ -533,16 +542,18 @@ if bpy is not None:
         bl_label = "Atualizar o Nuclear"
         bl_options = {'INTERNAL'}
 
-        _timer = None
-
-        def invoke(self, context, event):
-            global _apply_thread, _apply_state, _apply_message
+        # execute() only (no invoke/modal): a status-bar or popup_menu button calls the
+        # operator without an event, and a modal operator requires one - that mismatch is
+        # what produced "Invalid operator call". The background download is driven by a
+        # bpy.app timer instead, which is simpler and event-independent.
+        def execute(self, context):
+            global _apply_thread, _apply_state, _apply_progress, _apply_message
             if not _update_available():
                 return {'CANCELLED'}
 
             layout = _layout_now()
             if not _can_apply(layout):
-                # macOS / dev build / non-writable install: just open the page.
+                # macOS / dev / flat (un-migrated) / non-writable install: open the page.
                 _open_page()
                 return {'FINISHED'}
 
@@ -551,44 +562,17 @@ if bpy is not None:
                 return {'CANCELLED'}
 
             _apply_state = "downloading"
+            _apply_progress = 0.0
             _apply_message = ""
             manifest = dict(_latest)
             _apply_thread = threading.Thread(
                 target=_run_apply, args=(manifest, layout), daemon=True)
             _apply_thread.start()
 
-            self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
-            context.window_manager.modal_handler_add(self)
-            return {'RUNNING_MODAL'}
-
-        def modal(self, context, event):
-            if event.type != 'TIMER':
-                return {'PASS_THROUGH'}
-
-            ws = getattr(context, "workspace", None)
-            if _apply_state == "downloading":
-                pct = int(_apply_progress * 100)
-                if ws:
-                    ws.status_text_set("Baixando atualização do Nuclear... %d%%" % pct)
-            elif _apply_state in {"verifying", "extracting", "applying"}:
-                if ws:
-                    ws.status_text_set("Instalando atualização... (%s)" % _apply_state)
-            elif _apply_state in {"done", "error"}:
-                self._finish(context)
-                if _apply_state == "done":
-                    _prompt_restart()
-                else:
-                    _report_error()
-                return {'FINISHED'}
-            return {'RUNNING_MODAL'}
-
-        def _finish(self, context):
-            if self._timer is not None:
-                context.window_manager.event_timer_remove(self._timer)
-                self._timer = None
-            ws = getattr(context, "workspace", None)
-            if ws:
-                ws.status_text_set(None)
+            if not bpy.app.timers.is_registered(_apply_progress_tick):
+                bpy.app.timers.register(_apply_progress_tick, first_interval=0.3)
+            self.report({'INFO'}, "Baixando atualização do Nuclear...")
+            return {'FINISHED'}
 
     class NUCLEAR_OT_update_restart(bpy.types.Operator):
         """Reiniciar o Nuclear na versão recém-instalada"""
@@ -605,6 +589,39 @@ if bpy is not None:
     _CLASSES = (NUCLEAR_OT_update, NUCLEAR_OT_update_restart)
 else:
     _CLASSES = ()
+
+
+def _apply_progress_tick():
+    """Main-thread timer: mirror the worker's progress to the status bar, then on
+    completion clear it and show the restart/error popup. Returns the next interval, or
+    None to stop."""
+    ws = None
+    try:
+        ws = bpy.context.workspace
+    except Exception:
+        ws = None
+
+    state = _apply_state
+    if state == "downloading":
+        if ws:
+            ws.status_text_set("Baixando atualização do Nuclear... %d%%" % int(_apply_progress * 100))
+        return 0.3
+    if state in {"verifying", "extracting", "applying"}:
+        if ws:
+            ws.status_text_set("Instalando atualização... (%s)" % state)
+        return 0.3
+
+    # Terminal state (done / error / idle): clear the status text and report.
+    if ws:
+        try:
+            ws.status_text_set(None)
+        except Exception:
+            pass
+    if state == "done":
+        _prompt_restart()
+    elif state == "error":
+        _report_error()
+    return None
 
 
 def _prompt_restart():
@@ -750,7 +767,7 @@ def register():
 def unregister():
     if bpy is None:
         return
-    for fn in (_tick, _periodic_check):
+    for fn in (_tick, _periodic_check, _apply_progress_tick):
         if bpy.app.timers.is_registered(fn):
             bpy.app.timers.unregister(fn)
     _remove_statusbar()
