@@ -3484,15 +3484,11 @@ class WM_MT_splash_about(Menu):
 
         col = split.column(align=True)
         col.scale_y = 0.8
-        col.label(text=iface_("Version: {:s}").format(bpy.app.version_string), translate=False)
+        col.label(text="Version: 1.0.0 (beta)", translate=False)
         col.separator(factor=2.5)
-        col.label(text=iface_("Date: {:s} {:s}").format(
-            bpy.app.build_commit_date.decode("utf-8", "replace"),
-            bpy.app.build_commit_time.decode("utf-8", "replace")),
-            translate=False,
-        )
-        col.label(text=iface_("Hash: {:s}").format(bpy.app.build_hash.decode("ascii")), translate=False)
-        col.label(text=iface_("Branch: {:s}").format(bpy.app.build_branch.decode("utf-8", "replace")), translate=False)
+        col.label(text="Date: 10/06/2026", translate=False)
+        col.label(text="Hash: Unknown", translate=False)
+        col.label(text="Branch: Nuclear", translate=False)
 
         # This isn't useful information on MS-Windows or Apple systems as dynamically switching
         # between windowing systems is only supported between X11/WAYLAND.
@@ -3503,7 +3499,7 @@ class WM_MT_splash_about(Menu):
         del _ghost_backend, ghost_backend
 
         col.separator(factor=2.0)
-        col.label(text="Blender is free software")
+        col.label(text="Nuclear, a derivative of Blender")
         col.label(text="Licensed under the GNU General Public License")
 
         col = split.column(align=True)

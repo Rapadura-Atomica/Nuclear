@@ -36,6 +36,12 @@ revisão se as APIs do core que eles consomem mudarem.
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
 
+### Application Template Nuclear (a "costura" de UI — P0)
+- `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam: handler de
+  startup + pontos de extensão para tradução-remap e de/registro de painéis (vazios até P1/P2)
+- `scripts/startup/bl_app_templates_system/Nuclear/startup.blend` — **base** copiada do
+  `2D_Animation`; regenerar de dentro do Nuclear com o layout 2D/cut-out final
+
 ### Meta / contexto de projeto (docs do fork)
 - `CLAUDE.md` (raiz) — ponteiro fino que importa `tools/nuclear_claude/CLAUDE.md`
 - `tools/nuclear_claude/CLAUDE.md` — contexto canônico do projeto (sincronizado entre máquinas)
@@ -44,6 +50,19 @@ revisão se as APIs do core que eles consomem mudarem.
 
 > **Diretriz:** novas features Nuclear devem nascer aqui (arquivos `*_pegrig.*`,
 > `*_nuclear*`, `nuclear_*.py`, novos modifiers), não como edições espalhadas.
+
+---
+
+## 1b. Arquivos do upstream REMOVIDOS (reaparecem no rebase — re-remover)
+
+Deleções de arquivos que o upstream mantém. No rebase eles voltam e precisam ser
+removidos de novo. (Não removem funcionalidade — apenas presets de workspace.)
+
+- `scripts/startup/bl_app_templates_system/Sculpting/` — template removido (desnecessário ao build 2D)
+- `scripts/startup/bl_app_templates_system/VFX/` — template removido
+- `scripts/startup/bl_app_templates_system/Video_Editing/` — template removido
+
+> Templates mantidos: `2D_Animation` (base do Nuclear), `Storyboarding`, `Nuclear`.
 
 ---
 
@@ -73,6 +92,7 @@ cada rebase. Quando possível, migrar a lógica para arquivo novo + uma "costura
 | Arquivo | O que foi adicionado |
 |---|---|
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | tool `builtin.peg_pose` ("Peg Pose") + keymap |
+| `scripts/startup/bl_operators/wm.py` | menu `WM_MT_splash_about`: Version/Date/Hash/Branch literais + linha "Nuclear, a derivative of Blender" (branding do About) |
 
 ### Branding (ver seção 3)
 | Arquivo | O que foi alterado |
@@ -89,7 +109,9 @@ os demais são pendências do plano de rebranding.
 
 - [feito] `BKE_blender_version.h` — `NUCLEAR_NAME` / `NUCLEAR_VERSION_STRING`
 - [feito] `windowmanager/intern/wm_window.cc` — título da janela
-- [ ] `windowmanager/intern/wm_splash_screen.cc` — About: `IFACE_("Blender")` (≈481), nome op (≈504), descrição (≈506); URLs do manual (≈391, 396)
+- [feito] `windowmanager/intern/wm_splash_screen.cc` — About: título "Nuclear" (≈476), nome/descrição do operador "About Nuclear" (≈499/501), e logo do Blender trocado pela arte da splash (reusa `wm_block_splash_image`, ≈453-471)
+- [feito] `scripts/startup/bl_operators/wm.py` — menu About: Version/Date/Hash/Branch + linha de licença Nuclear
+- [ ] `windowmanager/intern/wm_splash_screen.cc` — URLs do manual ainda pendentes (≈391, 396); botões de link do About (Donate/Credits/Store/Website) ainda apontam para blender.org
 - [ ] `source/creator/creator_args.cc` — prints "Blender %s" (≈599, 622, 627, 656, 1340)
 - [ ] `windowmanager/intern/wm_init_exit.cc` — "Blender quit" (≈697)
 - [ ] `release/datafiles/splash.png` (fonte: `splash_template.xcf`) — ou env `BLENDER_CUSTOM_SPLASH` / `splash.png` no diretório do template
