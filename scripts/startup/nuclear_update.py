@@ -67,7 +67,8 @@ except ImportError:
 MANIFEST_URL = "https://rapaduraatomica.com.br/estacao/version.json"
 
 # How long after launch to run the first check, and how often to re-check while open.
-FIRST_CHECK_SECONDS = 12
+# Short so the notice shows promptly, but not 0 - the window/UI must exist first.
+FIRST_CHECK_SECONDS = 3
 RECHECK_SECONDS = 6 * 60 * 60  # 6 hours
 
 # Network timeouts, in seconds. The manifest is tiny; the zip is large, so its connect
@@ -534,51 +535,98 @@ def _layout_now():
         return None
 
 
+def _begin_apply():
+    """Kick off the background download+apply (or open the page when not self-applicable).
+
+    Returns True when a download was started/already running, False when it fell back to the
+    page. Safe to call from an operator execute() or a button.
+    """
+    global _apply_thread, _apply_state, _apply_progress, _apply_message
+    if bpy is None or not _update_available():
+        return False
+    layout = _layout_now()
+    if not _can_apply(layout):
+        # macOS / dev / flat (un-migrated) / non-writable install: open the page.
+        _open_page()
+        return False
+    if _apply_thread and _apply_thread.is_alive():
+        return True
+    _apply_state = "downloading"
+    _apply_progress = 0.0
+    _apply_message = ""
+    manifest = dict(_latest)
+    _apply_thread = threading.Thread(target=_run_apply, args=(manifest, layout), daemon=True)
+    _apply_thread.start()
+    if not bpy.app.timers.is_registered(_apply_progress_tick):
+        bpy.app.timers.register(_apply_progress_tick, first_interval=0.3)
+    return True
+
+
 if bpy is not None:
 
-    class NUCLEAR_OT_update(bpy.types.Operator):
-        """Baixar e instalar a atualização do Nuclear"""
-        bl_idname = "nuclear.update"
-        bl_label = "Atualizar o Nuclear"
+    class NUCLEAR_OT_update_dialog(bpy.types.Operator):
+        """Mostrar a tela de atualização disponível"""
+        bl_idname = "nuclear.update_dialog"
+        bl_label = "Atualização do Nuclear"
         bl_options = {'INTERNAL'}
 
-        # execute() only (no invoke/modal): a status-bar or popup_menu button calls the
-        # operator without an event, and a modal operator requires one - that mismatch is
-        # what produced "Invalid operator call". The background download is driven by a
-        # bpy.app timer instead, which is simpler and event-independent.
+        # A persistent dialog (invoke_props_dialog), not a popup_menu: it stays put like the
+        # About screen and only closes on an explicit choice, instead of vanishing when the
+        # mouse leaves it.
+        def invoke(self, context, event):
+            wm = context.window_manager
+            applies = _can_apply(_layout_now())
+            confirm = "Baixar e instalar" if applies else "Abrir página de download"
+            try:
+                return wm.invoke_props_dialog(
+                    self, width=440, title="Atualização do Nuclear", confirm_text=confirm)
+            except TypeError:
+                return wm.invoke_props_dialog(self, width=440)
+
+        def draw(self, context):
+            col = self.layout.column()
+            col.scale_y = 1.05
+            col.label(text="Nova versão disponível", icon='IMPORT')
+            big = col.row()
+            big.scale_y = 1.4
+            big.label(text=_latest_label())
+            notes = _notes_text()
+            if notes:
+                col.separator()
+                box = col.box().column(align=True)
+                box.label(text="Novidades:")
+                for line in notes.splitlines():
+                    if line.strip():
+                        box.label(text="• " + line.strip())
+            cur = _current_info()
+            if cur and cur.get("version_string") and cur.get("version_string") != "(forced)":
+                col.separator()
+                col.label(text="Instalada: %s" % cur["version_string"], icon='BLENDER')
+
         def execute(self, context):
-            global _apply_thread, _apply_state, _apply_progress, _apply_message
-            if not _update_available():
-                return {'CANCELLED'}
-
-            layout = _layout_now()
-            if not _can_apply(layout):
-                # macOS / dev / flat (un-migrated) / non-writable install: open the page.
-                _open_page()
-                return {'FINISHED'}
-
-            if _apply_thread and _apply_thread.is_alive():
-                self.report({'INFO'}, "Atualização já em andamento")
-                return {'CANCELLED'}
-
-            _apply_state = "downloading"
-            _apply_progress = 0.0
-            _apply_message = ""
-            manifest = dict(_latest)
-            _apply_thread = threading.Thread(
-                target=_run_apply, args=(manifest, layout), daemon=True)
-            _apply_thread.start()
-
-            if not bpy.app.timers.is_registered(_apply_progress_tick):
-                bpy.app.timers.register(_apply_progress_tick, first_interval=0.3)
-            self.report({'INFO'}, "Baixando atualização do Nuclear...")
+            _begin_apply()
             return {'FINISHED'}
 
-    class NUCLEAR_OT_update_restart(bpy.types.Operator):
-        """Reiniciar o Nuclear na versão recém-instalada"""
-        bl_idname = "nuclear.update_restart"
-        bl_label = "Reiniciar agora"
+    class NUCLEAR_OT_update_done_dialog(bpy.types.Operator):
+        """Tela de atualização concluída"""
+        bl_idname = "nuclear.update_done_dialog"
+        bl_label = "Nuclear atualizado"
         bl_options = {'INTERNAL'}
+
+        def invoke(self, context, event):
+            wm = context.window_manager
+            try:
+                return wm.invoke_props_dialog(
+                    self, width=400, title="Nuclear atualizado", confirm_text="Reiniciar agora")
+            except TypeError:
+                return wm.invoke_props_dialog(self, width=400)
+
+        def draw(self, context):
+            col = self.layout.column()
+            col.scale_y = 1.1
+            col.label(text="Atualização instalada com sucesso!", icon='CHECKMARK')
+            col.separator()
+            col.label(text="Reinicie o Nuclear para começar a usar a nova versão.")
 
         def execute(self, context):
             layout = _layout_now()
@@ -586,9 +634,63 @@ if bpy is not None:
                 _restart_into_current(layout)
             return {'FINISHED'}
 
-    _CLASSES = (NUCLEAR_OT_update, NUCLEAR_OT_update_restart)
+    class NUCLEAR_OT_update_error_dialog(bpy.types.Operator):
+        """Tela de falha na atualização"""
+        bl_idname = "nuclear.update_error_dialog"
+        bl_label = "Atualização do Nuclear"
+        bl_options = {'INTERNAL'}
+
+        def invoke(self, context, event):
+            wm = context.window_manager
+            try:
+                return wm.invoke_props_dialog(
+                    self, width=400, title="Falha na atualização",
+                    confirm_text="Abrir página de download")
+            except TypeError:
+                return wm.invoke_props_dialog(self, width=400)
+
+        def draw(self, context):
+            col = self.layout.column()
+            col.label(text="Não foi possível instalar a atualização:", icon='ERROR')
+            for line in (_apply_message or "falha desconhecida").splitlines():
+                if line.strip():
+                    col.label(text=line)
+
+        def execute(self, context):
+            _open_page()
+            return {'FINISHED'}
+
+    _CLASSES = (NUCLEAR_OT_update_dialog,
+                NUCLEAR_OT_update_done_dialog,
+                NUCLEAR_OT_update_error_dialog)
 else:
     _CLASSES = ()
+
+
+def _show_dialog(opname):
+    """Open one of the dialog operators, even from a timer (no event of our own).
+
+    Uses a window override so `bpy.ops.nuclear.<op>('INVOKE_DEFAULT')` has the window context
+    invoke_props_dialog needs. Returns True if it was opened.
+    """
+    if bpy is None:
+        return False
+    try:
+        wm = bpy.context.window_manager
+        win = wm.windows[0] if (wm and wm.windows) else None
+    except Exception:
+        win = None
+    if win is None:
+        return False
+    op = getattr(bpy.ops.nuclear, opname, None)
+    if op is None:
+        return False
+    try:
+        with bpy.context.temp_override(window=win):
+            op('INVOKE_DEFAULT')
+        return True
+    except Exception:
+        return False
 
 
 def _apply_progress_tick():
@@ -618,54 +720,18 @@ def _apply_progress_tick():
         except Exception:
             pass
     if state == "done":
-        _prompt_restart()
+        _show_dialog("update_done_dialog")
     elif state == "error":
-        _report_error()
+        _show_dialog("update_error_dialog")
     return None
-
-
-def _prompt_restart():
-    wm = getattr(bpy.context, "window_manager", None)
-    if wm is None:
-        return
-
-    def draw(self, context):
-        col = self.layout.column()
-        col.label(text="Atualização instalada com sucesso.", icon='CHECKMARK')
-        col.label(text="Reinicie o Nuclear para começar a usá-la.")
-        col.separator()
-        col.operator("nuclear.update_restart", text="Reiniciar agora", icon='FILE_REFRESH')
-
-    try:
-        wm.popup_menu(draw, title="Nuclear atualizado", icon='INFO')
-    except Exception:
-        pass
-
-
-def _report_error():
-    wm = getattr(bpy.context, "window_manager", None)
-    if wm is None:
-        return
-    msg = _apply_message or "falha desconhecida"
-
-    def draw(self, context):
-        col = self.layout.column()
-        col.label(text="Não foi possível instalar a atualização:", icon='ERROR')
-        col.label(text=msg)
-        col.separator()
-        col.operator("nuclear.update", text="Abrir página de download", icon='URL')
-
-    try:
-        wm.popup_menu(draw, title="Atualização do Nuclear", icon='ERROR')
-    except Exception:
-        pass
 
 
 def _draw_statusbar(self, context):
     if not _update_available():
         return
     row = self.layout.row(align=True)
-    row.operator("nuclear.update", text="Nuclear %s disponível" % _latest_label(), icon='IMPORT')
+    row.operator("nuclear.update_dialog",
+                 text="Nuclear %s disponível" % _latest_label(), icon='IMPORT')
 
 
 def _install_statusbar():
@@ -690,37 +756,19 @@ def _remove_statusbar():
     _statusbar_installed = False
 
 
-def _show_popup():
+def _show_dialog_once():
+    """Auto-open the 'update available' dialog a single time per session."""
     global _popup_shown
     if _popup_shown:
         return
-    wm = getattr(bpy.context, "window_manager", None)
-    if wm is None or not getattr(bpy.context, "window", None):
-        return
-
-    notes = _notes_text()
-    label = _latest_label()
-
-    def draw(self, context):
-        col = self.layout.column()
-        col.label(text="Nova versão disponível: %s" % label, icon='IMPORT')
-        for line in notes.splitlines():
-            if line.strip():
-                col.label(text=line)
-        col.separator()
-        col.operator("nuclear.update", text="Baixar e instalar", icon='IMPORT')
-
-    try:
-        wm.popup_menu(draw, title="Atualização do Nuclear", icon='INFO')
+    if _show_dialog("update_dialog"):
         _popup_shown = True
-    except Exception:
-        pass
 
 
 def _tick():
     if _update_available():
         _install_statusbar()
-        _show_popup()
+        _show_dialog_once()
         try:
             for win in bpy.context.window_manager.windows:
                 for area in win.screen.areas:
