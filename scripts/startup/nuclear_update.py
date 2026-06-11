@@ -3,28 +3,38 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 """
-Nuclear: in-app update notifier.
+Nuclear: in-app update notifier + applier.
 
-Checks a small JSON manifest on the Nuclear web host, compares it against the build
-this binary was stamped with, and - if a newer build exists - shows a discreet notice
-in the status bar plus a one-time popup. It never blocks or limits anything: if the
-network is down or the manifest is unreachable, Blender behaves exactly as normal and
-the check fails silently in a background thread.
+Checks a small JSON manifest on the Nuclear web host, compares it against the build this
+binary was stamped with, and - if a newer build exists - shows a discreet notice in the
+status bar plus a one-time popup. It never blocks or limits anything: if the network is
+down or the manifest is unreachable, Blender behaves exactly as normal and the check
+fails silently in a background thread.
 
 Two version sources, single source of truth:
-  - This running build knows its own build number from `nuclear_version.json`, a tiny
-    file shipped next to the `blender` binary and stamped at release time by
-    `tools/nuclear_release.py` (which reads the NUCLEAR_* defines in
-    BKE_blender_version.h - edit the version there and nowhere else).
+  - This running build knows its own build number from `nuclear_version.json`, a tiny file
+    shipped next to the `blender` binary, stamped at release time by
+    `tools/nuclear_release.py` (which reads the NUCLEAR_* defines in BKE_blender_version.h
+    - edit the version there and nowhere else).
   - The server advertises the latest build in `version.json` (same script writes it).
 
-The comparison is a plain integer compare of `build`, so it is robust regardless of how
-the human-readable version string is formatted.
+The comparison is a plain integer compare of `build`.
 
-What this module does NOT do yet: actually download and apply the update. The status-bar
-button currently opens the release notes / download page. The download + atomic
-symlink-swap apply (Linux) and the quit/helper/relaunch apply (Windows) land in a later
-phase; the hook (`_run_update_action`) is isolated so wiring it in is a one-spot change.
+Applying the update (Linux, phase 2):
+  The install is laid out as versioned directories behind an atomic `current` symlink:
+
+      <base>/versions/<version>-b<build>/   (a full portable Blender folder)
+      <base>/current -> versions/<...>      (symlink; the .desktop launches this)
+
+  Updating downloads the zip, verifies its sha256 against the manifest, extracts it into
+  `versions/`, flips the `current` symlink atomically, prunes old versions and offers to
+  restart. Because the swap is a single rename, the install is never left half-written, and
+  rolling back is just pointing `current` at the previous directory.
+
+  On Windows (phase 3) the running blender.exe cannot be replaced in place, so the button
+  falls back to opening the download page until the quit/helper/relaunch path lands. The
+  same fallback is used on Linux when the install is not a writable versioned layout
+  (e.g. a developer build run from the build tree).
 
 Configuration (no rebuild needed - environment variables override the constants):
   NUCLEAR_UPDATE_URL    full URL of the version manifest (version.json)
@@ -32,36 +42,57 @@ Configuration (no rebuild needed - environment variables override the constants)
   NUCLEAR_UPDATE_BUILD  pretend this build number is installed (for testing the notice)
 """
 
+import hashlib
 import json
 import os
+import platform
+import shutil
+import subprocess
+import tempfile
 import threading
 import urllib.request
+import zipfile
 
-import bpy
+# Guarded so the pure filesystem helpers below can be imported and unit-tested headless
+# (outside Blender). Inside Blender, bpy is always present.
+try:
+    import bpy
+except ImportError:
+    bpy = None
 
 # --- configuration -----------------------------------------------------------
 
-# Default manifest endpoint. Static JSON served straight off the web host - no PHP,
-# no token, cacheable. Override at runtime with the NUCLEAR_UPDATE_URL env var.
+# Default manifest endpoint. Static JSON served straight off the web host - no PHP, no
+# token, cacheable. Override at runtime with the NUCLEAR_UPDATE_URL env var.
 MANIFEST_URL = "https://rapaduraatomica.com.br/estacao/version.json"
 
 # How long after launch to run the first check, and how often to re-check while open.
-# Kept lazy: there is no value in hammering the host, a new build is a rare event.
 FIRST_CHECK_SECONDS = 12
 RECHECK_SECONDS = 6 * 60 * 60  # 6 hours
 
-# Network timeout for the manifest fetch, in seconds (kept short - never hang the UI).
+# Network timeouts, in seconds. The manifest is tiny; the zip is large, so its connect
+# timeout is longer (the timeout is per socket operation, not for the whole transfer).
 REQUEST_TIMEOUT = 8
+DOWNLOAD_TIMEOUT = 30
+
+# How many old version directories to keep after an update (plus the running one).
+KEEP_VERSIONS = 3
 
 # -----------------------------------------------------------------------------
 
-# Set by the background worker thread (plain Python only - NEVER touch bpy off-thread).
-# The main-thread timer reads these and drives all UI.
+# Set by the manifest-fetch worker (plain Python only - NEVER touch bpy off-thread).
 _latest = None            # parsed manifest dict, or None until a successful fetch
-_fetch_done = False       # worker finished (success or failure)
-_popup_shown = False      # the one-time popup has been shown this session
+_fetch_done = False
+_popup_shown = False
 _statusbar_installed = False
-_current_cache = None     # memoized result of _current_info()
+_current_cache = None
+
+# Apply state, written by the download/apply worker, read by the modal operator.
+_apply_thread = None
+_apply_state = "idle"     # idle | downloading | verifying | extracting | applying | done | error
+_apply_progress = 0.0     # 0..1 during download
+_apply_message = ""       # human-readable status / error
+_apply_target = None      # path of the newly installed version dir, once applied
 
 
 def _config_url():
@@ -75,18 +106,19 @@ def _is_disabled():
     return (not url) or ("CHANGE-ME" in url)
 
 
+# --- version detection -------------------------------------------------------
+
+
 def _current_info():
     """The build this binary was stamped with, read from `nuclear_version.json`.
 
-    The file is shipped next to the `blender` executable by the release script. Returns
-    a dict (at least {"build": int}) or None when it cannot be found/parsed - e.g. a
-    local developer build run straight from the build tree, where the updater stays quiet.
+    Returns a dict (at least {"build": int}) or None when it cannot be found - e.g. a
+    developer build run from the build tree, where the updater stays quiet.
     """
     global _current_cache
     if _current_cache is not None:
         return _current_cache
 
-    # Test override: NUCLEAR_UPDATE_BUILD=0 makes any server build look newer.
     forced = os.environ.get("NUCLEAR_UPDATE_BUILD")
     if forced is not None:
         try:
@@ -96,11 +128,10 @@ def _current_info():
             pass
 
     try:
-        bin_dir = os.path.dirname(bpy.app.binary_path or "")
+        bin_dir = os.path.dirname(bpy.app.binary_path or "") if bpy else ""
     except Exception:
         bin_dir = ""
 
-    # Look next to the binary, then one directory up (covers a couple of layouts).
     candidates = []
     if bin_dir:
         candidates.append(os.path.join(bin_dir, "nuclear_version.json"))
@@ -131,15 +162,13 @@ def _update_available():
         return False
 
 
+# --- manifest fetch ----------------------------------------------------------
+
+
 def _fetch_worker():
-    """Background: fetch + parse the manifest. Touches no bpy state, only globals."""
     global _latest, _fetch_done
     try:
-        headers = {
-            # A custom User-Agent is REQUIRED: many shared hosts (HostGator mod_security)
-            # reject the default "Python-urllib/x.y" agent with HTTP 406.
-            "User-Agent": "Nuclear-Updater/1.0",
-        }
+        headers = {"User-Agent": "Nuclear-Updater/1.0"}
         req = urllib.request.Request(_config_url(), headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             raw = resp.read()
@@ -148,7 +177,6 @@ def _fetch_worker():
             data["build"] = int(data["build"])
             _latest = data
     except Exception:
-        # The update check must never disturb the user.
         pass
     finally:
         _fetch_done = True
@@ -161,32 +189,270 @@ def _start_fetch():
     threading.Thread(target=_fetch_worker, daemon=True).start()
 
 
+# --- install layout & apply (pure helpers, no bpy) ---------------------------
+
+
+def _detect_layout(binary_path):
+    """Map a blender binary path to the versioned-install directories.
+
+    Returns {base, versions, current, install_root} or None. Handles both the new
+    versioned layout (`<base>/versions/<v>/blender`) and a legacy flat layout
+    (`<base>/<v>/blender`), in both cases placing new versions under `<base>/versions`.
+    """
+    if not binary_path:
+        return None
+    install_root = os.path.dirname(os.path.realpath(binary_path))
+    parent = os.path.dirname(install_root)
+    if os.path.basename(parent) == "versions":
+        base = os.path.dirname(parent)
+    else:
+        base = parent
+    return {
+        "base": base,
+        "versions": os.path.join(base, "versions"),
+        "current": os.path.join(base, "current"),
+        "install_root": install_root,
+    }
+
+
+def _version_dirname(manifest):
+    """Directory name for a manifest's build, e.g. "1.0.0-b2"."""
+    version = str(manifest.get("version", "0")).strip() or "0"
+    build = int(manifest.get("build", 0))
+    return "%s-b%d" % (version, build)
+
+
+def _find_binary_root(tree):
+    """Directory inside an extracted tree that holds the `blender` executable."""
+    for exe in ("blender", "blender.exe"):
+        if os.path.isfile(os.path.join(tree, exe)):
+            return tree
+    for root, _dirs, files in os.walk(tree):
+        if "blender" in files or "blender.exe" in files:
+            return root
+    return None
+
+
+def _sha256_file(path, progress_cb=None, size_hint=0):
+    h = hashlib.sha256()
+    done = 0
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+            done += len(chunk)
+            if progress_cb and size_hint:
+                progress_cb(min(1.0, done / size_hint))
+    return h.hexdigest()
+
+
+def _download(url, dest, progress_cb=None):
+    """Stream a URL to `dest`, reporting 0..1 progress when Content-Length is known."""
+    headers = {"User-Agent": "Nuclear-Updater/1.0"}
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
+        total = int(resp.headers.get("Content-Length") or 0)
+        got = 0
+        with open(dest, "wb") as fh:
+            while True:
+                chunk = resp.read(256 * 1024)
+                if not chunk:
+                    break
+                fh.write(chunk)
+                got += len(chunk)
+                if progress_cb and total:
+                    progress_cb(got / total)
+
+
+def _atomic_symlink(target, link):
+    """Point `link` at `target` atomically, replacing an existing symlink."""
+    tmp = link + ".tmp-new"
+    if os.path.lexists(tmp):
+        os.remove(tmp)
+    os.symlink(target, tmp)
+    os.replace(tmp, link)  # atomic on POSIX; replaces an existing symlink in place
+
+
+def _stamp_version(install_dir, manifest):
+    """Ensure the installed version knows its own build (for the next update check)."""
+    path = os.path.join(install_dir, "nuclear_version.json")
+    if os.path.isfile(path):
+        return
+    info = {k: manifest[k] for k in ("name", "build", "version", "stage", "version_string")
+            if k in manifest}
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(info, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+    except Exception:
+        pass
+
+
+def _apply_extracted(extract_tree, layout, manifest):
+    """Move an extracted build into versions/ and flip `current` to it. Returns its path."""
+    src = _find_binary_root(extract_tree)
+    if src is None:
+        raise RuntimeError("nenhum binário 'blender' encontrado no pacote baixado")
+
+    os.makedirs(layout["versions"], exist_ok=True)
+    dest = os.path.join(layout["versions"], _version_dirname(manifest))
+    if os.path.realpath(dest) == os.path.realpath(layout["install_root"]):
+        raise RuntimeError("esta versão já está instalada")
+    if os.path.exists(dest):
+        shutil.rmtree(dest, ignore_errors=True)
+    shutil.move(src, dest)
+    _stamp_version(dest, manifest)
+    _atomic_symlink(os.path.abspath(dest), layout["current"])
+    return dest
+
+
+def _refresh_desktop(layout):
+    """Best-effort: repoint a Nuclear.desktop launcher at `current/blender` after an update.
+
+    Existing machines were installed with a flat layout and a launcher that names a specific
+    version directory; once we move to the versioned `current` symlink, the launcher must
+    follow or it would keep opening the old build. Conservative on purpose: only rewrites an
+    Exec line that already points somewhere inside this install's base, so we never touch an
+    unrelated .desktop. Never raises into the update flow.
+    """
+    target_exec = os.path.join(layout["current"], "blender")
+    base_real = os.path.realpath(layout["base"])
+    candidates = [
+        os.path.expanduser("~/.local/share/applications/Nuclear.desktop"),
+        os.path.join(layout["base"], "Nuclear.desktop"),
+    ]
+    for path in candidates:
+        try:
+            if not os.path.isfile(path):
+                continue
+            with open(path, "r", encoding="utf-8") as fh:
+                lines = fh.readlines()
+            changed = False
+            for i, line in enumerate(lines):
+                if not line.startswith("Exec="):
+                    continue
+                cur = line[len("Exec="):].strip().split()[0] if line[len("Exec="):].strip() else ""
+                # Only touch a launcher that already points into our install base.
+                if cur and os.path.realpath(os.path.dirname(cur)).startswith(base_real):
+                    lines[i] = "Exec=%s\n" % target_exec
+                    changed = True
+            if changed:
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.writelines(lines)
+        except Exception:
+            continue
+
+
+def _prune_versions(versions_dir, keep_path, keep=KEEP_VERSIONS):
+    """Keep the newest `keep` version dirs (always keeping `keep_path`); remove the rest."""
+    try:
+        entries = [os.path.join(versions_dir, d) for d in os.listdir(versions_dir)]
+    except OSError:
+        return
+    dirs = [d for d in entries if os.path.isdir(d) and not os.path.basename(d).startswith(".")]
+    keep_real = os.path.realpath(keep_path) if keep_path else None
+    dirs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
+    survivors = set(dirs[:keep])
+    if keep_real:
+        survivors.add(keep_real)
+    for d in dirs:
+        if os.path.realpath(d) in survivors or d in survivors:
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _can_apply(layout):
+    """Phase 2 only self-applies on Linux into a writable layout we can symlink in."""
+    if platform.system() != "Linux":
+        return False
+    if not layout:
+        return False
+    return os.access(layout["base"], os.W_OK)
+
+
+def _run_apply(manifest, layout):
+    """Full download -> verify -> extract -> swap -> prune. Sets the _apply_* globals."""
+    global _apply_state, _apply_progress, _apply_message, _apply_target
+    work = None
+    try:
+        os.makedirs(layout["versions"], exist_ok=True)
+        # Work inside versions/ so the final move is a same-filesystem rename.
+        work = tempfile.mkdtemp(prefix=".update-", dir=layout["versions"])
+        zip_path = os.path.join(work, "nuclear.zip")
+
+        _apply_state = "downloading"
+        _apply_progress = 0.0
+
+        def on_dl(p):
+            global _apply_progress
+            _apply_progress = p
+        _download(manifest["url"], zip_path, on_dl)
+
+        expected = (manifest.get("sha256") or "").lower().strip()
+        if expected:
+            _apply_state = "verifying"
+            _apply_progress = 0.0
+            got = _sha256_file(zip_path, lambda p: _set_progress(p),
+                               size_hint=manifest.get("size", 0))
+            if got.lower() != expected:
+                raise RuntimeError("checksum não confere - download corrompido")
+
+        _apply_state = "extracting"
+        extract_dir = os.path.join(work, "x")
+        os.makedirs(extract_dir, exist_ok=True)
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(extract_dir)
+
+        _apply_state = "applying"
+        dest = _apply_extracted(extract_dir, layout, manifest)
+        _apply_target = dest
+        _refresh_desktop(layout)
+        _prune_versions(layout["versions"], dest)
+
+        _apply_state = "done"
+        _apply_message = "Atualização instalada. Reinicie o Nuclear para usá-la."
+    except Exception as ex:
+        _apply_state = "error"
+        _apply_message = str(ex)
+    finally:
+        if work and os.path.isdir(work):
+            shutil.rmtree(work, ignore_errors=True)
+
+
+def _set_progress(p):
+    global _apply_progress
+    _apply_progress = p
+
+
+def _restart_into_current(layout):
+    """Spawn the freshly-symlinked build detached, then quit this instance."""
+    exe = os.path.join(layout["current"], "blender")
+    try:
+        subprocess.Popen([exe], start_new_session=True, cwd=layout["base"])
+    except Exception:
+        return False
+    try:
+        bpy.ops.wm.quit_blender()
+    except Exception:
+        pass
+    return True
+
+
 # --- UI ----------------------------------------------------------------------
 
 
 def _notes_text():
-    if isinstance(_latest, dict):
-        notes = _latest.get("notes")
-        if notes:
-            return str(notes)
+    if isinstance(_latest, dict) and _latest.get("notes"):
+        return str(_latest["notes"])
     return ""
 
 
 def _latest_label():
     if isinstance(_latest, dict):
-        vs = _latest.get("version_string")
-        if vs:
-            return str(vs)
-        return "build %s" % _latest.get("build", "?")
+        return str(_latest.get("version_string") or ("build %s" % _latest.get("build", "?")))
     return "?"
 
 
-def _run_update_action():
-    """Phase 1: open the release notes / download page.
-
-    Phase 2 replaces this with the real download + verify + atomic apply. Keeping it in
-    one function means wiring the apply in later touches exactly one place.
-    """
+def _open_page():
     url = ""
     if isinstance(_latest, dict):
         url = _latest.get("notes_url") or _latest.get("url") or ""
@@ -198,15 +464,130 @@ def _run_update_action():
         pass
 
 
-class NUCLEAR_OT_update(bpy.types.Operator):
-    """Abrir a página da atualização do Nuclear"""
-    bl_idname = "nuclear.update"
-    bl_label = "Atualizar o Nuclear"
-    bl_options = {'INTERNAL'}
+def _layout_now():
+    try:
+        return _detect_layout(bpy.app.binary_path) if bpy else None
+    except Exception:
+        return None
 
-    def execute(self, context):
-        _run_update_action()
-        return {'FINISHED'}
+
+if bpy is not None:
+
+    class NUCLEAR_OT_update(bpy.types.Operator):
+        """Baixar e instalar a atualização do Nuclear"""
+        bl_idname = "nuclear.update"
+        bl_label = "Atualizar o Nuclear"
+        bl_options = {'INTERNAL'}
+
+        _timer = None
+
+        def invoke(self, context, event):
+            global _apply_thread, _apply_state, _apply_message
+            if not _update_available():
+                return {'CANCELLED'}
+
+            layout = _layout_now()
+            if not _can_apply(layout):
+                # Windows / dev build / non-writable install: just open the page.
+                _open_page()
+                return {'FINISHED'}
+
+            if _apply_thread and _apply_thread.is_alive():
+                self.report({'INFO'}, "Atualização já em andamento")
+                return {'CANCELLED'}
+
+            _apply_state = "downloading"
+            _apply_message = ""
+            manifest = dict(_latest)
+            _apply_thread = threading.Thread(
+                target=_run_apply, args=(manifest, layout), daemon=True)
+            _apply_thread.start()
+
+            self._timer = context.window_manager.event_timer_add(0.5, window=context.window)
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+
+        def modal(self, context, event):
+            if event.type != 'TIMER':
+                return {'PASS_THROUGH'}
+
+            ws = getattr(context, "workspace", None)
+            if _apply_state == "downloading":
+                pct = int(_apply_progress * 100)
+                if ws:
+                    ws.status_text_set("Baixando atualização do Nuclear... %d%%" % pct)
+            elif _apply_state in {"verifying", "extracting", "applying"}:
+                if ws:
+                    ws.status_text_set("Instalando atualização... (%s)" % _apply_state)
+            elif _apply_state in {"done", "error"}:
+                self._finish(context)
+                if _apply_state == "done":
+                    _prompt_restart()
+                else:
+                    _report_error()
+                return {'FINISHED'}
+            return {'RUNNING_MODAL'}
+
+        def _finish(self, context):
+            if self._timer is not None:
+                context.window_manager.event_timer_remove(self._timer)
+                self._timer = None
+            ws = getattr(context, "workspace", None)
+            if ws:
+                ws.status_text_set(None)
+
+    class NUCLEAR_OT_update_restart(bpy.types.Operator):
+        """Reiniciar o Nuclear na versão recém-instalada"""
+        bl_idname = "nuclear.update_restart"
+        bl_label = "Reiniciar agora"
+        bl_options = {'INTERNAL'}
+
+        def execute(self, context):
+            layout = _layout_now()
+            if layout:
+                _restart_into_current(layout)
+            return {'FINISHED'}
+
+    _CLASSES = (NUCLEAR_OT_update, NUCLEAR_OT_update_restart)
+else:
+    _CLASSES = ()
+
+
+def _prompt_restart():
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is None:
+        return
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.label(text="Atualização instalada com sucesso.", icon='CHECKMARK')
+        col.label(text="Reinicie o Nuclear para começar a usá-la.")
+        col.separator()
+        col.operator("nuclear.update_restart", text="Reiniciar agora", icon='FILE_REFRESH')
+
+    try:
+        wm.popup_menu(draw, title="Nuclear atualizado", icon='INFO')
+    except Exception:
+        pass
+
+
+def _report_error():
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is None:
+        return
+    msg = _apply_message or "falha desconhecida"
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.label(text="Não foi possível instalar a atualização:", icon='ERROR')
+        col.label(text=msg)
+        col.separator()
+        col.operator("nuclear.update", text="Abrir página de download", icon='URL')
+
+    try:
+        wm.popup_menu(draw, title="Atualização do Nuclear", icon='ERROR')
+    except Exception:
+        pass
 
 
 def _draw_statusbar(self, context):
@@ -239,13 +620,12 @@ def _remove_statusbar():
 
 
 def _show_popup():
-    """One-time popup. Must run on the main thread (called from the timer)."""
     global _popup_shown
     if _popup_shown:
         return
     wm = getattr(bpy.context, "window_manager", None)
     if wm is None or not getattr(bpy.context, "window", None):
-        return  # No usable UI context yet; try again on the next timer tick.
+        return
 
     notes = _notes_text()
     label = _latest_label()
@@ -257,7 +637,7 @@ def _show_popup():
             if line.strip():
                 col.label(text=line)
         col.separator()
-        col.operator("nuclear.update", text="Baixar / Ver notas", icon='URL')
+        col.operator("nuclear.update", text="Baixar e instalar", icon='IMPORT')
 
     try:
         wm.popup_menu(draw, title="Atualização do Nuclear", icon='INFO')
@@ -267,11 +647,9 @@ def _show_popup():
 
 
 def _tick():
-    """Main-thread timer: drive UI once the worker reports back, then re-check later."""
     if _update_available():
         _install_statusbar()
         _show_popup()
-        # Nudge the UI so the status-bar notice appears without a manual redraw.
         try:
             for win in bpy.context.window_manager.windows:
                 for area in win.screen.areas:
@@ -280,13 +658,12 @@ def _tick():
             pass
 
     if _fetch_done:
-        # Done with this round; schedule the next periodic re-check.
-        _start_fetch_later()
-        return None  # stop this timer
-    return 2.0  # keep polling the worker every couple of seconds
+        _start_periodic()
+        return None
+    return 2.0
 
 
-def _start_fetch_later():
+def _start_periodic():
     if bpy.app.timers.is_registered(_periodic_check):
         return
     bpy.app.timers.register(_periodic_check, first_interval=RECHECK_SECONDS, persistent=True)
@@ -298,14 +675,17 @@ def _periodic_check():
     _start_fetch()
     if not bpy.app.timers.is_registered(_tick):
         bpy.app.timers.register(_tick, first_interval=2.0, persistent=True)
-    return None  # one-shot; _tick reschedules the next round when it finishes
+    return None
 
 
 # --- registration ------------------------------------------------------------
 
 
 def register():
-    bpy.utils.register_class(NUCLEAR_OT_update)
+    if bpy is None:
+        return
+    for cls in _CLASSES:
+        bpy.utils.register_class(cls)
     if _is_disabled():
         return
     _start_fetch()
@@ -314,11 +694,14 @@ def register():
 
 
 def unregister():
+    if bpy is None:
+        return
     for fn in (_tick, _periodic_check):
         if bpy.app.timers.is_registered(fn):
             bpy.app.timers.unregister(fn)
     _remove_statusbar()
-    try:
-        bpy.utils.unregister_class(NUCLEAR_OT_update)
-    except Exception:
-        pass
+    for cls in reversed(_CLASSES):
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
