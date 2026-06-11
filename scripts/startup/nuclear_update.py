@@ -264,12 +264,48 @@ def _download(url, dest, progress_cb=None):
 
 
 def _atomic_symlink(target, link):
-    """Point `link` at `target` atomically, replacing an existing symlink."""
+    """Point `link` at `target` atomically, replacing an existing symlink (POSIX)."""
     tmp = link + ".tmp-new"
     if os.path.lexists(tmp):
         os.remove(tmp)
     os.symlink(target, tmp)
     os.replace(tmp, link)  # atomic on POSIX; replaces an existing symlink in place
+
+
+def _rmdir_junction(path):
+    """Remove a directory symlink/junction WITHOUT touching its target contents."""
+    if not os.path.lexists(path):
+        return
+    # os.rmdir removes a junction/dir-symlink reparse point without recursing into
+    # the target on Windows; os.unlink handles a dir symlink on POSIX.
+    try:
+        os.rmdir(path)
+    except OSError:
+        os.unlink(path)
+
+
+def _flip_current_windows(target, link):
+    """Point `link` at `target` via a directory junction (no admin rights needed).
+
+    The running blender.exe lives inside `target`'s *previous* sibling, which we never
+    touch, so there is no in-use-file conflict. We build the new junction under a temp
+    name first, then swap, to keep the window where `current` is missing as small as
+    possible (junctions cannot be atomically replaced like a POSIX symlink).
+    """
+    tmp = link + ".new"
+    _rmdir_junction(tmp)
+    # mklink needs cmd's built-in; shell=False with the explicit cmd /c form.
+    subprocess.run(["cmd", "/c", "mklink", "/J", tmp, target], check=True)
+    _rmdir_junction(link)
+    os.rename(tmp, link)
+
+
+def _flip_current(target, link):
+    """Repoint the `current` pointer at `target`, using the right primitive per OS."""
+    if os.name == "nt":
+        _flip_current_windows(target, link)
+    else:
+        _atomic_symlink(target, link)
 
 
 def _stamp_version(install_dir, manifest):
@@ -301,7 +337,7 @@ def _apply_extracted(extract_tree, layout, manifest):
         shutil.rmtree(dest, ignore_errors=True)
     shutil.move(src, dest)
     _stamp_version(dest, manifest)
-    _atomic_symlink(os.path.abspath(dest), layout["current"])
+    _flip_current(os.path.abspath(dest), layout["current"])
     return dest
 
 
@@ -313,7 +349,12 @@ def _refresh_desktop(layout):
     follow or it would keep opening the old build. Conservative on purpose: only rewrites an
     Exec line that already points somewhere inside this install's base, so we never touch an
     unrelated .desktop. Never raises into the update flow.
+
+    Linux only: on Windows the `current` junction means the Start-Menu shortcut keeps
+    resolving to the new build with no rewrite needed.
     """
+    if os.name == "nt":
+        return
     target_exec = os.path.join(layout["current"], "blender")
     base_real = os.path.realpath(layout["base"])
     candidates = [
@@ -342,18 +383,24 @@ def _refresh_desktop(layout):
             continue
 
 
-def _prune_versions(versions_dir, keep_path, keep=KEEP_VERSIONS):
-    """Keep the newest `keep` version dirs (always keeping `keep_path`); remove the rest."""
+def _prune_versions(versions_dir, keep_paths, keep=KEEP_VERSIONS):
+    """Keep the newest `keep` version dirs plus everything in `keep_paths`; remove the rest.
+
+    `keep_paths` may be a single path or an iterable. The currently-running install is
+    always passed in so we never try to delete it (it is locked on Windows anyway).
+    """
+    if isinstance(keep_paths, (str, bytes)):
+        keep_paths = [keep_paths]
     try:
         entries = [os.path.join(versions_dir, d) for d in os.listdir(versions_dir)]
     except OSError:
         return
     dirs = [d for d in entries if os.path.isdir(d) and not os.path.basename(d).startswith(".")]
-    keep_real = os.path.realpath(keep_path) if keep_path else None
     dirs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
     survivors = set(dirs[:keep])
-    if keep_real:
-        survivors.add(keep_real)
+    for p in keep_paths:
+        if p:
+            survivors.add(os.path.realpath(p))
     for d in dirs:
         if os.path.realpath(d) in survivors or d in survivors:
             continue
@@ -361,8 +408,8 @@ def _prune_versions(versions_dir, keep_path, keep=KEEP_VERSIONS):
 
 
 def _can_apply(layout):
-    """Phase 2 only self-applies on Linux into a writable layout we can symlink in."""
-    if platform.system() != "Linux":
+    """Self-apply on Linux and Windows into a writable versioned layout (macOS: page)."""
+    if platform.system() not in ("Linux", "Windows"):
         return False
     if not layout:
         return False
@@ -406,7 +453,8 @@ def _run_apply(manifest, layout):
         dest = _apply_extracted(extract_dir, layout, manifest)
         _apply_target = dest
         _refresh_desktop(layout)
-        _prune_versions(layout["versions"], dest)
+        # Keep the new build and the still-running one (locked on Windows).
+        _prune_versions(layout["versions"], [dest, layout["install_root"]])
 
         _apply_state = "done"
         _apply_message = "Atualização instalada. Reinicie o Nuclear para usá-la."
@@ -424,10 +472,16 @@ def _set_progress(p):
 
 
 def _restart_into_current(layout):
-    """Spawn the freshly-symlinked build detached, then quit this instance."""
-    exe = os.path.join(layout["current"], "blender")
+    """Spawn the freshly-installed build (via the `current` pointer) detached, then quit."""
+    exe_name = "blender.exe" if os.name == "nt" else "blender"
+    exe = os.path.join(layout["current"], exe_name)
     try:
-        subprocess.Popen([exe], start_new_session=True, cwd=layout["base"])
+        if os.name == "nt":
+            flags = getattr(subprocess, "DETACHED_PROCESS", 0) | \
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            subprocess.Popen([exe], cwd=layout["base"], creationflags=flags, close_fds=True)
+        else:
+            subprocess.Popen([exe], start_new_session=True, cwd=layout["base"])
     except Exception:
         return False
     try:
@@ -488,7 +542,7 @@ if bpy is not None:
 
             layout = _layout_now()
             if not _can_apply(layout):
-                # Windows / dev build / non-writable install: just open the page.
+                # macOS / dev build / non-writable install: just open the page.
                 _open_page()
                 return {'FINISHED'}
 
