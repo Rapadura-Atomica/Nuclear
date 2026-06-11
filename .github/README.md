@@ -5,7 +5,7 @@ Keep this document short & concise.
 Nuclear
 =======
 
-![Nuclear](https://rapaduraatomica.com.br/addon/rapaduraatomica/nuclear/images/splash-v1.0.png "Nuclear")
+![Nuclear](https://rapaduraatomica.com.br/nuclear/images/splash-v1.0.png "Nuclear")
 
 **Nuclear** é o software de animação desenvolvido pelo estúdio cearense **Rapadura Atômica**.
 
