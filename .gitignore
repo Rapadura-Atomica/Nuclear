@@ -1,6 +1,13 @@
 # generic files to ignore
 .*
 
+# ...but DO version the project agents under .claude/agents/ (the `.*` above would
+# otherwise hide all of .claude/). Everything else in .claude/ (e.g. settings.local.json)
+# stays ignored.
+!/.claude/
+/.claude/*
+!/.claude/agents/
+
 # python temp paths
 __pycache__/
 *.py[cod]
