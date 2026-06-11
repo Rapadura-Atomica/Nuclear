@@ -42,7 +42,32 @@
 /* Nuclear fork branding (shown in the window title bar instead of "Blender <version>").
  * Kept separate from the Blender version defines above, which are parsed by build scripts. */
 #define NUCLEAR_NAME "Nuclear"
-#define NUCLEAR_VERSION_STRING "Nuclear 1.0.0 (Beta)"
+
+/* Nuclear fork version. These numbers are the single source of truth for the fork.
+ *
+ * NUCLEAR_BUILD is a monotonically increasing integer that MUST be bumped on every
+ * released build: it is what the in-app auto-updater compares against the server
+ * manifest (estacao/version.json) to decide whether a newer build is available.
+ * `tools/nuclear_release.py` reads these defines to stamp the shipped
+ * `nuclear_version.json` and the server manifest, so edit them here and nowhere else. */
+#define NUCLEAR_VERSION_MAJOR 1
+#define NUCLEAR_VERSION_MINOR 0
+#define NUCLEAR_VERSION_PATCH 0
+#define NUCLEAR_BUILD 1
+/* Release stage suffix shown to users, e.g. "Beta"/"RC"/"Stable". */
+#define NUCLEAR_VERSION_STAGE "Beta"
+
+/* Stringify helpers, self-contained so this header does not depend on BLI_utildefines.h
+ * (NUCLEAR_VERSION_STRING is used in adjacent-literal concatenation and must stay a
+ * compile-time string literal). */
+#define NUCLEAR_STRINGIFY_(x) #x
+#define NUCLEAR_STRINGIFY(x) NUCLEAR_STRINGIFY_(x)
+
+/* User-readable version, derived from the numbers above -> "Nuclear 1.0.0 (Beta)". */
+#define NUCLEAR_VERSION_STRING \
+  NUCLEAR_NAME " " NUCLEAR_STRINGIFY(NUCLEAR_VERSION_MAJOR) "." NUCLEAR_STRINGIFY( \
+      NUCLEAR_VERSION_MINOR) "." NUCLEAR_STRINGIFY(NUCLEAR_VERSION_PATCH) " (" NUCLEAR_VERSION_STAGE \
+                                                                             ")"
 
 /** User readable version string. */
 const char *BKE_blender_version_string(void);
