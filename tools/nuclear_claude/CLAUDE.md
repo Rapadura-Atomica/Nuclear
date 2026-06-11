@@ -305,6 +305,16 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
 > instalações limpas ficavam sem auto-update nenhum. Antes de publicar, confira:
 > `unzip -l nuclear.zip | grep nuclear_update.py`
 
+> ⚠️ Regra de ouro nº4: **o zip tem que ser AUTO-CONTIDO** — além do updater, traz as
+> deps Python do fork (`pyclipper`, `triangle`, `scipy`, `scikit-image` + transitivas:
+> imageio, tifffile, lazy_loader, networkx, PIL, packaging) embutidas em
+> `Nuclear/5.0/python/lib/python3.11/site-packages/`. Senão, **cada auto-update troca a
+> pasta da versão por uma extraída do zip e PERDE essas libs** → recursos 2D (fill/balde,
+> curve) quebram. O instalador antigo escondia isso instalando as deps via pip por fora;
+> no mundo versionado/auto-update isso não vale mais. Confira:
+> `unzip -l nuclear.zip | grep -c site-packages/scipy` (tem que ser > 0).
+> Não duplique a `numpy` (o Blender já bundla a dele).
+
 ### Atalho: só corrigir o manifesto de um zip que já está no servidor
 Se o zip mudou mas a versão não, recalcule e regrave só o manifesto:
 ```sh
@@ -383,11 +393,12 @@ projeto.
 Atualizado em 2026-06-11.
 
 - **Versão publicada:** Nuclear 1.0.0 (Beta) — `NUCLEAR_BUILD = 1`.
-- **nuclear.zip:** 728.591.126 bytes, sha256
-  `ae25f99160a2fe597cf887d4994932c7e758b3a566c2e3ae01f9ef3e23667f7a`. **Agora contém o
-  updater** (`nuclear_update.py` + `nuclear_version.json` injetados no zip — regra de ouro
-  nº3), então instalações limpas já trazem o auto-update. Backup no servidor:
-  `nuclear.zip.bak-pre-updater`.
+- **nuclear.zip:** 810.050.744 bytes, sha256
+  `cf57a3fc49cac7bbe3de1bb22f93c39c65168da302d857a60929c4cdd88998fb`. **Auto-contido:**
+  traz o updater (`nuclear_update.py` + `nuclear_version.json` — regra nº3) **e** as deps
+  Python do fork (pyclipper, triangle, scipy, scikit-image + transitivas — regra nº4),
+  injetadas em 2026-06-11 sem rebuild. Backups no servidor: `nuclear.zip.bak-pre-updater`
+  (original) e `nuclear.zip.bak-pre-deps` (com updater, sem deps).
 - **Instalador versionado:** publicado em `instalarNuclear-versionado.sh` (o `.sh` antigo
   segue sendo o flat).
 - **Telas:** diálogos fixos (`invoke_props_dialog`); primeira checagem 3 s após abrir;
