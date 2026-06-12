@@ -62,16 +62,40 @@ def _update_startup_grease_pencils():
 #   (P1 of the roadmap). Format: {locale: {(context, source): translated}}.
 # --------------------------------------------------------------------------------------
 
+# Format: {locale: {(context, source): translated}}. "*" = the default i18n context
+# (what IFACE_() uses). Registered under "en_US" and applied with interface translation
+# enabled (see _ensure_interface_translation) so the overrides show even in English.
+#
+# This currently holds only pure branding (Blender -> Nuclear) on residual UI strings
+# that the C-level branding pass would otherwise have to chase in hot files. The
+# feature-level nomenclature remap (e.g. "Object"/"Grease Pencil" -> Nuclear terms) is
+# added here once the scope document fixes the final naming.
 _TRANSLATIONS = {
-    # "en_US": {
-    #     ("*", "Grease Pencil"): "…",
-    # },
+    "en_US": {
+        ("*", "Blender Version"): "Nuclear Version",
+        ("*", "Blender Drivers Editor"): "Nuclear Drivers Editor",
+        ("*", "Blender Info Log"): "Nuclear Info Log",
+        ("*", "Load Factory Blender Preferences"): "Load Factory Nuclear Preferences",
+    },
 }
+
+
+def _ensure_interface_translation():
+    # The translation overrides above only take effect when interface translation is on
+    # and the active language matches a registered locale. Force both so Nuclear's labels
+    # show regardless of the user's prior preference. (pt_BR/others can be added later.)
+    try:
+        view = bpy.context.preferences.view
+        view.use_translate_interface = True
+        view.language = 'en_US'
+    except Exception:
+        pass
 
 
 def _register_translations():
     if _TRANSLATIONS:
         bpy.app.translations.register(__name__, _TRANSLATIONS)
+        _ensure_interface_translation()
 
 
 def _unregister_translations():
@@ -128,6 +152,8 @@ def load_handler(_):
     _update_startup_screens()
     _update_startup_scenes()
     _update_startup_grease_pencils()
+    if _TRANSLATIONS:
+        _ensure_interface_translation()
 
 
 def register():

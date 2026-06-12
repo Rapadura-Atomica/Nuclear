@@ -46,6 +46,7 @@ revisão se as APIs do core que eles consomem mudarem.
 - `CLAUDE.md` (raiz) — ponteiro fino que importa `tools/nuclear_claude/CLAUDE.md`
 - `tools/nuclear_claude/CLAUDE.md` — contexto canônico do projeto (sincronizado entre máquinas)
 - `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md` — este registro
+- `tools/nuclear_claude/NUCLEAR_UI_LAYOUT.md` — spec do P2 (layout-alvo do mockup)
 - `tools/nuclear_claude/readme.txt` — notas para devs humanos
 
 > **Diretriz:** novas features Nuclear devem nascer aqui (arquivos `*_pegrig.*`,
@@ -97,8 +98,9 @@ cada rebase. Quando possível, migrar a lógica para arquivo novo + uma "costura
 ### Branding (ver seção 3)
 | Arquivo | O que foi alterado |
 |---|---|
-| `source/blender/blenkernel/BKE_blender_version.h` | `NUCLEAR_NAME`, `NUCLEAR_VERSION_STRING` |
+| `source/blender/blenkernel/BKE_blender_version.h` | `NUCLEAR_NAME`, `NUCLEAR_VERSION_STRING`, `NUCLEAR_VERSION_STRING_NO_NAME` |
 | `source/blender/windowmanager/intern/wm_window.cc` | título de janela usa `NUCLEAR_NAME` (≈559, 644) |
+| `source/blender/python/intern/bpy.cc` | expõe `_bpy._nuclear_version_string()` (versão do fork sem o nome) p/ o About derivar do header |
 
 ---
 
@@ -111,15 +113,15 @@ os demais são pendências do plano de rebranding.
 - [feito] `windowmanager/intern/wm_window.cc` — título da janela
 - [feito] `windowmanager/intern/wm_splash_screen.cc` — About: título "Nuclear" (≈476), nome/descrição do operador "About Nuclear" (≈499/501), e logo do Blender trocado pela arte da splash (reusa `wm_block_splash_image`, ≈453-471)
 - [feito] `scripts/startup/bl_operators/wm.py` — menu About: Version/Date/Hash/Branch + linha de licença Nuclear
-- [ ] `windowmanager/intern/wm_splash_screen.cc` — URLs do manual ainda pendentes (≈391, 396); botões de link do About (Donate/Credits/Store/Website) ainda apontam para blender.org
-- [ ] `source/creator/creator_args.cc` — prints "Blender %s" (≈599, 622, 627, 656, 1340)
-- [ ] `windowmanager/intern/wm_init_exit.cc` — "Blender quit" (≈697)
-- [ ] `release/datafiles/splash.png` (fonte: `splash_template.xcf`) — ou env `BLENDER_CUSTOM_SPLASH` / `splash.png` no diretório do template
+- [feito] `source/creator/creator_args.cc` — prints de versão usam `NUCLEAR_VERSION_STRING` (≈599, 621, 627, 656, 1340) + doc do `--version` → "Print Nuclear version"
+- [feito] `windowmanager/intern/wm_init_exit.cc` — "Nuclear quit" (≈697)
+- [feito] `release/datafiles/splash.png` — splash trocada por arte interna do autor (fora desta sessão)
+- [feito] **Strings residuais via truque de tradução** (template `Nuclear/__init__.py`, locale `en_US`, SEM editar C; valida com `pgettext_iface`): "Blender Version", "Blender Drivers Editor", "Blender Info Log", "Load Factory Blender Preferences" → Nuclear. O template força `use_translate_interface=True` + `language='en_US'`. Isso **substitui** a necessidade de editar `screen_ops.cc`/`wm_files.cc` para essas strings — não viram pontos quentes.
+- [feito] `scripts/startup/bl_operators/wm.py` — About: versão agora derivada via `_bpy._nuclear_version_string()` (não diverge mais do CLI); botões reorganizados → removidos Donate e Blender Store; "What's New" → GitHub releases do Nuclear; "Nuclear Website" → rapaduraatomica.com.br; Credits e License mantidos em blender.org (atribuição + GPL, por exigência legal)
+- [ ] `windowmanager/intern/wm_splash_screen.cc` — URLs do manual ainda pendentes (≈391, 396, instalação macOS/Windows)
 - [ ] `release/windows/icons/winblender.{ico,rc}` — RC tem "Blender Foundation"/"ProductName: Blender"
 - [ ] `release/freedesktop/icons/.../blender.svg` + `.desktop`
-- [ ] `editors/screen/screen_ops.cc` — "Blender Drivers Editor", "Blender Info Log" (≈6437, 6494)
-- [ ] `windowmanager/intern/wm_files.cc` — "Load Factory Blender Preferences" (≈2782)
-- [ ] `makesrna/intern/rna_space.cc` — "Filter Blender*" (≈7479, 7486, 7535)
+- [ ] `makesrna/intern/rna_space.cc` — "Filter Blender*" (≈7479, 7486, 7535) — descrevem o formato `.blend`; decisão pendente (renomear p/ Nuclear ou manter)
 - [ ] `windowmanager/intern/wm_platform_support.cc` — URL docs.blender.org (≈74)
 - [ ] `blenkernel/intern/preferences.cc` — URLs extensions.blender.org (≈224, 226)
 - [ ] `source/creator/buildinfo.c`, `source/creator/CMakeLists.txt` — metadados de build/RC

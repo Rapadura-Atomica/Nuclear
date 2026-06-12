@@ -3484,7 +3484,9 @@ class WM_MT_splash_about(Menu):
 
         col = split.column(align=True)
         col.scale_y = 0.8
-        col.label(text="Version: 1.0.0 (beta)", translate=False)
+        from _bpy import _nuclear_version_string
+        col.label(text="Version: " + _nuclear_version_string(), translate=False)
+        del _nuclear_version_string
         col.separator(factor=2.5)
         col.label(text="Date: 10/06/2026", translate=False)
         col.label(text="Hash: Unknown", translate=False)
@@ -3504,13 +3506,14 @@ class WM_MT_splash_about(Menu):
 
         col = split.column(align=True)
         col.emboss = 'PULLDOWN_MENU'
-        col.operator("wm.url_open_preset", text="Donate", icon='FUND').type = 'FUND'
-        col.operator("wm.url_open_preset", text="What's New", icon='URL').type = 'RELEASE_NOTES'
+        col.operator(
+            "wm.url_open", text="What's New", icon='URL',
+        ).url = "https://github.com/Rapadura-Atomica/Nuclear/releases"
         col.separator(factor=2.0)
+        # Credits and License point upstream by design: GPL compliance + attribution.
         col.operator("wm.url_open_preset", text="Credits", icon='URL').type = 'CREDITS'
         col.operator("wm.url_open", text="License", icon='URL').url = "https://www.blender.org/about/license/"
-        col.operator("wm.url_open", text="Blender Store", icon='URL').url = "https://store.blender.org"
-        col.operator("wm.url_open_preset", text="Blender Website", icon='URL').type = 'BLENDER'
+        col.operator("wm.url_open", text="Nuclear Website", icon='URL').url = "https://rapaduraatomica.com.br"
 
 
 class WM_MT_region_toggle_pie(Menu):
