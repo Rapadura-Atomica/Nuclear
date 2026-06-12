@@ -35,6 +35,7 @@ Configuration (no rebuild needed - environment variables override the constants)
 import atexit
 import json
 import os
+import ssl
 import threading
 import urllib.request
 import uuid
@@ -116,6 +117,41 @@ def _username():
         return "unknown"
 
 
+_ssl_ctx = None
+_ssl_ctx_done = False
+
+
+def _ssl_context():
+    """SSL context with a CA bundle that verifies. Blender's bundled Python often can't
+    find one, so plain HTTPS fails with CERTIFICATE_VERIFY_FAILED and every ping is
+    silently dropped. Try certifi (ships with the app) -> system CA bundles -> default."""
+    global _ssl_ctx, _ssl_ctx_done
+    if _ssl_ctx_done:
+        return _ssl_ctx
+    _ssl_ctx_done = True
+    try:
+        import certifi
+        _ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        return _ssl_ctx
+    except Exception:
+        pass
+    for path in ("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+                 "/etc/ssl/certs/ca-certificates.crt",
+                 "/etc/ssl/cert.pem",
+                 "/etc/ssl/ca-bundle.pem"):
+        try:
+            if os.path.exists(path):
+                _ssl_ctx = ssl.create_default_context(cafile=path)
+                return _ssl_ctx
+        except Exception:
+            continue
+    try:
+        _ssl_ctx = ssl.create_default_context()
+    except Exception:
+        _ssl_ctx = None
+    return _ssl_ctx
+
+
 def _send(event):
     """Fire one ping in a background thread; never raises into Blender."""
     if _is_disabled():
@@ -143,7 +179,7 @@ def _send(event):
             if token:
                 headers["X-Nuclear-Token"] = token
             req = urllib.request.Request(_config_url(), data=data, headers=headers, method="POST")
-            urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT).close()
+            urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=_ssl_context()).close()
         except Exception:
             # Presence telemetry must never disturb the user.
             pass
