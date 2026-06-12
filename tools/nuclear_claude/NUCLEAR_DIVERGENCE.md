@@ -40,23 +40,56 @@ revisão se as APIs do core que eles consomem mudarem.
 - `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam central. Contém:
   - **Seam 1 (tradução):** `_TRANSLATIONS` (branding Blender→Nuclear, locale en_US) +
     `_ensure_interface_translation` (força `use_translate_interface`/`language`).
-  - **Seam 2 (classes):** `_HIDDEN_CLASSES` (unregister reversível) / `_NUCLEAR_CLASSES`
-    (registra `NUCLEAR_MT_logo` = menu da logo, e `NUCLEAR_MT_view`).
+  - **Seam 2 (classes):** `_HIDDEN_CLASS_NAMES` (esconde por nome, reversível — inclui os
+    `MATERIAL_PT_gpencil_*` verbosos p/ a aba Color ficar compacta) / `_NUCLEAR_CLASSES`
+    (`NUCLEAR_MT_logo`, `NUCLEAR_MT_view`, `NUCLEAR_OT_set_area_tab` = troca tipo de editor,
+    `NUCLEAR_MT_add_tab` = menu "+", `NUCLEAR_PT_color_palette` + `NUCLEAR_UL_color_palette` =
+    paleta Color limpa (swatch arredondado + nome renomeável; sem ghost/hide/lock nem Stroke/Fill),
+    `NUCLEAR_OT_palette_add` = "+" da paleta que cria um material GP real (não slot vazio — senão
+    não dava p/ editar)).
   - **Seam 3 (header overrides — Fase A):** troca em runtime métodos de header e restaura no
     `unregister` (`_orig_draws`): `TOPBAR_MT_editor_menus.draw` (menu curado File/Edit/View/
     Render/Help, sem Blender/Window), `TOPBAR_HT_upper_bar.draw_left` (logo Nuclear clicável →
-    `NUCLEAR_MT_logo` + esconde abas de workspace), `VIEW3D_HT_header.draw` (só o mode selector).
+    `NUCLEAR_MT_logo` + esconde abas de workspace), `VIEW3D_HT_header.draw` (só o mode selector),
+    `DOPESHEET_HT_header.draw` (Fase C: no modo GPENCIL desenha o transporte minimal Nuclear —
+    Mute/Scrub, +KF/−KF, REW/Play/FF, Frame/Start/End; outros modos caem no original).
+    `_update_startup_timeline` força `DOPESHEET_EDITOR.mode='GPENCIL'` (camadas + keyframes).
+    `VIEW3D_HT_tool_header.draw` (Fase E: barra ADDONS **dinâmica** — `_sidebar_categories`
+    enumera as categorias do N-panel e `popover_group` traz cada uma pro header; cresce/encolhe
+    com os addons. Ex.: categoria "Peg" do PegRig aparece sozinha).
+  - **Properties (Fase D):** `_update_startup_properties` usa os toggles nativos
+    `SpaceProperties.show_properties_*` (importa `bl_ui.space_properties.tab_list`) p/ manter só
+    Tool/Object/Modifiers/Effects/Data/Material e esconder o resto. Paleta Color = aba Material.
+  - **Abas do painel direito (Fase D — 100%):** `_draw_nuclear_tabs` prependado (via Seam 3)
+    nos headers `PROPERTIES_HT_header`/`IMAGE_HT_header`/`NODE_HT_header`/`FILEBROWSER_HT_header`
+    → strip Properties/Reference/Library/Color/Node + "+". `NUCLEAR_OT_set_area_tab` troca
+    `area.ui_type`. Cada área-direita é independente (2 áreas = 2 boxes do mockup). Mesmo aviso
+    de acoplamento de runtime (nomes dos headers + enum `ui_type`).
+  - **Abas por-box sem DNA:** `_TABSETS` (main/shading/all) + `_assign_tabsets` (atribui por
+    posição da área no load) + `_resolve_tabset` (por índice) + `_apply_default_tabs` (parkeia
+    cada box na 1ª aba: main→Properties/Tool, shading→Color/Material). Dá os subconjuntos
+    distintos do mockup sem custom data na `ScrArea` (sem mudança de formato de arquivo).
+  - **Seam 4 (toolbar — Fase B):** troca reversível da entrada `'PAINT_GREASE_PENCIL'` de
+    `VIEW3D_PT_tools_active._tools` (dict de classe salvo em `_orig_tools`, restaurado no
+    `unregister`). Set curado: brush/borracha/balde/grupo-linha/eyedropper. Mesmo aviso de
+    acoplamento de runtime do Seam 3 (depende de `VIEW3D_PT_tools_active._tools` e dos defs
+    `_defs_grease_pencil_paint.*` do upstream — se sumirem, deixa o toolbar nativo intacto).
   - **Logo:** `nuclear_logo.png` carregada via `bpy.utils.previews` (load no `register`,
     unload no `unregister`).
   - **Canvas (Fase A):** `_update_startup_canvas` trava VIEW_3D na câmera e esconde
     floor/eixos/grid/cursor/gizmos (overlays GP ficam).
+  - **Seam 6 (tema — visual):** `_apply_nuclear_theme` seta `roundness` + cores (navy/roxo)
+    nos grupos de widget e backgrounds dos editores; originais salvos em `_THEME_BACKUP` e
+    restaurados no `unregister`. **O look pílula/arredondado é TEMA (dado), não C** — não houve
+    edição de `interface_widgets.cc`. (Tema é pref global; o template aplica/reverte ao ativar.)
   > ⚠️ **Acoplamento de runtime (não é conflito de merge, mas vigiar no rebase):** os
   > monkeypatches do Seam 3 dependem dos nomes de classe (`TOPBAR_MT_editor_menus`,
   > `VIEW3D_HT_header`) e da assinatura de `draw` do upstream. Se o upstream renomear/
   > refatorar esses headers, os overrides param de aplicar (degradam de forma silenciosa,
   > não quebram). Conferir a cada subida de versão.
-- `scripts/startup/bl_app_templates_system/Nuclear/startup.blend` — **base** copiada do
-  `2D_Animation`; regenerar de dentro do Nuclear com o layout 2D/cut-out final
+- `scripts/startup/bl_app_templates_system/Nuclear/startup.blend` — **regenerado (2026-06-12)**
+  a partir do 2D_Animation: OUTLINER→PROPERTIES (2 boxes Properties à direita), dopesheet
+  GPENCIL c/ footer off, viewport na câmera. Backup do base em `Nuclear-git/nuclear_startup_2Dbase.blend.bak`
 - `scripts/startup/bl_app_templates_system/Nuclear/nuclear_logo.png` — logo (de `~/nuclear.svg`,
   256×256) mostrada no canto do topbar
 
