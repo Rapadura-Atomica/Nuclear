@@ -382,6 +382,7 @@ projeto.
 | --- | --- | --- |
 | "checksum não confere" | zip trocado, manifesto com hash velho | regerar `version.json` (seção 5, atalho) |
 | Nenhum aviso aparece | build instalado == build do manifesto, ou sem `nuclear_version.json` | conferir `NUCLEAR_BUILD`; testar com `NUCLEAR_UPDATE_BUILD=0` |
+| Nenhum aviso E telemetria não chega | (corrigido) Python do Blender falha HTTPS: `CERTIFICATE_VERIFY_FAILED` (sem CA bundle) | já resolvido: `_ssl_context()` (certifi → bundle do sistema → default) em ambos os scripts. Testar: `<install>/5.0/python/bin/python3.11 -c "import urllib.request,ssl,certifi; urllib.request.urlopen('https://rapaduraatomica.com.br/estacao/version.json',context=ssl.create_default_context(cafile=certifi.where()))"` |
 | "Invalid operator call" | (corrigido) operador modal chamado sem evento | já resolvido: dialogs via `invoke_props_dialog` |
 | Clica e abre a página em vez de instalar | instalação flat (sem `current`) | reinstalar no layout versionado |
 | Aviso some sozinho | (corrigido) era `popup_menu` | já resolvido: `invoke_props_dialog` |
@@ -402,8 +403,9 @@ Atualizado em 2026-06-11.
   do fluxo de release** (compilado em 2026-06-11 no `build_nuclear_full` via container
   distrobox `blenderdev`, `ninja && ninja install`). Máquinas em build 1 enxergam como
   update.
-- **nuclear.zip:** 663.041.271 bytes, sha256
-  `bef6a58e900f76ac9c8dba6bc8d82a937421fe3d168d88cf20d4782ea7198606`. **Auto-contido por
+- **nuclear.zip:** 663.041.991 bytes, sha256
+  `3091aef727785ca2af4ec3371b4e5e73145ef2873fdae97324ab76c54519127a`. Inclui o conserto SSL
+  (updater + telemetria) re-injetado em 2026-06-11. **Auto-contido por
   construção** (não injetado): o build já trazia o updater (regra nº3); as deps Python do
   fork (regra nº4) foram adicionadas no empacotamento (`tar` do `site-packages` conhecido).
   Backup do build 1 anterior no servidor: `nuclear.zip.bak-b1-deps`.
