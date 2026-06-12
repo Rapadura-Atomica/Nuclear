@@ -407,19 +407,18 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-06-12.
 
-- **Conserto flat + fallback home (2026-06-12, no repo e no install desta máquina):**
+- **Conserto flat + fallback home (2026-06-12) — PUBLICADO.**
   `scripts/startup/nuclear_update.py` — flat install se auto-atualiza no lugar; fallback
-  abre a HOME do repo. **AINDA NÃO re-injetado no zip publicado** — o `nuclear.zip` servido
-  ainda traz o script antigo (flat = beco sem saída). Para usuários que descompactam o zip
-  receberem o conserto, é preciso re-injetar o script novo no zip + regerar o manifesto
-  (mesmo procedimento `zip -g` do conserto SSL). Pendente de autorização de deploy.
+  abre a HOME do repo. Re-injetado no zip publicado via `zip -g` (mesmo procedimento do SSL)
+  e manifesto regerado. Backup pré-conserto no servidor: `nuclear.zip.bak-pre-flatfix`.
 
 - **Versão publicada:** Nuclear 1.1.0 (Beta) — `NUCLEAR_BUILD = 2`. **Primeiro build real
   do fluxo de release** (compilado em 2026-06-11 no `build_nuclear_full` via container
   distrobox `blenderdev`, `ninja && ninja install`). Máquinas em build 1 enxergam como
   update.
-- **nuclear.zip:** 663.041.991 bytes, sha256
-  `3091aef727785ca2af4ec3371b4e5e73145ef2873fdae97324ab76c54519127a`. Inclui o conserto SSL
+- **nuclear.zip:** 663.042.373 bytes, sha256
+  `1c89eca8f5237729584a9e5a47b11c086d6d99adc8dd1ef299638e1b0006a557` (conserto flat+fallback
+  de 2026-06-12 re-injetado). Inclui o conserto SSL
   (updater + telemetria) re-injetado em 2026-06-11. **Auto-contido por
   construção** (não injetado): o build já trazia o updater (regra nº3); as deps Python do
   fork (regra nº4) foram adicionadas no empacotamento (`tar` do `site-packages` conhecido).
