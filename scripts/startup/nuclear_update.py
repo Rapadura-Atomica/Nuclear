@@ -47,6 +47,7 @@ import json
 import os
 import platform
 import shutil
+import ssl
 import subprocess
 import tempfile
 import threading
@@ -166,12 +167,51 @@ def _update_available():
 # --- manifest fetch ----------------------------------------------------------
 
 
+_ssl_ctx = None
+_ssl_ctx_done = False
+
+
+def _ssl_context():
+    """A urllib SSL context with a CA bundle that actually verifies.
+
+    Blender's bundled Python frequently can't find a CA bundle, so plain HTTPS fails with
+    CERTIFICATE_VERIFY_FAILED (which silently broke the update check AND the telemetry).
+    Try certifi (ships with the app), then common system CA bundles, then the platform
+    default. Cached after the first call.
+    """
+    global _ssl_ctx, _ssl_ctx_done
+    if _ssl_ctx_done:
+        return _ssl_ctx
+    _ssl_ctx_done = True
+    try:
+        import certifi
+        _ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        return _ssl_ctx
+    except Exception:
+        pass
+    for path in ("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+                 "/etc/ssl/certs/ca-certificates.crt",
+                 "/etc/ssl/cert.pem",
+                 "/etc/ssl/ca-bundle.pem"):
+        try:
+            if os.path.exists(path):
+                _ssl_ctx = ssl.create_default_context(cafile=path)
+                return _ssl_ctx
+        except Exception:
+            continue
+    try:
+        _ssl_ctx = ssl.create_default_context()
+    except Exception:
+        _ssl_ctx = None
+    return _ssl_ctx
+
+
 def _fetch_worker():
     global _latest, _fetch_done
     try:
         headers = {"User-Agent": "Nuclear-Updater/1.0"}
         req = urllib.request.Request(_config_url(), headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT, context=_ssl_context()) as resp:
             raw = resp.read()
         data = json.loads(raw.decode("utf-8"))
         if isinstance(data, dict) and "build" in data:
@@ -250,7 +290,7 @@ def _download(url, dest, progress_cb=None):
     """Stream a URL to `dest`, reporting 0..1 progress when Content-Length is known."""
     headers = {"User-Agent": "Nuclear-Updater/1.0"}
     req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT, context=_ssl_context()) as resp:
         total = int(resp.headers.get("Content-Length") or 0)
         got = 0
         with open(dest, "wb") as fh:
