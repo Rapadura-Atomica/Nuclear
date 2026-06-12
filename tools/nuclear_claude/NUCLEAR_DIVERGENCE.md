@@ -36,11 +36,29 @@ revisão se as APIs do core que eles consomem mudarem.
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
 
-### Application Template Nuclear (a "costura" de UI — P0)
-- `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam: handler de
-  startup + pontos de extensão para tradução-remap e de/registro de painéis (vazios até P1/P2)
+### Application Template Nuclear (a "costura" de UI — P0/P1/P2)
+- `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam central. Contém:
+  - **Seam 1 (tradução):** `_TRANSLATIONS` (branding Blender→Nuclear, locale en_US) +
+    `_ensure_interface_translation` (força `use_translate_interface`/`language`).
+  - **Seam 2 (classes):** `_HIDDEN_CLASSES` (unregister reversível) / `_NUCLEAR_CLASSES`
+    (registra `NUCLEAR_MT_logo` = menu da logo, e `NUCLEAR_MT_view`).
+  - **Seam 3 (header overrides — Fase A):** troca em runtime métodos de header e restaura no
+    `unregister` (`_orig_draws`): `TOPBAR_MT_editor_menus.draw` (menu curado File/Edit/View/
+    Render/Help, sem Blender/Window), `TOPBAR_HT_upper_bar.draw_left` (logo Nuclear clicável →
+    `NUCLEAR_MT_logo` + esconde abas de workspace), `VIEW3D_HT_header.draw` (só o mode selector).
+  - **Logo:** `nuclear_logo.png` carregada via `bpy.utils.previews` (load no `register`,
+    unload no `unregister`).
+  - **Canvas (Fase A):** `_update_startup_canvas` trava VIEW_3D na câmera e esconde
+    floor/eixos/grid/cursor/gizmos (overlays GP ficam).
+  > ⚠️ **Acoplamento de runtime (não é conflito de merge, mas vigiar no rebase):** os
+  > monkeypatches do Seam 3 dependem dos nomes de classe (`TOPBAR_MT_editor_menus`,
+  > `VIEW3D_HT_header`) e da assinatura de `draw` do upstream. Se o upstream renomear/
+  > refatorar esses headers, os overrides param de aplicar (degradam de forma silenciosa,
+  > não quebram). Conferir a cada subida de versão.
 - `scripts/startup/bl_app_templates_system/Nuclear/startup.blend` — **base** copiada do
   `2D_Animation`; regenerar de dentro do Nuclear com o layout 2D/cut-out final
+- `scripts/startup/bl_app_templates_system/Nuclear/nuclear_logo.png` — logo (de `~/nuclear.svg`,
+  256×256) mostrada no canto do topbar
 
 ### Meta / contexto de projeto (docs do fork)
 - `CLAUDE.md` (raiz) — ponteiro fino que importa `tools/nuclear_claude/CLAUDE.md`

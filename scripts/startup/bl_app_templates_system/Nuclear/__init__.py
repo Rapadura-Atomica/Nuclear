@@ -110,10 +110,48 @@ def _unregister_translations():
 #   template can be toggled cleanly. Prefer this over editing scripts/startup/bl_ui/*.
 # --------------------------------------------------------------------------------------
 
-# Native classes to hide while this template is active (filled in P2).
+# Phase A — Nuclear's own "View" menu shown in the curated top menu bar. Kept to entries
+# that work from the topbar context (screen/window level); enriched later once the Nuclear
+# viewport context exists.
+# Phase A — the clickable Nuclear logo menu (replaces the native "Blender" app menu).
+# Same options the user asked for; reuses the generic, unbranded "System" submenu.
+class NUCLEAR_MT_logo(bpy.types.Menu):
+    bl_idname = "NUCLEAR_MT_logo"
+    bl_label = "Nuclear"
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.operator("wm.splash", text="Splash Screen")
+        layout.operator("wm.splash_about", text="About Nuclear")
+        layout.separator()
+        layout.operator("preferences.app_template_install", text="Install Application Template...")
+        layout.separator()
+        layout.menu("TOPBAR_MT_blender_system", text="System")
+
+
+# Phase A — Nuclear's own "View" menu shown in the curated top menu bar. Kept to entries
+# that work from the topbar context (screen/window level); enriched later once the Nuclear
+# viewport context exists.
+class NUCLEAR_MT_view(bpy.types.Menu):
+    bl_idname = "NUCLEAR_MT_view"
+    bl_label = "View"
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.operator("screen.screen_full_area", text="Toggle Maximize Area").use_hide_panels = False
+        layout.operator(
+            "screen.screen_full_area", text="Toggle Fullscreen Area",
+        ).use_hide_panels = True
+        layout.operator("wm.window_fullscreen_toggle", text="Toggle System Fullscreen")
+
+
+# Native classes to hide while this template is active (filled in later phases).
 _HIDDEN_CLASSES = []
-# Nuclear's own panels/menus to register (filled in P2).
-_NUCLEAR_CLASSES = []
+# Nuclear's own panels/menus to register.
+_NUCLEAR_CLASSES = [
+    NUCLEAR_MT_logo,
+    NUCLEAR_MT_view,
+]
 
 _unregistered = []
 
@@ -144,6 +182,146 @@ def _revert_ui_overrides():
 
 
 # --------------------------------------------------------------------------------------
+# Seam 3 — header draw overrides (Phase A: top menu bar + viewport header)
+#   Some native headers draw their items inline (not as separable classes), so they can't
+#   be curated by unregistering. Instead we swap the .draw method for a Nuclear version and
+#   restore the original on unregister. This is the seam for the "airplane-cockpit"
+#   simplification. Each override is recorded in NUCLEAR_UI_LAYOUT.md.
+# --------------------------------------------------------------------------------------
+
+# Saved originals: {(bpy.types class, attr): original function}.
+_orig_draws = {}
+
+# Preview collection holding the Nuclear logo PNG shown in the top bar corner.
+_preview_icons = None
+
+
+def _load_logo():
+    global _preview_icons
+    import os
+    import bpy.utils.previews
+    _preview_icons = bpy.utils.previews.new()
+    logo_path = os.path.join(os.path.dirname(__file__), "nuclear_logo.png")
+    try:
+        _preview_icons.load("nuclear_logo", logo_path, 'IMAGE')
+    except Exception:
+        pass
+
+
+def _unload_logo():
+    global _preview_icons
+    if _preview_icons is not None:
+        try:
+            import bpy.utils.previews
+            bpy.utils.previews.remove(_preview_icons)
+        except Exception:
+            pass
+        _preview_icons = None
+
+
+def _nuclear_editor_menus_draw(self, context):
+    # Curated top menu bar: File, Edit, View, Render, Help.
+    # Drops the "Blender" app menu and the "Window" menu (clutter / branding).
+    layout = self.layout
+    layout.menu("TOPBAR_MT_file")
+    layout.menu("TOPBAR_MT_edit")
+    layout.menu("NUCLEAR_MT_view")
+    layout.menu("TOPBAR_MT_render")
+    layout.menu("TOPBAR_MT_help")
+
+
+def _nuclear_topbar_draw_left(self, context):
+    # Left side of the top bar: Nuclear logo + the curated menus. The native workspace
+    # tabs are intentionally hidden (Nuclear is a single-workspace app); the fullscreen
+    # "Back to Previous" affordance is preserved.
+    from bl_ui.space_topbar import TOPBAR_MT_editor_menus
+    layout = self.layout
+    screen = context.screen
+    # Clickable Nuclear logo -> the app menu (Splash, About, Install Template, System).
+    if _preview_icons is not None and "nuclear_logo" in _preview_icons:
+        layout.menu("NUCLEAR_MT_logo", text="", icon_value=_preview_icons["nuclear_logo"].icon_id)
+    else:
+        layout.menu("NUCLEAR_MT_logo", text="Nuclear")
+    TOPBAR_MT_editor_menus.draw_collapsible(context, layout)
+    if screen.show_fullscreen:
+        layout.separator(type='LINE')
+        layout.operator("screen.back_to_previous", icon='SCREEN_BACK', text="Back to Previous")
+
+
+def _nuclear_view3d_header_draw(self, context):
+    # Minimal viewport header: just the mode selector ("Draw Mode" etc.). The native
+    # View/Select/Add/Object menus and the shading/overlay/gizmo popovers are intentionally
+    # dropped here to keep the canvas row clean (functions remain reachable elsewhere).
+    layout = self.layout
+    obj = context.active_object
+    object_mode = 'OBJECT' if obj is None else obj.mode
+    row = layout.row(align=True)
+    try:
+        act_mode_item = bpy.types.Object.bl_rna.properties["mode"].enum_items[object_mode]
+        row.operator_menu_enum(
+            "object.mode_set", "mode",
+            text=act_mode_item.name, icon=act_mode_item.icon,
+        )
+    except Exception:
+        row.operator_menu_enum("object.mode_set", "mode")
+
+
+# Overrides applied while the template is active: (bpy.types class name, attr, Nuclear fn).
+# Generalized to any method (not just "draw") so headers that dispatch (e.g. draw_left)
+# can be curated too.
+_HEADER_OVERRIDES = [
+    ("TOPBAR_MT_editor_menus", "draw", _nuclear_editor_menus_draw),
+    ("TOPBAR_HT_upper_bar", "draw_left", _nuclear_topbar_draw_left),
+    ("VIEW3D_HT_header", "draw", _nuclear_view3d_header_draw),
+]
+
+
+def _apply_header_overrides():
+    for cls_name, attr, fn in _HEADER_OVERRIDES:
+        cls = getattr(bpy.types, cls_name, None)
+        if cls is None:
+            continue
+        _orig_draws[(cls, attr)] = getattr(cls, attr)
+        setattr(cls, attr, fn)
+
+
+def _revert_header_overrides():
+    for (cls, attr), orig in _orig_draws.items():
+        setattr(cls, attr, orig)
+    _orig_draws.clear()
+
+
+# --------------------------------------------------------------------------------------
+# Canvas curation (Phase A): camera-locked viewport, 3D overlays/gizmos hidden.
+#   Applied on every startup-file load across all VIEW_3D areas (name-agnostic so a
+#   regenerated startup.blend keeps working). Grease Pencil overlays stay on; only the
+#   3D scaffolding (floor, axes, grid, cursor, navigation/tool gizmos) is hidden.
+# --------------------------------------------------------------------------------------
+
+def _update_startup_canvas():
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            if area.type != 'VIEW_3D':
+                continue
+            space = area.spaces.active
+            # Lock the view to the camera (the drawing frame).
+            try:
+                space.region_3d.view_perspective = 'CAMERA'
+            except Exception:
+                pass
+            # Hide all gizmos (navigation + tool) for a clean canvas.
+            space.show_gizmo = False
+            # Keep overlays on (Grease Pencil needs them) but drop 3D scaffolding.
+            overlay = space.overlay
+            overlay.show_floor = False
+            overlay.show_axis_x = False
+            overlay.show_axis_y = False
+            overlay.show_axis_z = False
+            overlay.show_ortho_grid = False
+            overlay.show_cursor = False
+
+
+# --------------------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------------------
 
@@ -152,6 +330,7 @@ def load_handler(_):
     _update_startup_screens()
     _update_startup_scenes()
     _update_startup_grease_pencils()
+    _update_startup_canvas()
     if _TRANSLATIONS:
         _ensure_interface_translation()
 
@@ -160,9 +339,13 @@ def register():
     bpy.app.handlers.load_factory_startup_post.append(load_handler)
     _register_translations()
     _apply_ui_overrides()
+    _load_logo()
+    _apply_header_overrides()
 
 
 def unregister():
+    _revert_header_overrides()
+    _unload_logo()
     _revert_ui_overrides()
     _unregister_translations()
     if load_handler in bpy.app.handlers.load_factory_startup_post:
