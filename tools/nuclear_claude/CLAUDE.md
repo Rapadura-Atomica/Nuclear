@@ -20,6 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > - `NUCLEAR_DIVERGENCE.md` — **the divergence/rebase registry** (every change this fork
 >   makes vs. upstream). Consult it before editing core files and update it whenever you
 >   add divergence.
+> - `NUCLEAR_UI_LAYOUT.md` — **the P2 UI spec**: the target layout mapped from the author's
+>   mockup (region → native editor → hide/relocate/build), locked decisions, and the
+>   phased build order. The source of truth for the UI overhaul.
 > - `readme.txt` — notes for human devs (kept separately from Claude context).
 
 **What Nuclear is.** A fork of Blender 5.0.0 being shaped into an increasingly
@@ -45,6 +48,11 @@ PegRig (peg-based cut-out rig), Follow Peg constraint, Grease Pencil "Curve" mod
   checklist.
 - **Prefer upper layers over C** for UI/branding: Application Template + `bpy.app.translations`
   (rename UI labels in bulk) + theme/startup data, before editing C.
+- **UI language = English for now** (no localization yet). The current priority is
+  *simplifying* Blender's "airplane-cockpit" interface so the artist only worries about
+  drawing — that is hide/relocate work (P2), not translation. The translation seam stays
+  English-base (`en_US`) and only overrides product branding (Blender→Nuclear); PT-BR can
+  be populated into the same dict later. Reach ≈60%+ of the target visual mockup.
 
 **Naming conventions (two tiers — keep consistent, don't rename existing to churn):**
 - *Project identity* → `nuclear` / `Nuclear` / `NUCLEAR_`: app name, app template, startup

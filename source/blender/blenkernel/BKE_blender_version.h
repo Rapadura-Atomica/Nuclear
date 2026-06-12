@@ -63,11 +63,16 @@
 #define NUCLEAR_STRINGIFY_(x) #x
 #define NUCLEAR_STRINGIFY(x) NUCLEAR_STRINGIFY_(x)
 
+/* Version number only, no product name -> "1.0.0 (Beta)". Exposed to Python as
+ * `_bpy._nuclear_version_string()` and shown in the About dialog so it never drifts
+ * from these defines. */
+#define NUCLEAR_VERSION_STRING_NO_NAME \
+  NUCLEAR_STRINGIFY(NUCLEAR_VERSION_MAJOR) \
+  "." NUCLEAR_STRINGIFY(NUCLEAR_VERSION_MINOR) "." NUCLEAR_STRINGIFY( \
+      NUCLEAR_VERSION_PATCH) " (" NUCLEAR_VERSION_STAGE ")"
+
 /* User-readable version, derived from the numbers above -> "Nuclear 1.0.0 (Beta)". */
-#define NUCLEAR_VERSION_STRING \
-  NUCLEAR_NAME " " NUCLEAR_STRINGIFY(NUCLEAR_VERSION_MAJOR) "." NUCLEAR_STRINGIFY( \
-      NUCLEAR_VERSION_MINOR) "." NUCLEAR_STRINGIFY(NUCLEAR_VERSION_PATCH) " (" NUCLEAR_VERSION_STAGE \
-                                                                             ")"
+#define NUCLEAR_VERSION_STRING NUCLEAR_NAME " " NUCLEAR_VERSION_STRING_NO_NAME
 
 /** User readable version string. */
 const char *BKE_blender_version_string(void);

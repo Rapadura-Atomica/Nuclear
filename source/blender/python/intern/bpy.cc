@@ -595,6 +595,20 @@ static PyObject *bpy_ghost_backend(PyObject * /*self*/)
   return PyUnicode_FromString(WM_ghost_backend());
 }
 
+/* Nuclear: expose the fork version number (no product name, e.g. "1.0.0 (Beta)") so the
+ * About dialog derives it from BKE_blender_version.h instead of hard-coding a literal. */
+PyDoc_STRVAR(
+    /* Wrap. */
+    bpy_nuclear_version_string_doc,
+    ".. function:: _nuclear_version_string()\n"
+    "\n"
+    "   :return: The Nuclear fork version, e.g. \"1.0.0 (Beta)\".\n"
+    "   :rtype: str\n");
+static PyObject *bpy_nuclear_version_string(PyObject * /*self*/)
+{
+  return PyUnicode_FromString(NUCLEAR_VERSION_STRING_NO_NAME);
+}
+
 /* NOTE(@ideasman42): This is a private function because the keys in the returned dictionary,
  * are not considered stable. Sometimes a function is temporarily only supported by one platform.
  * Once all platforms support the functionality there is no need for the flag
@@ -689,6 +703,10 @@ static PyMethodDef bpy_methods[] = {
      METH_VARARGS | METH_KEYWORDS,
      bpy_driver_secure_code_test_doc},
     {"_ghost_backend", (PyCFunction)bpy_ghost_backend, METH_NOARGS, bpy_ghost_backend_doc},
+    {"_nuclear_version_string",
+     (PyCFunction)bpy_nuclear_version_string,
+     METH_NOARGS,
+     bpy_nuclear_version_string_doc},
     {"_wm_capabilities", (PyCFunction)bpy_wm_capabilities, METH_NOARGS, bpy_wm_capabilities_doc},
 
     {nullptr, nullptr, 0, nullptr},
