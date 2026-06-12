@@ -398,13 +398,17 @@ projeto.
 
 Atualizado em 2026-06-11.
 
-- **Versão publicada:** Nuclear 1.0.0 (Beta) — `NUCLEAR_BUILD = 1`.
-- **nuclear.zip:** 810.050.744 bytes, sha256
-  `cf57a3fc49cac7bbe3de1bb22f93c39c65168da302d857a60929c4cdd88998fb`. **Auto-contido:**
-  traz o updater (`nuclear_update.py` + `nuclear_version.json` — regra nº3) **e** as deps
-  Python do fork (pyclipper, triangle, scipy, scikit-image + transitivas — regra nº4),
-  injetadas em 2026-06-11 sem rebuild. Backups no servidor: `nuclear.zip.bak-pre-updater`
-  (original) e `nuclear.zip.bak-pre-deps` (com updater, sem deps).
+- **Versão publicada:** Nuclear 1.1.0 (Beta) — `NUCLEAR_BUILD = 2`. **Primeiro build real
+  do fluxo de release** (compilado em 2026-06-11 no `build_nuclear_full` via container
+  distrobox `blenderdev`, `ninja && ninja install`). Máquinas em build 1 enxergam como
+  update.
+- **nuclear.zip:** 663.041.271 bytes, sha256
+  `bef6a58e900f76ac9c8dba6bc8d82a937421fe3d168d88cf20d4782ea7198606`. **Auto-contido por
+  construção** (não injetado): o build já trazia o updater (regra nº3); as deps Python do
+  fork (regra nº4) foram adicionadas no empacotamento (`tar` do `site-packages` conhecido).
+  Backup do build 1 anterior no servidor: `nuclear.zip.bak-b1-deps`.
+- **Build dir:** `Documentos/GitHub/build_nuclear_full` (out-of-source, aponta pro repo).
+  Empacotamento: `cp -al bin Nuclear` → stamp → injeta deps → `zip -r`.
 - **Instalador versionado:** publicado em `instalarNuclear-versionado.sh` (o `.sh` antigo
   segue sendo o flat).
 - **Telas:** diálogos fixos (`invoke_props_dialog`); primeira checagem 3 s após abrir;
