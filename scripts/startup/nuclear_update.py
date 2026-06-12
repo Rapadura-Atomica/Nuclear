@@ -31,10 +31,14 @@ Applying the update (Linux, phase 2):
   restart. Because the swap is a single rename, the install is never left half-written, and
   rolling back is just pointing `current` at the previous directory.
 
+  A flat install (a freshly-unzipped folder with the binary sitting directly in it, no
+  `current`/`versions` yet) is migrated in place: the new build lands in `<folder>/versions/`
+  and `<folder>/current` is created pointing at it, all WITHIN the user's own Nuclear folder.
+  The old flat binary is left untouched as a fallback.
+
   On Windows (phase 3) the running blender.exe cannot be replaced in place, so the button
-  falls back to opening the download page until the quit/helper/relaunch path lands. The
-  same fallback is used on Linux when the install is not a writable versioned layout
-  (e.g. a developer build run from the build tree).
+  falls back to opening the page until the quit/helper/relaunch path lands. The only other
+  fallback is a non-writable install (or macOS), which opens the repository home page.
 
 Configuration (no rebuild needed - environment variables override the constants):
   NUCLEAR_UPDATE_URL    full URL of the version manifest (version.json)
@@ -245,9 +249,13 @@ def _detect_layout(binary_path):
     install_root = os.path.dirname(os.path.realpath(binary_path))
     parent = os.path.dirname(install_root)
     if os.path.basename(parent) == "versions":
+        # Versioned layout: <base>/versions/<v>/blender -> base is two levels up.
         base = os.path.dirname(parent)
     else:
-        base = parent
+        # Flat layout: the binary sits directly in its folder (<base>/blender). The base IS
+        # that folder, so versions/ and current land INSIDE it - never scattered into the
+        # parent (which, for ~/Nuclear/blender, would wrongly be the home dir).
+        base = install_root
     return {
         "base": base,
         "versions": os.path.join(base, "versions"),
@@ -449,21 +457,21 @@ def _prune_versions(versions_dir, keep_paths, keep=KEEP_VERSIONS):
 
 
 def _can_apply(layout):
-    """Self-apply on Linux/Windows ONLY into a real versioned layout we control.
+    """Self-apply on Linux/Windows whenever the install folder is writable.
 
-    A flat/legacy install (binary sitting directly in its folder, no `current` pointer)
-    is intentionally excluded: self-applying there would scatter a `versions/` dir into an
-    unexpected place, so those fall back to opening the download page until re-installed
-    with the versioned installer. macOS always falls back too (phase 3+).
+    Both layouts are handled: a versioned install updates by flipping `current`, and a flat
+    install (freshly unzipped, binary directly in its folder) is migrated in place -
+    `_detect_layout` anchors `base` at that folder, so `versions/` and `current` are created
+    INSIDE it, never scattered elsewhere. The only fall-backs (which open the repo page) are
+    a non-writable install or macOS. Developer builds run from the build tree are already
+    excluded upstream: they have no `nuclear_version.json`, so `_update_available()` is False
+    and the apply path is never reached.
     """
     if platform.system() not in ("Linux", "Windows"):
         return False
     if not layout or not os.access(layout["base"], os.W_OK):
         return False
-    parent = os.path.basename(os.path.dirname(layout["install_root"]))
-    return (parent == "versions"
-            or os.path.lexists(layout["current"])
-            or os.path.isdir(layout["versions"]))
+    return True
 
 
 def _run_apply(manifest, layout):
@@ -557,13 +565,14 @@ def _latest_label():
 
 
 def _open_page():
-    url = ""
-    if isinstance(_latest, dict):
-        url = _latest.get("notes_url") or _latest.get("url") or ""
-    if not url:
-        url = "https://github.com/Rapadura-Atomica/Nuclear/releases"
+    """Fallback when we can't self-install: open the repository HOME page.
+
+    Deliberately not the `/releases` page (which is empty and a dead end) - the home page
+    always has the README, the installer and instructions. Ignores the manifest's notes_url
+    on purpose, so users never land somewhere they can't act.
+    """
     try:
-        bpy.ops.wm.url_open(url=url)
+        bpy.ops.wm.url_open(url="https://github.com/Rapadura-Atomica/Nuclear")
     except Exception:
         pass
 

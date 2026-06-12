@@ -371,10 +371,18 @@ prune (mantém os 3 mais novos + o atual + o que está rodando) → oferecer rei
   arquivo additivo porque sobrescrever o antigo é bloqueado; trocar o canônico precisa de
   aprovação manual.)
 
-**Pendência conhecida:** instalações "flat" antigas (binário solto em `~/Nuclear/blender`,
-sem `current`) NÃO se auto-atualizam — caem no fallback de abrir a página. Precisam ser
-reinstaladas com o instalador versionado. Ver `[[nuclear-auto-update]]` na memória do
-projeto.
+**Instalações flat agora se auto-atualizam (2026-06-12).** Antes, um binário solto em
+`~/Nuclear/blender` (zip recém-descompactado, sem `current`/`versions`) caía no fallback de
+abrir a página — beco sem saída. Agora `_detect_layout` ancora a `base` na PRÓPRIA pasta do
+binário (não no pai), e `_can_apply` libera o apply para qualquer instalação gravável. O
+flat é **migrado no lugar**: o build novo vai pra `<pasta>/versions/`, cria-se
+`<pasta>/current`, e o binário flat antigo fica intocado como fallback. O `.desktop` é
+repontado pra `current/blender`. (Bug anterior: a `base` virava o pai, então um flat em
+`~/Nuclear/blender` espalhava `~/versions/` direto na home.)
+
+**Fallback de "não dá pra instalar aqui" → PÁGINA INICIAL do repo**
+(`github.com/Rapadura-Atomica/Nuclear`), nunca mais o `/releases` vazio. Só macOS e
+instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` na memória.
 
 ## 8. Troubleshooting
 
@@ -384,7 +392,7 @@ projeto.
 | Nenhum aviso aparece | build instalado == build do manifesto, ou sem `nuclear_version.json` | conferir `NUCLEAR_BUILD`; testar com `NUCLEAR_UPDATE_BUILD=0` |
 | Nenhum aviso E telemetria não chega | (corrigido) Python do Blender falha HTTPS: `CERTIFICATE_VERIFY_FAILED` (sem CA bundle) | já resolvido: `_ssl_context()` (certifi → bundle do sistema → default) em ambos os scripts. Testar: `<install>/5.0/python/bin/python3.11 -c "import urllib.request,ssl,certifi; urllib.request.urlopen('https://rapaduraatomica.com.br/estacao/version.json',context=ssl.create_default_context(cafile=certifi.where()))"` |
 | "Invalid operator call" | (corrigido) operador modal chamado sem evento | já resolvido: dialogs via `invoke_props_dialog` |
-| Clica e abre a página em vez de instalar | instalação flat (sem `current`) | reinstalar no layout versionado |
+| Clica e abre a página em vez de instalar | instalação não-gravável ou macOS (flat já se auto-atualiza desde 2026-06-12) | conferir permissão de escrita na pasta; a página agora é a HOME do repo, não `/releases` |
 | Aviso some sozinho | (corrigido) era `popup_menu` | já resolvido: `invoke_props_dialog` |
 
 ## 9. Variáveis de ambiente do cliente (debug, sem rebuild)
@@ -397,7 +405,14 @@ projeto.
 
 ## 10. Estado atual
 
-Atualizado em 2026-06-11.
+Atualizado em 2026-06-12.
+
+- **Conserto flat + fallback home (2026-06-12, no repo e no install desta máquina):**
+  `scripts/startup/nuclear_update.py` — flat install se auto-atualiza no lugar; fallback
+  abre a HOME do repo. **AINDA NÃO re-injetado no zip publicado** — o `nuclear.zip` servido
+  ainda traz o script antigo (flat = beco sem saída). Para usuários que descompactam o zip
+  receberem o conserto, é preciso re-injetar o script novo no zip + regerar o manifesto
+  (mesmo procedimento `zip -g` do conserto SSL). Pendente de autorização de deploy.
 
 - **Versão publicada:** Nuclear 1.1.0 (Beta) — `NUCLEAR_BUILD = 2`. **Primeiro build real
   do fluxo de release** (compilado em 2026-06-11 no `build_nuclear_full` via container
