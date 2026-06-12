@@ -282,6 +282,49 @@ def _find_binary_root(tree):
     return None
 
 
+def _extract_zip(zip_path, dest):
+    """Extract a zip PRESERVING unix permissions.
+
+    `ZipFile.extractall` drops the stored mode bits, so the `blender` binary (and the
+    bundled python) come out non-executable - launching the updated build then fails with
+    "permission denied". Restore each entry's mode from its external attributes (POSIX only;
+    on Windows the bits are meaningless and os.chmod is a no-op for the exec flag).
+    """
+    with zipfile.ZipFile(zip_path) as zf:
+        for info in zf.infolist():
+            out = zf.extract(info, dest)
+            if os.name != "nt":
+                mode = (info.external_attr >> 16) & 0o7777
+                if mode:
+                    try:
+                        os.chmod(out, mode)
+                    except OSError:
+                        pass
+
+
+def _ensure_executable(install_dir):
+    """Belt-and-suspenders: make sure the freshly-installed blender (and bundled python) are
+    executable, even if the zip carried no mode bits (e.g. built on Windows)."""
+    if os.name == "nt":
+        return
+    targets = [os.path.join(install_dir, "blender")]
+    py_bin = os.path.join(install_dir, "5.0", "python", "bin")
+    try:
+        if os.path.isdir(py_bin):
+            for name in os.listdir(py_bin):
+                if name.startswith("python3"):
+                    targets.append(os.path.join(py_bin, name))
+    except OSError:
+        pass
+    for path in targets:
+        try:
+            if os.path.isfile(path):
+                st = os.stat(path).st_mode
+                os.chmod(path, st | 0o111)
+        except OSError:
+            pass
+
+
 def _sha256_file(path, progress_cb=None, size_hint=0):
     h = hashlib.sha256()
     done = 0
@@ -385,6 +428,7 @@ def _apply_extracted(extract_tree, layout, manifest):
     if os.path.exists(dest):
         shutil.rmtree(dest, ignore_errors=True)
     shutil.move(src, dest)
+    _ensure_executable(dest)
     _stamp_version(dest, manifest)
     _flip_current(os.path.abspath(dest), layout["current"])
     return dest
@@ -504,8 +548,7 @@ def _run_apply(manifest, layout):
         _apply_state = "extracting"
         extract_dir = os.path.join(work, "x")
         os.makedirs(extract_dir, exist_ok=True)
-        with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(extract_dir)
+        _extract_zip(zip_path, extract_dir)
 
         _apply_state = "applying"
         dest = _apply_extracted(extract_dir, layout, manifest)
