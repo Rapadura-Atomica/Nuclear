@@ -49,7 +49,21 @@ Mecanismo: **[T]** = costura do template (`Nuclear/__init__.py`, hide/relocate P
 
 1. **Fase A — Topbar & canvas** (#1,2,3,5): menus curados, modo Draw no topo, viewport
    travado na câmera com overlays/gizmos 3D escondidos. Tudo [T]/[B]. Maior "wow" por menos
-   esforço.
+   esforço. **✅ FEITO (2026-06-12)** — via Seam 3 do `Nuclear/__init__.py`:
+   - #3 Menu curado **File/Edit/View/Render/Help** (override de `TOPBAR_MT_editor_menus.draw`;
+     remove menu "Blender" e "Window"). View = `NUCLEAR_MT_view` (fullscreen/maximize por ora).
+   - #2 **Draw Mode** isolado no header do viewport (override de `VIEW3D_HT_header.draw` →
+     só o mode selector; some View/Select/Add/Object/shading/gizmos do header).
+   - #5 Canvas: `_update_startup_canvas` trava na câmera + esconde floor/eixos/grid/cursor/gizmos.
+   - #1 **Logo** Nuclear **clicável** no canto sup. esq. (override de `TOPBAR_HT_upper_bar.draw_left`):
+     `nuclear_logo.png` (de `~/nuclear.svg`, 256×256) via `bpy.utils.previews`, desenhada como
+     `layout.menu` → `NUCLEAR_MT_logo` (Splash Screen, About Nuclear, Install Application
+     Template, submenu System: Reload Scripts/Memory Statistics/Debug Menu/Redraw Timer/
+     Clean Up Space Data/Clean Up Operator Presets — reusa o `TOPBAR_MT_blender_system`).
+     O mesmo override **esconde as abas de workspace** (app de workspace único; mantém o
+     "Back to Previous" no fullscreen).
+   - Validado headless (register→patch→logo→canvas→unregister→restore+unload, sem exceção).
+   - **Fase A fechada — sem pontas soltas.**
 2. **Fase B — Toolbar** (#6): curar a toolbar vertical do GP Draw ao set do mockup.
 3. **Fase C — Timeline & camadas** (#15,16,11,12,13,14): Dope Sheet simplificado embaixo +
    header de transporte custom (KF/áudio/play/frames) como addon novo.
@@ -57,6 +71,14 @@ Mecanismo: **[T]** = costura do template (`Nuclear/__init__.py`, hide/relocate P
    Library/Color/Node) + materiais GP como paleta nomeada. Item mais alto do v1.
 5. **Fase E — Barra ADDONS** (#4): lançadores Asset Pro/TimeOffset/etc.
 6. **Adiado:** "+" abas adicionáveis (#10) e o que precisar de C de verdade.
+
+## TODO — adiado (fim da lista; só mexer quando uma fase exigir ou por decisão explícita)
+
+- **"+" abas adicionáveis em runtime no painel direito (#10)** — não existe nativo;
+  provável C. Fora do v1; conjunto fixo de abas até lá.
+- **View menu rico** — `NUCLEAR_MT_view` hoje só tem maximizar/fullscreen (entradas que
+  funcionam no contexto do topbar). Enriquecer (frame all/câmera/etc.) quando existir um
+  contexto de viewport Nuclear que faça esses operadores funcionarem do topo.
 
 ## Notas
 
