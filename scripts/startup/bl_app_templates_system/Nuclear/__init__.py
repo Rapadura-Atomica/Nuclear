@@ -19,6 +19,16 @@
 import bpy
 from bpy.app.handlers import persistent
 
+# GPU/text modules for the Toon Boom-style Xsheet timeline (Seam 7). Guarded so a build
+# without the gpu module still loads the template (the Xsheet just won't draw).
+try:
+    import gpu
+    import blf
+    from gpu_extras.batch import batch_for_shader
+    _GPU_OK = True
+except Exception:
+    _GPU_OK = False
+
 
 # --------------------------------------------------------------------------------------
 # Startup screen / scene configuration (applied after the template's startup.blend loads)
@@ -96,7 +106,11 @@ def _ensure_interface_translation():
 
 def _register_translations():
     if _TRANSLATIONS:
-        bpy.app.translations.register(__name__, _TRANSLATIONS)
+        try:
+            bpy.app.translations.register(__name__, _TRANSLATIONS)
+        except Exception:
+            # Already registered (e.g. register() called twice) — don't crash.
+            pass
         _ensure_interface_translation()
 
 
@@ -278,6 +292,187 @@ class NUCLEAR_OT_palette_add(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class NUCLEAR_OT_xsheet_click(bpy.types.Operator):
+    # T3 — Xsheet interaction. Intercepts LEFTMOUSE in the bottom Dope Sheet (while the
+    # Nuclear Xsheet is active) and maps the click with the SAME geometry the draw handler
+    # uses (_xsheet_layout) — so the click→frame mapping matches the visual grid (fixes the
+    # "needle ahead" mismatch caused by the native view2d). Click a cell → set frame + active
+    # layer; click the vis/lock squares → toggle; click a name → activate layer. Drag = scrub.
+    bl_idname = "nuclear.xsheet_click"
+    bl_label = "Xsheet Click"
+
+    @classmethod
+    def poll(cls, context):
+        return _xsheet_poll(context)
+
+    def invoke(self, context, event):
+        ob = context.active_object
+        layers = list(ob.data.layers)
+        hit = _xsheet_hit(context, event)
+        if hit is None:
+            return {'PASS_THROUGH'}
+        kind = hit[0]
+        if kind == 'vis':
+            layers[hit[1]].hide = not layers[hit[1]].hide
+        elif kind == 'lock':
+            layers[hit[1]].lock = not layers[hit[1]].lock
+        elif kind == 'layer':
+            try:
+                ob.data.layers.active = layers[hit[1]]
+            except Exception:
+                pass
+        elif kind == 'frame':
+            context.scene.frame_current = hit[1]
+            if hit[2] is not None:
+                try:
+                    ob.data.layers.active = layers[hit[2]]
+                except Exception:
+                    pass
+            if context.area:
+                context.area.tag_redraw()
+            context.window_manager.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+    def modal(self, context, event):
+        if event.type == 'MOUSEMOVE':
+            hit = _xsheet_hit(context, event)
+            if hit and hit[0] == 'frame':
+                context.scene.frame_current = hit[1]
+                if context.area:
+                    context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            return {'FINISHED'}
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
+class NUCLEAR_OT_xsheet_toggle(bpy.types.Operator):
+    # T4 — Ctrl+click a cell to toggle its exposure (drawing): create a blank keyframe if the
+    # cell is empty, delete it if a keyframe is there. Works per clicked layer+frame via the
+    # data API (mode-independent), with undo.
+    bl_idname = "nuclear.xsheet_toggle"
+    bl_label = "Toggle Exposure"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _xsheet_poll(context)
+
+    def invoke(self, context, event):
+        hit = _xsheet_hit(context, event)
+        if not hit or hit[0] != 'frame':
+            return {'PASS_THROUGH'}
+        ob = context.active_object
+        layers = list(ob.data.layers)
+        f, row = hit[1], hit[2]
+        layer = layers[row] if row is not None else getattr(ob.data.layers, "active", None)
+        if layer is None:
+            return {'CANCELLED'}
+        if layer.lock:
+            self.report({'WARNING'}, "Camada travada")
+            return {'CANCELLED'}
+        nums = [fr.frame_number for fr in layer.frames]
+        try:
+            if f in nums:
+                layer.frames.remove(f)
+            else:
+                layer.frames.new(f)
+        except Exception as e:
+            self.report({'WARNING'}, "Exposição: {:s}".format(str(e)))
+            return {'CANCELLED'}
+        try:
+            ob.data.layers.active = layer
+        except Exception:
+            pass
+        context.scene.frame_current = f
+        ob.data.update_tag()
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class NUCLEAR_OT_xsheet_drag(bpy.types.Operator):
+    # T4.1 — Alt+drag a keyframe to MOVE it (layer.frames.move); Shift+Alt+drag to DUPLICATE
+    # it (layer.frames.copy). Both preserve the drawing. A ghost cell previews the target
+    # frame while dragging (_xsheet_drag, read by the draw handler).
+    bl_idname = "nuclear.xsheet_drag"
+    bl_label = "Move/Duplicate Exposure"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    duplicate: bpy.props.BoolProperty(default=False)
+
+    @classmethod
+    def poll(cls, context):
+        return _xsheet_poll(context)
+
+    def invoke(self, context, event):
+        global _xsheet_drag
+        hit = _xsheet_hit(context, event)
+        if not hit or hit[0] != 'frame':
+            return {'PASS_THROUGH'}
+        ob = context.active_object
+        layers = list(ob.data.layers)
+        f, row = hit[1], hit[2]
+        if row is None:
+            return {'PASS_THROUGH'}
+        layer = layers[row]
+        if layer.lock:
+            self.report({'WARNING'}, "Camada travada")
+            return {'CANCELLED'}
+        if f not in [fr.frame_number for fr in layer.frames]:
+            return {'PASS_THROUGH'}  # nothing to grab on an empty cell
+        _xsheet_drag = {"row": row, "from": f, "to": f, "dup": self.duplicate}
+        if context.area:
+            context.area.tag_redraw()
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        global _xsheet_drag
+        if _xsheet_drag is None:
+            return {'CANCELLED'}
+        if event.type == 'MOUSEMOVE':
+            hit = _xsheet_hit(context, event)
+            if hit and hit[0] == 'frame':
+                _xsheet_drag["to"] = hit[1]
+                if context.area:
+                    context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            ob = context.active_object
+            layers = list(ob.data.layers)
+            d = _xsheet_drag
+            _xsheet_drag = None
+            layer = layers[d["row"]] if d["row"] < len(layers) else None
+            src, dst = d["from"], d["to"]
+            if layer is not None and dst != src:
+                existing = [fr.frame_number for fr in layer.frames]
+                if dst not in existing:
+                    try:
+                        if d["dup"]:
+                            layer.frames.copy(src, dst)
+                        else:
+                            layer.frames.move(src, dst)
+                        ob.data.update_tag()
+                    except Exception as e:
+                        self.report({'WARNING'}, "Exposição: {:s}".format(str(e)))
+            context.scene.frame_current = dst
+            if context.area:
+                context.area.tag_redraw()
+            return {'FINISHED'}
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            _xsheet_drag = None
+            if context.area:
+                context.area.tag_redraw()
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
 class NUCLEAR_MT_add_tab(bpy.types.Menu):
     bl_idname = "NUCLEAR_MT_add_tab"
     bl_label = "Add Tab"
@@ -385,6 +580,9 @@ _HIDDEN_CLASS_NAMES = [
 _NUCLEAR_CLASSES = [
     NUCLEAR_OT_set_area_tab,
     NUCLEAR_OT_palette_add,
+    NUCLEAR_OT_xsheet_click,
+    NUCLEAR_OT_xsheet_toggle,
+    NUCLEAR_OT_xsheet_drag,
     NUCLEAR_MT_add_tab,
     NUCLEAR_UL_color_palette,
     NUCLEAR_PT_color_palette,
@@ -506,6 +704,13 @@ def _nuclear_view3d_header_draw(self, context):
         )
     except Exception:
         row.operator_menu_enum("object.mode_set", "mode")
+
+    # Onion skin on/off (viewport visualization). space_data here is the View3D.
+    overlay = getattr(context.space_data, "overlay", None)
+    if overlay is not None and hasattr(overlay, "use_gpencil_onion_skin"):
+        layout.separator()
+        icon = 'ONIONSKIN_ON' if overlay.use_gpencil_onion_skin else 'ONIONSKIN_OFF'
+        layout.prop(overlay, "use_gpencil_onion_skin", text="Onion", icon=icon, toggle=True)
 
 
 # Phase E — the DYNAMIC "ADDONS" bar (mockup row 3), drawn in the viewport TOOL_HEADER.
@@ -773,6 +978,12 @@ def _update_startup_timeline():
                 space.show_region_footer = False
             except Exception:
                 pass
+            # The Xsheet draws its own layer column, so hide the native channel list (removes
+            # the duplicate Stroke/Lines/Fills list).
+            try:
+                space.show_region_channels = False
+            except Exception:
+                pass
 
 
 # Phase D — Properties tabs kept for the 2D/cut-out workflow. Everything else (Render,
@@ -890,6 +1101,317 @@ def _revert_nuclear_theme():
 
 
 # --------------------------------------------------------------------------------------
+# Seam 7 — Toon Boom-style Xsheet timeline (T1: read-only GPU render over the bottom Dope
+# Sheet). Draws a grid of per-layer × per-frame cells: a filled cell = an exposed drawing,
+# a bright square at the keyframe start, a "hold" bar across held frames. Frame ruler +
+# playhead + layer-name column. The native dope sheet underneath is hidden by an opaque
+# background. Interaction (modal) + editing come in T3/T4.
+# --------------------------------------------------------------------------------------
+
+_xsheet_handle = None
+# Active drag (T4.1): {"row", "from", "to", "dup"} while moving/duplicating, else None.
+_xsheet_drag = None
+
+# Layout + palette (navy theme).
+_XS = {
+    "name_w": 150.0, "ruler_h": 20.0, "row_h": 22.0,
+    "cell_min": 8.0, "cell_max": 22.0, "frame_cap": 400,
+    "bg": (0.07, 0.07, 0.13, 1.0), "panel": (0.11, 0.11, 0.19, 1.0),
+    "grid": (0.20, 0.20, 0.30, 1.0), "hold": (0.30, 0.34, 0.55, 1.0),
+    "key": (0.55, 0.45, 0.95, 1.0), "play": (0.95, 0.55, 0.20, 1.0),
+    "text": (0.90, 0.90, 0.96, 1.0),
+    "active_row": (0.18, 0.16, 0.30, 1.0), "frame_col": (0.16, 0.16, 0.26, 1.0),
+    "vis_on": (0.50, 0.80, 0.55, 1.0), "lock_on": (0.92, 0.62, 0.28, 1.0),
+    "state_off": (0.24, 0.24, 0.30, 1.0),
+    "grid5": (0.30, 0.30, 0.44, 1.0), "ghost": (0.95, 0.55, 0.20, 0.55),
+    "num": (0.08, 0.06, 0.14, 1.0),
+}
+
+
+def _xsheet_layout(region, scene):
+    # Geometry shared by the draw handler and the click operator. X is mapped through the
+    # NATIVE view2d (region.view2d) so our cells/playhead align exactly with the native frame
+    # ruler and the native current-frame indicator (which is drawn on top and can't be
+    # covered). This is the real fix for the "needle ahead" mismatch — one coordinate system,
+    # the native one — and gives native scroll/zoom of the frame range for free.
+    rw, rh = region.width, region.height
+    name_w = _XS["name_w"]
+    ruler_h = _XS["ruler_h"]
+    row_h = _XS["row_h"]
+    top = rh - ruler_h
+    v2d = region.view2d
+    f_lo = int(v2d.region_to_view(name_w, 0.0)[0])
+    f_hi = int(v2d.region_to_view(rw, 0.0)[0]) + 2
+    # Clamp the visible span so a zoomed-out view never iterates a huge range.
+    if f_hi - f_lo > _XS["frame_cap"]:
+        f_hi = f_lo + _XS["frame_cap"]
+    return rw, rh, name_w, ruler_h, row_h, top, f_lo, f_hi
+
+
+def _xsheet_fx(region, f):
+    # Frame number -> region pixel X via the native view2d.
+    return region.view2d.view_to_region(float(f), 0.0, clip=False)[0]
+
+
+def _xsheet_poll(context):
+    # Shared poll for the Xsheet operators: only act inside our active GP Xsheet.
+    area = context.area
+    if area is None or area.type != 'DOPESHEET_EDITOR':
+        return False
+    if getattr(area.spaces.active, "mode", None) != 'GPENCIL':
+        return False
+    region = context.region
+    ob = context.active_object
+    return (ob is not None and ob.type == 'GREASEPENCIL'
+            and _xsheet_handle is not None
+            and region is not None and region.type == 'WINDOW')
+
+
+def _xsheet_hit(context, event):
+    # Map a mouse event to ('frame', f, row) / ('vis'|'lock'|'layer', row) / None, using the
+    # same geometry + native view2d as the draw (so clicks land on the right cell).
+    region = context.region
+    ob = context.active_object
+    layers = list(ob.data.layers)
+    _, _, name_w, _, row_h, top, _, _ = _xsheet_layout(region, context.scene)
+    mx, my = event.mouse_region_x, event.mouse_region_y
+    row = None
+    if my <= top:
+        ri = int((top - my) // row_h)
+        if 0 <= ri < len(layers):
+            row = ri
+    if mx < name_w:
+        if row is None:
+            return None
+        sq, vis_x, lock_x = 10.0, name_w - 34.0, name_w - 18.0
+        yc = top - row * row_h - row_h * 0.5
+        if vis_x <= mx <= vis_x + sq and yc - sq / 2 <= my <= yc + sq / 2:
+            return ('vis', row)
+        if lock_x <= mx <= lock_x + sq and yc - sq / 2 <= my <= yc + sq / 2:
+            return ('lock', row)
+        return ('layer', row)
+    f = int(region.view2d.region_to_view(mx, 0.0)[0])
+    return ('frame', f, row)
+
+
+def _xsheet_exposed(layer, f_start, f_end):
+    # frame -> 'key' (drawing starts here) or 'hold' (previous drawing held).
+    keys = sorted(f.frame_number for f in layer.frames)
+    out = {}
+    for i, k in enumerate(keys):
+        nxt = keys[i + 1] if i + 1 < len(keys) else f_end + 1
+        lo = max(k, f_start)
+        hi = min(nxt, f_end + 1)
+        for f in range(lo, hi):
+            out[f] = 'key' if f == k else 'hold'
+    return out
+
+
+def _xsheet_draw():
+    if not _GPU_OK:
+        return
+    try:
+        area = bpy.context.area
+        region = bpy.context.region
+        if area is None or area.type != 'DOPESHEET_EDITOR':
+            return
+        if region is None or region.type != 'WINDOW':
+            return
+        space = area.spaces.active
+        if getattr(space, "mode", None) != 'GPENCIL':
+            return
+        ob = bpy.context.active_object
+        if ob is None or ob.type != 'GREASEPENCIL':
+            return
+        layers = list(ob.data.layers)
+        if not layers:
+            return
+        scene = bpy.context.scene
+        rw, rh, name_w, ruler_h, row_h, top, f_lo, f_hi = _xsheet_layout(region, scene)
+
+        def fx(f):
+            return _xsheet_fx(region, f)
+
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        gpu.state.blend_set('ALPHA')
+
+        def fill(rects, color):
+            if not rects:
+                return
+            verts = []
+            for (x0, y0, x1, y1) in rects:
+                verts += [(x0, y0), (x1, y0), (x1, y1), (x0, y0), (x1, y1), (x0, y1)]
+            batch = batch_for_shader(shader, 'TRIS', {"pos": verts})
+            shader.uniform_float("color", color)
+            batch.draw(shader)
+
+        def lines(segs, color):
+            if not segs:
+                return
+            verts = []
+            for (x0, y0, x1, y1) in segs:
+                verts += [(x0, y0), (x1, y1)]
+            batch = batch_for_shader(shader, 'LINES', {"pos": verts})
+            shader.uniform_float("color", color)
+            batch.draw(shader)
+
+        def clipx(x):
+            return x if x > name_w else name_w
+
+        # Backgrounds (cover the native dope sheet keyframes/area; leave the native ruler +
+        # current-frame indicator visible at top — they now align with our view2d-mapped cells).
+        fill([(0, 0, rw, top)], _XS["bg"])
+        fill([(0, 0, name_w, rh)], _XS["panel"])
+
+        cf = scene.frame_current
+
+        # T2 — active layer row highlight + current frame column highlight.
+        active_layer = getattr(ob.data.layers, "active", None)
+        active_idx = next((i for i, lyr in enumerate(layers) if lyr == active_layer), None)
+        if active_idx is not None:
+            ay1 = top - active_idx * row_h
+            fill([(name_w, ay1 - row_h, rw, ay1)], _XS["active_row"])
+        cfx0, cfx1 = fx(cf), fx(cf + 1)
+        if cfx1 > name_w:
+            fill([(clipx(cfx0), 0, max(cfx1, name_w + 1), top)], _XS["frame_col"])
+
+        # Exposure cells (X via native view2d → aligned with the native ruler/indicator).
+        # key_cells collects (x_left, y_center, drawing_number, cell_width) for T5 numbering.
+        hold_r, key_r, key_cells = [], [], []
+        for ri, layer in enumerate(layers):
+            y1 = top - ri * row_h
+            y0 = y1 - row_h
+            keys_sorted = sorted(fr.frame_number for fr in layer.frames)
+            kindex = {k: i + 1 for i, k in enumerate(keys_sorted)}
+            for f, kind in _xsheet_exposed(layer, f_lo, f_hi).items():
+                x0, x1 = fx(f), fx(f + 1)
+                if x1 <= name_w:
+                    continue
+                xc0 = clipx(x0)
+                rect = (xc0 + 1, y0 + 2, x1 - 1, y1 - 2)
+                if kind == 'key':
+                    key_r.append(rect)
+                    key_cells.append((xc0, (y0 + y1) * 0.5, kindex.get(f, 0), x1 - xc0))
+                else:
+                    hold_r.append(rect)
+        fill(hold_r, _XS["hold"])
+        fill(key_r, _XS["key"])
+
+        # T4.1 — ghost cell preview while dragging a keyframe (move/duplicate target).
+        if _xsheet_drag is not None and 0 <= _xsheet_drag["row"] < len(layers):
+            gy1 = top - _xsheet_drag["row"] * row_h
+            gx0, gx1 = fx(_xsheet_drag["to"]), fx(_xsheet_drag["to"] + 1)
+            if gx1 > name_w:
+                fill([(clipx(gx0) + 1, gy1 - row_h + 2, gx1 - 1, gy1 - 2)], _XS["ghost"])
+
+        # Grid: per-frame lines + emphasized line every 5 frames + per-layer rows.
+        segs, emph = [], []
+        for f in range(f_lo, f_hi + 1):
+            x = fx(f)
+            if x >= name_w:
+                (emph if f % 5 == 0 else segs).append((x, 0, x, top))
+        for ri in range(len(layers) + 1):
+            y = top - ri * row_h
+            segs.append((name_w, y, rw, y))
+        lines(segs, _XS["grid"])
+        lines(emph, _XS["grid5"])
+
+        # Playhead (view2d → coincides with the native indicator).
+        px = fx(cf)
+        if px >= name_w:
+            lines([(px, 0, px, top)], _XS["play"])
+
+        # T2 — visibility / lock state squares in the name column (clickable in T3).
+        sq = 10.0
+        vis_x = name_w - 34.0
+        lock_x = name_w - 18.0
+        vis_on, vis_off, lock_on, lock_off = [], [], [], []
+        for ri, layer in enumerate(layers):
+            yc = top - ri * row_h - row_h * 0.5
+            r_vis = (vis_x, yc - sq / 2, vis_x + sq, yc + sq / 2)
+            r_lock = (lock_x, yc - sq / 2, lock_x + sq, yc + sq / 2)
+            (vis_off if layer.hide else vis_on).append(r_vis)
+            (lock_on if layer.lock else lock_off).append(r_lock)
+        fill(vis_on, _XS["vis_on"])
+        fill(vis_off, _XS["state_off"])
+        fill(lock_on, _XS["lock_on"])
+        fill(lock_off, _XS["state_off"])
+
+        gpu.state.blend_set('NONE')
+
+        # Layer names in the column (frame numbers come from the native ruler now).
+        fid = 0
+        blf.size(fid, 11)
+        blf.color(fid, *_XS["text"])
+        for ri, layer in enumerate(layers):
+            blf.position(fid, 6, top - ri * row_h - row_h * 0.7, 0)
+            blf.draw(fid, layer.name)
+
+        # T5 — drawing number inside each keyframe cell (when the cell is wide enough).
+        blf.size(fid, 10)
+        blf.color(fid, *_XS["num"])
+        for (cx, cy, num, cwidth) in key_cells:
+            if cwidth >= 13.0 and num:
+                blf.position(fid, cx + 3, cy - 5, 0)
+                blf.draw(fid, str(num))
+    except Exception:
+        # Never let a draw error break the UI; best-effort overlay.
+        pass
+
+
+def _enable_xsheet():
+    global _xsheet_handle
+    if _GPU_OK and _xsheet_handle is None:
+        _xsheet_handle = bpy.types.SpaceDopeSheetEditor.draw_handler_add(
+            _xsheet_draw, (), 'WINDOW', 'POST_PIXEL',
+        )
+
+
+def _disable_xsheet():
+    global _xsheet_handle
+    if _xsheet_handle is not None:
+        try:
+            bpy.types.SpaceDopeSheetEditor.draw_handler_remove(_xsheet_handle, 'WINDOW')
+        except Exception:
+            pass
+        _xsheet_handle = None
+
+
+# Keymap that routes LEFTMOUSE in the Dope Sheet to the Xsheet operator (poll-gated, so it
+# only fires inside our GP Xsheet; otherwise the event falls through to native).
+_xsheet_keymaps = []
+
+
+def _register_xsheet_keymap():
+    wm = bpy.context.window_manager
+    kc = getattr(wm.keyconfigs, "addon", None)
+    if kc is None:
+        return
+    km = kc.keymaps.new(name='Dopesheet', space_type='DOPESHEET_EDITOR')
+    kmi = km.keymap_items.new("nuclear.xsheet_click", 'LEFTMOUSE', 'PRESS')
+    _xsheet_keymaps.append((km, kmi))
+    # T4 — Ctrl+LEFTMOUSE toggles a cell's exposure (create/delete drawing).
+    kmi2 = km.keymap_items.new("nuclear.xsheet_toggle", 'LEFTMOUSE', 'PRESS', ctrl=True)
+    _xsheet_keymaps.append((km, kmi2))
+    # T4.1 — Alt+drag = move exposure; Shift+Alt+drag = duplicate exposure.
+    kmi3 = km.keymap_items.new("nuclear.xsheet_drag", 'LEFTMOUSE', 'PRESS', alt=True)
+    kmi3.properties.duplicate = False
+    _xsheet_keymaps.append((km, kmi3))
+    kmi4 = km.keymap_items.new("nuclear.xsheet_drag", 'LEFTMOUSE', 'PRESS', shift=True, alt=True)
+    kmi4.properties.duplicate = True
+    _xsheet_keymaps.append((km, kmi4))
+
+
+def _unregister_xsheet_keymap():
+    for km, kmi in _xsheet_keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except Exception:
+            pass
+    _xsheet_keymaps.clear()
+
+
+# --------------------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------------------
 
@@ -915,9 +1437,13 @@ def register():
     _apply_header_overrides()
     _apply_toolbar_overrides()
     _apply_nuclear_theme()
+    _enable_xsheet()
+    _register_xsheet_keymap()
 
 
 def unregister():
+    _unregister_xsheet_keymap()
+    _disable_xsheet()
     _revert_nuclear_theme()
     _revert_toolbar_overrides()
     _revert_header_overrides()

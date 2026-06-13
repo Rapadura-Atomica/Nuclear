@@ -1,5 +1,46 @@
 # Nuclear — Layout-alvo da UI (spec do P2)
 
+> ## ⏸️ PONTO DE PARADA — pausa em 2026-06-12 (LER PRIMEIRO AO RETOMAR)
+>
+> **Onde paramos:** P2 (reforma de UI) completo + **Xsheet Toon Boom** até **T5 (parcial)**.
+> Tudo via o template `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` (Seams 1–7),
+> reversível, sem editar `bl_ui` in-place. Pequenas edições de branding em C (ver DIVERGENCE).
+> **Nada commitado/pushed** — o usuário faz os commits/push (NUNCA commitar sem ele pedir).
+>
+> **Estado do Xsheet (timeline Toon Boom — Seam 7):** grade células×camadas desenhada em **GPU**
+> por cima do Dope Sheet, mapeada pelo **view2d nativo** (alinha com régua/agulha nativas).
+> Gestos: clique=frame+camada · arrastar=scrub · **Ctrl+clique**=criar/apagar exposição ·
+> **Alt+arrastar**=mover · **Shift+Alt+arrastar**=duplicar · clique nos quadrados=vis/lock.
+> Mostra nº do desenho (com zoom), linhas a cada 5 frames, fantasma no drag. Onion skin
+> toggle no header do viewport.
+>
+> **Próximos passos (em ordem):**
+> 1. **T5.1** — seleção de células (refletir/editar `frame.select`) + nome custom do desenho.
+> 2. **TODO antigos** (ver fim do arquivo): tools custom **Seleção/Câmera** (Fase B; Onion já
+>    virou toggle), **"+" de abas persistente**, **View menu rico**.
+> 3. Wire real de **Asset Pro/TimeOffset** quando esses addons existirem (1 linha em
+>    `_NUCLEAR_LAUNCHERS`).
+>
+> **Como buildar/rodar/ver (fluxo desta máquina):**
+> - Editar `__init__.py` → `python3 -m py_compile <arquivo>` → instalar:
+>   `distrobox enter nuclear-build -- bash -lc 'cd /var/home/rapaduraatomica/Nuclear-git/build_linux && ninja install'`
+>   (Python-only não precisa recompilar C; mudou C → o mesmo `ninja install` recompila.)
+> - Rodar com o template ativo: `… bin/blender --app-template Nuclear`.
+> - **Validar headless**: `… bin/blender --background --app-template Nuclear --python /tmp/x.py`
+>   (NÃO chamar `register()` de novo — o template já registra; daria erro de tradução dupla).
+> - **Screenshot p/ eu mesmo ver** (não há MCP de print): o Blender tira o próprio print —
+>   `bpy.ops.screen.screenshot(filepath=...)` num `bpy.app.timers` (≈3 s) sob
+>   `temp_override(window=...)`. Recortar/ampliar com `magick`. `spectacle` do host pega a
+>   janela errada (terminal por cima).
+> - **Gotchas de shell:** `pkill -f "bin/blender"` **auto-mata o próprio comando** (o padrão
+>   aparece no argv) → usar o truque `pkill -f "[b]in/blender"`. `quit_blender()` sai com código
+>   144 (inofensivo; o PNG é gerado). NÃO juntar `pkill`+heredoc no mesmo comando (aborta).
+> - **C/branding** roda no container `nuclear-build` (host Bazzite imutável não tem toolchain).
+>
+> **Princípio inviolável:** divergência mora em arquivos novos / no template; ao tocar arquivo
+> do upstream, registrar em `NUCLEAR_DIVERGENCE.md`. Overrides de header/keymap/tema são
+> **acoplamento de runtime** (dependem de nomes do upstream) — conferir a cada rebase.
+
 > Spec da reforma de UI, derivada do mockup do autor
 > (`~/Downloads/UI_NUCLEAR_INFORMACOES.png`). É o roteiro concreto do **P2** do plano:
 > esconder/realocar/curar a UI nativa do Blender para a "cara" do Nuclear, **sem remover
@@ -128,6 +169,36 @@ Mecanismo: **[T]** = costura do template (`Nuclear/__init__.py`, hide/relocate P
    - **Pendências/divergências (ver TODO):** (a) o "+" troca p/ tipos extras mas **não persiste**
      lista custom; (b) **visual pílula** das abas/botões = C de widgets; (c) startup.blend:
      criar as 2 áreas-direita (a atribuição main/shading é automática por posição).
+### Fase T — Timeline estilo Toon Boom (Xsheet) — INCREMENTO GRANDE, em andamento
+
+Refatoração drástica da timeline pra grade de células (Xsheet do Toon Boom): células por
+camada×frame, cheia=exposição/desenho, vazia=sem. **Arquitetura:** render custom em **GPU**
+(Python) por cima da área Dope Sheet de baixo + (futuro) operador modal pra interação. Gated
+ao template, sem C. Ref.: mockup + Toon Boom Harmony.
+- **T1 — render read-only ✅ FEITO (2026-06-12)** — Seam 7: `_xsheet_draw` (draw_handler
+  POST_PIXEL em `SpaceDopeSheetEditor`). Grade camada×frame, exposição (`key`/`hold` via
+  `_xsheet_exposed`), régua de frames, playhead, nomes das camadas; fundo opaco cobre o dope
+  sheet nativo. Lê `ob.data.layers[].frames[].frame_number`. Cap de 400 frames (perf).
+- **T2 — ✅ FEITO** — realce da camada ativa + coluna do frame atual + indicadores vis/lock por
+  camada (estado; clicáveis no T3).
+- **T3 — interação modal ✅ FEITO (read/navega)** — `NUCLEAR_OT_xsheet_click` + keymap LEFTMOUSE
+  no Dopesheet (poll-gated). Clique em célula = frame + camada ativa; arrastar = scrub; clique
+  nos quadrados vis/lock = alterna; clique no nome = ativa camada.
+- **Correção de alinhamento (2026-06-12):** a "agulha errada" era o **indicador de frame nativo**
+  (desenhado por cima, não-cobrível) vs minha grade fixa. **Fix:** mapear X pelo **view2d nativo**
+  (`_xsheet_fx`) — célula/agulha/régua/indicador num só sistema. Canais nativos escondidos. Scroll/
+  zoom nativos de brinde. **Falta T4** (criar/mover/apagar exposição).
+- **T4 — edição ✅ FEITO (criar/apagar)** — `NUCLEAR_OT_xsheet_toggle` + keymap **Ctrl+LEFTMOUSE**:
+  alterna a exposição da célula (`layer.frames.new/remove`), por layer+frame, UNDO, respeita lock.
+- **T4.1 — mover/duplicar ✅ FEITO** — `NUCLEAR_OT_xsheet_drag` + keymap **Alt+arrastar = mover**
+  (`layer.frames.move`), **Shift+Alt+arrastar = duplicar** (`layer.frames.copy`); ambos preservam
+  o desenho, com **fantasma** de preview (`_xsheet_drag` lido pelo draw), UNDO, respeita lock.
+- **T5 — polish ✅ FEITO (parcial)** — **número do desenho** (índice do keyframe) dentro da célula
+  quando larga o bastante; **linha de grupo a cada 5 frames** (ênfase); cores Toon Boom navy.
+  **Falta T5.1:** seleção de células (reflexo de `frame.select`) + nome custom do desenho.
+> Limites T1: read-only, sem scroll (layout fixo), interação vem no T3. Cap de frames evita
+> lag; virtualizar se o range for grande.
+
 5. **Fase E — Barra ADDONS** (#4): lançadores Asset Pro/TimeOffset/etc.
    **✅ FEITO (2026-06-12) — DINÂMICA** via Seam 3, override de `VIEW3D_HT_tool_header.draw`
    (linha abaixo do "Draw Mode"; brush settings moram no painel direito, então a linha fica
