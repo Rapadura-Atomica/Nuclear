@@ -50,7 +50,7 @@ revisão se as APIs do core que eles consomem mudarem.
   - **Seam 3 (header overrides — Fase A):** troca em runtime métodos de header e restaura no
     `unregister` (`_orig_draws`): `TOPBAR_MT_editor_menus.draw` (menu curado File/Edit/View/
     Render/Help, sem Blender/Window), `TOPBAR_HT_upper_bar.draw_left` (logo Nuclear clicável →
-    `NUCLEAR_MT_logo` + esconde abas de workspace), `VIEW3D_HT_header.draw` (só o mode selector),
+    `NUCLEAR_MT_logo` + esconde abas de workspace), `VIEW3D_HT_header.draw` (mode selector + toggle **Onion** via `overlay.use_gpencil_onion_skin`),
     `DOPESHEET_HT_header.draw` (Fase C: no modo GPENCIL desenha o transporte minimal Nuclear —
     Mute/Scrub, +KF/−KF, REW/Play/FF, Frame/Start/End; outros modos caem no original).
     `_update_startup_timeline` força `DOPESHEET_EDITOR.mode='GPENCIL'` (camadas + keyframes).
@@ -78,7 +78,22 @@ revisão se as APIs do core que eles consomem mudarem.
     unload no `unregister`).
   - **Canvas (Fase A):** `_update_startup_canvas` trava VIEW_3D na câmera e esconde
     floor/eixos/grid/cursor/gizmos (overlays GP ficam).
-  - **Seam 6 (tema — visual):** `_apply_nuclear_theme` seta `roundness` + cores (navy/roxo)
+  - **Seam 7 (Xsheet Toon Boom):** mapeia X pelo **view2d nativo** (`region.view2d` via
+    `_xsheet_fx`/`_xsheet_layout`) → células/agulha alinham com a régua e o indicador de frame
+    nativos (que é desenhado por cima e não dá p/ cobrir); ganha scroll/zoom nativos. Canais
+    nativos escondidos (`show_region_channels=False`) p/ não duplicar a coluna de camadas.
+    `_xsheet_draw` (draw_handler POST_PIXEL em
+    `SpaceDopeSheetEditor`/WINDOW, gated a modo GPENCIL + objeto GP) desenha em GPU a grade
+    camada×frame: célula cheia=exposição, marca forte no keyframe, barra de hold, régua+playhead+
+    nomes. Cobre o Dope Sheet nativo com fundo opaco. `_enable_xsheet`/`_disable_xsheet` no
+    register/unregister. Imports `gpu`/`blf`/`gpu_extras` guardados (`_GPU_OK`). **T2:** realce
+    camada ativa/coluna do frame + vis/lock. **T3:** `NUCLEAR_OT_xsheet_click` (LEFTMOUSE) p/
+    clique→frame/camada, scrub e toggles vis/lock (poll/hit em `_xsheet_poll`/`_xsheet_hit`).
+    **T4:** `NUCLEAR_OT_xsheet_toggle` (Ctrl+LEFTMOUSE) cria/apaga exposição via
+    `layer.frames.new/remove`, UNDO, respeita lock. **T4.1:** `NUCLEAR_OT_xsheet_drag`
+    (Alt+arrastar=mover `frames.move`; Shift+Alt=duplicar `frames.copy`; ghost via `_xsheet_drag`).
+    **T5:** nº do desenho na célula + linha de grupo a cada 5 frames. Keymap Dopesheet = 4 itens.
+    **Falta T5.1** (seleção/nome custom).
     nos grupos de widget e backgrounds dos editores; originais salvos em `_THEME_BACKUP` e
     restaurados no `unregister`. **O look pílula/arredondado é TEMA (dado), não C** — não houve
     edição de `interface_widgets.cc`. (Tema é pref global; o template aplica/reverte ao ativar.)
