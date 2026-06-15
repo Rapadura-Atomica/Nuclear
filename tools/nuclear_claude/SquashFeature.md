@@ -184,10 +184,10 @@ reload do `.blend` preserva tudo. Testar também **squash peg + GP com modifier 
 
 | Fase | Entrega | Arquivos | Status |
 |---|---|---|---|
-| **P0** | DNA: campos + flag + defaults (em `peg_add`). Build limpo, **zero mudança de comportamento**. | `DNA_pegrig_types.h`, `pegrig.cc` (peg_add), `DNA_pegrig_defaults.h` (comentário) | **em andamento** |
-| **P1** | Math do squash em `pegrig_peg_local_matrix` (gated pela flag) + RNA (campos + `matrix_world`). Testar via console Python. | `pegrig.cc`, `rna_pegrig.cc` | pendente |
-| **P2** | Operadores enable/reset + UI (N-panel do Peg Graph). | `object_pegrig.cc`, `object_ops.cc`, `nuclear_peg_graph.py` | pendente |
-| **P3** | `nuclear_squash_gizmo.py`: dois gizmos, mapeamento mundo↔espaço-do-pai, auto-key. | novo `scripts/startup/nuclear_squash_gizmo.py` | pendente |
+| **P0** | DNA: campos + flag + defaults (em `peg_add`). Build limpo, **zero mudança de comportamento**. | `DNA_pegrig_types.h`, `pegrig.cc` (peg_add), `DNA_pegrig_defaults.h` (comentário) | **concluído** (build limpo no distrobox `blender`) |
+| **P1** | Math do squash em `pegrig_peg_local_matrix` (gated pela flag) + RNA (`use_squash`, `squash_anchor/tip/volume/rest_len`, `matrix_world` read-only). Testar via console Python. | `pegrig.cc`, `rna_pegrig.cc` | **concluído** (build limpo 2026-06-15) |
+| **P2** | Operadores `pegrig_squash_enable` (fit anchor/tip ao bbox dos seguidores + captura rest_len) e `pegrig_squash_reset_rest` + UI (box "Squash & Stretch" no painel **Active Peg**, N-panel do viewport). | `object_pegrig.cc`, `object_intern.hh`, `object_ops.cc`, `nuclear_peg_graph.py` | **concluído** (build 2026-06-15) |
+| **P3** | `nuclear_squash_gizmo.py`: GizmoGroup poll-driven `NUCLEAR_GGT_squash` com 2 gizmos (anchor/tip, `GIZMO_GT_move_3d`), mapeamento mundo↔espaço-do-pai, auto-key, overlay da linha do eixo. | novo `scripts/startup/nuclear_squash_gizmo.py` | **concluído** (build 2026-06-15) |
 | **P4** | Polish: slider `squash_volume`, overlay de linhas, badge no Peg Graph, regressão, **atualizar `NUCLEAR_DIVERGENCE.md` (§1) e este doc**. | vários | pendente |
 
 P0–P1 provam a math antes de investir no gizmo. Cada fase é commitável e reversível.
@@ -208,6 +208,21 @@ P0–P1 provam a math antes de investir no gizmo. Cada fase é commitável e rev
 ## 10. Estado atual
 
 - **Branch:** `feature/squashs` (local, criada de `origin/feature/squashs`).
-- **P0 em andamento:** campos DNA + flag `PEGRIGPEG_SQUASH` + defaults em `BKE_pegrig_peg_add`
-  aplicados. Falta **build limpo** (distrobox `nuclear-build`) confirmando zero regressão,
-  e então commit do P0. Próximo: **P1** (math + RNA).
+- **Build:** compilado no distrobox `blender` (`cd Nuclear/build && ninja && ninja install`).
+- **P0 concluído:** campos DNA + flag `PEGRIGPEG_SQUASH` + defaults em `BKE_pegrig_peg_add`.
+- **P1 concluído (2026-06-15):** math do squash dobrada em `pegrig_peg_local_matrix` (gated
+  pela flag, `S * local` em espaço do pai, `I + (s-1)d⊗d + (k-1)e⊗e`, Z=1 no plano 2D) +
+  RNA em `PegRigPeg`: `use_squash`, `squash_anchor`, `squash_tip` (animáveis), `squash_volume`,
+  `squash_rest_len`, e `matrix_world` (read-only). Pronto para validação visual via console.
+- **P2 concluído (2026-06-15):** operadores `OBJECT_OT_pegrig_squash_enable` (liga a flag no
+  peg ativo, ajusta anchor/tip ao bbox mundial dos GP seguidores mapeado pro espaço do pai, e
+  captura `rest_len`) e `OBJECT_OT_pegrig_squash_reset_rest`. UI: box "Squash & Stretch" no
+  painel **Active Peg** (N-panel "Peg" do viewport) — botão "Enable Squash" quando off; quando
+  on, checkbox + slider `squash_volume` + anchor/tip + rest_len com reset.
+- **P3 concluído (2026-06-15):** `scripts/startup/nuclear_squash_gizmo.py` — GizmoGroup
+  `NUCLEAR_GGT_squash` (poll: peg controlado com `use_squash`, Object mode), dois rings
+  `GIZMO_GT_move_3d` (anchor verde plantado, tip laranja), get/set mapeando mundo↔espaço-do-pai
+  via `_peg_world_matrix` replicado, auto-key (`use_keyframe_insert_auto`) e overlay da linha do
+  eixo. Self-contained (sem import de `nuclear_peg_graph`).
+- **Próximo: P4** (polish: badge no Peg Graph, regressão completa, **atualizar
+  `NUCLEAR_DIVERGENCE.md` §1** com o novo arquivo de startup).
