@@ -712,6 +712,21 @@ class VIEW3D_PT_nuclear_peg(Panel):
         row.operator("object.pegrig_pivot_grab", text="Grab Pivot (P)", icon='PIVOT_CURSOR')
         row.operator("object.pegrig_pivot_reset", text="", icon='LOOP_BACK')
 
+        box = layout.box()
+        box.label(text="Squash & Stretch", icon='MOD_SIMPLEDEFORM')
+        if not peg.use_squash:
+            box.operator("object.pegrig_squash_enable", text="Enable Squash", icon='CON_SIZELIMIT')
+        else:
+            box.prop(peg, "use_squash", text="Enabled")
+            col = box.column()
+            col.use_property_split = True
+            col.prop(peg, "squash_volume", slider=True)
+            col.prop(peg, "squash_anchor", text="Anchor")
+            col.prop(peg, "squash_tip", text="Tip")
+            row = box.row(align=True)
+            row.prop(peg, "squash_rest_len")
+            row.operator("object.pegrig_squash_reset_rest", text="", icon='LOOP_BACK')
+
 
 # -------------------------------------------------------------------------------------------------
 # Auto-refresh handler: rebuild visible peg graphs when the rig structure changes

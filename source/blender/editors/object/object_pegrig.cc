@@ -18,6 +18,8 @@
 #include "DNA_scene_types.h"
 #include "DNA_view3d_types.h"
 
+#include "BLI_math_matrix.hh"
+#include "BLI_math_vector.hh"
 #include "BLI_string.h"
 #include "BLI_vector.hh"
 
@@ -26,8 +28,11 @@
 #include "BKE_layer.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_main.hh"
+#include "BKE_object.hh"
 #include "BKE_pegrig.hh"
 #include "BKE_report.hh"
+
+#include <optional>
 
 #include "DEG_depsgraph.hh"
 #include "DEG_depsgraph_build.hh"
@@ -294,6 +299,162 @@ void OBJECT_OT_pegrig_select_parent(wmOperatorType *ot)
   ot->poll = pegrig_select_parent_poll;
 
   ot->flag = OPTYPE_UNDO;
+}
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Squash & Stretch (see SquashFeature.md)
+ * \{ */
+
+/* Resolve the peg the active object's rig is currently controlling: the rig's active peg, falling
+ * back to the active object's own peg. Returns false when there is no such peg. */
+static bool squash_active_peg(bContext *C, PegRig **r_rig, int *r_index)
+{
+  Object *ob = CTX_data_active_object(C);
+  bFollowPegConstraint *data = ob ? active_followpeg(ob) : nullptr;
+  if (data == nullptr || data->rig == nullptr) {
+    return false;
+  }
+  PegRig *rig = data->rig;
+  int index = rig->active_peg_index;
+  if (index < 0 || index >= rig->pegs_num) {
+    index = BKE_pegrig_peg_index_by_name(rig, data->peg_name);
+  }
+  if (index < 0 || index >= rig->pegs_num) {
+    return false;
+  }
+  *r_rig = rig;
+  *r_index = index;
+  return true;
+}
+
+static bool pegrig_squash_poll(bContext *C)
+{
+  PegRig *rig;
+  int index;
+  return squash_active_peg(C, &rig, &index);
+}
+
+static wmOperatorStatus pegrig_squash_enable_exec(bContext *C, wmOperator *op)
+{
+  PegRig *rig;
+  int peg_index;
+  if (!squash_active_peg(C, &rig, &peg_index)) {
+    BKE_report(op->reports, RPT_ERROR, "No active peg to enable squash on");
+    return OPERATOR_CANCELLED;
+  }
+  PegRigPeg *peg = &rig->pegs[peg_index];
+
+  /* Fit the anchor (bottom) and tip (top) to the world-space bounds of every Grease Pencil object
+   * following this peg, so a fresh enable gives a vertical squash axis spanning the body. */
+  Scene *scene = CTX_data_scene(C);
+  ViewLayer *view_layer = CTX_data_view_layer(C);
+  bool has_bounds = false;
+  float3 wmin(0.0f);
+  float3 wmax(0.0f);
+  FOREACH_OBJECT_BEGIN (scene, view_layer, ob) {
+    if (ob->type != OB_GREASE_PENCIL) {
+      continue;
+    }
+    bFollowPegConstraint *data = active_followpeg(ob);
+    if (data == nullptr || data->rig != rig || !STREQ(data->peg_name, peg->name)) {
+      continue;
+    }
+    const std::optional<Bounds<float3>> bounds = BKE_object_boundbox_get(ob);
+    if (!bounds) {
+      continue;
+    }
+    const float4x4 &obmat = ob->object_to_world();
+    for (int corner = 0; corner < 8; corner++) {
+      const float3 local((corner & 1) ? bounds->max.x : bounds->min.x,
+                         (corner & 2) ? bounds->max.y : bounds->min.y,
+                         (corner & 4) ? bounds->max.z : bounds->min.z);
+      const float3 world = math::transform_point(obmat, local);
+      wmin = has_bounds ? math::min(wmin, world) : world;
+      wmax = has_bounds ? math::max(wmax, world) : world;
+      has_bounds = true;
+    }
+  }
+  FOREACH_OBJECT_END;
+
+  float3 anchor(0.0f, 0.0f, 0.0f);
+  float3 tip(0.0f, 1.0f, 0.0f);
+  if (has_bounds) {
+    const float cx = 0.5f * (wmin.x + wmax.x);
+    const float cz = 0.5f * (wmin.z + wmax.z);
+    /* Anchor/tip live in the peg's PARENT space; map the world bottom/top centres into it. */
+    float4x4 to_parent = float4x4::identity();
+    const int parent = peg->parent_index;
+    if (parent >= 0 && parent < rig->pegs_num) {
+      BKE_pegrig_solve_world_matrices(rig);
+      float parent_world[4][4];
+      BKE_pegrig_peg_world_matrix_get(rig, parent, parent_world);
+      to_parent = math::invert(float4x4(parent_world));
+    }
+    anchor = math::transform_point(to_parent, float3(cx, wmin.y, cz));
+    tip = math::transform_point(to_parent, float3(cx, wmax.y, cz));
+    if (math::distance(anchor, tip) < 1e-5f) {
+      tip = anchor + float3(0.0f, 1.0f, 0.0f);
+    }
+  }
+
+  peg->squash_anchor[0] = anchor.x;
+  peg->squash_anchor[1] = anchor.y;
+  peg->squash_anchor[2] = anchor.z;
+  peg->squash_tip[0] = tip.x;
+  peg->squash_tip[1] = tip.y;
+  peg->squash_tip[2] = tip.z;
+  peg->squash_rest_len = math::distance(anchor, tip);
+  if (peg->squash_volume <= 0.0f) {
+    peg->squash_volume = 1.0f;
+  }
+  peg->flag |= PEGRIGPEG_SQUASH;
+
+  DEG_id_tag_update(&rig->id, ID_RECALC_PARAMETERS);
+  WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, nullptr);
+  return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_pegrig_squash_enable(wmOperatorType *ot)
+{
+  ot->name = "Enable Squash";
+  ot->description =
+      "Enable squash & stretch on the active peg, fitting the anchor and tip to its drawings";
+  ot->idname = "OBJECT_OT_pegrig_squash_enable";
+
+  ot->exec = pegrig_squash_enable_exec;
+  ot->poll = pegrig_squash_poll;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static wmOperatorStatus pegrig_squash_reset_rest_exec(bContext *C, wmOperator * /*op*/)
+{
+  PegRig *rig;
+  int peg_index;
+  if (!squash_active_peg(C, &rig, &peg_index)) {
+    return OPERATOR_CANCELLED;
+  }
+  PegRigPeg *peg = &rig->pegs[peg_index];
+  const float len = math::distance(float3(peg->squash_anchor), float3(peg->squash_tip));
+  peg->squash_rest_len = (len > 1e-6f) ? len : 1.0f;
+
+  DEG_id_tag_update(&rig->id, ID_RECALC_PARAMETERS);
+  WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, nullptr);
+  return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_pegrig_squash_reset_rest(wmOperatorType *ot)
+{
+  ot->name = "Reset Squash Rest";
+  ot->description = "Recapture the rest length from the current anchor-to-tip distance";
+  ot->idname = "OBJECT_OT_pegrig_squash_reset_rest";
+
+  ot->exec = pegrig_squash_reset_rest_exec;
+  ot->poll = pegrig_squash_poll;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 /** \} */
