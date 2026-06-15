@@ -191,24 +191,49 @@ def _is_ancestor(rig, ancestor, peg):
     return False
 
 
-def active_peg(context):
-    """Resolve the peg currently controlled by the active object, honouring the Ctrl+B climb
-    (PegRig.active_peg_index) when it is the object's own peg or an ancestor of it.
-    \return (rig, peg) or (None, None)."""
+def _ancestor_chain(rig, idx):
+    """Indices from peg `idx` up to its root: [idx, parent, ..., root]. Guarded against cycles."""
+    chain = []
+    i = idx
+    guard = 0
+    while 0 <= i < len(rig.pegs) and guard <= len(rig.pegs):
+        chain.append(i)
+        i = rig.pegs[i].parent_index
+        guard += 1
+    return chain
+
+
+def _object_peg_index(context):
+    """Index of the peg the active object's Follow Peg constraint targets, or -1."""
     ob = context.active_object
     if ob is None:
-        return None, None
+        return None, -1
     con = _followpeg_constraint(ob)
     if con is None or con.rig is None:
-        return None, None
-    rig = con.rig
-    obj_idx = rig.pegs.find(con.peg_name)
-    if obj_idx < 0:
-        return None, None
+        return None, -1
+    return con.rig, con.rig.pegs.find(con.peg_name)
+
+
+def _active_peg_index(context):
+    """Index of the peg currently controlled (climb-aware): the active peg if it is the object's own
+    peg or an ancestor of it, otherwise the object's own peg. Returns (rig, index) or (None, -1)."""
+    rig, obj_idx = _object_peg_index(context)
+    if rig is None or obj_idx < 0:
+        return None, -1
     idx = obj_idx
     a = rig.active_peg_index
     if 0 <= a < len(rig.pegs) and (a == obj_idx or _is_ancestor(rig, a, obj_idx)):
         idx = a
+    return rig, idx
+
+
+def active_peg(context):
+    """Resolve the peg currently controlled by the active object, honouring the Ctrl+B climb
+    (PegRig.active_peg_index) when it is the object's own peg or an ancestor of it.
+    \return (rig, peg) or (None, None)."""
+    rig, idx = _active_peg_index(context)
+    if rig is None or idx < 0:
+        return None, None
     return rig, rig.pegs[idx]
 
 
@@ -470,7 +495,43 @@ class NODE_OT_nuclear_peg_add(Operator):
 
     def execute(self, context):
         tree = _active_peg_tree(context)
-        tree.rig.pegs.new(self.name)
+        rig = tree.rig
+
+        # The new peg becomes the PARENT of the active node (clicking a node then "Add Peg" inserts a
+        # peg above it):
+        #  * peg node active   -> the new peg is inserted ABOVE the clicked peg: the new peg takes the
+        #                          clicked peg's old parent, and the clicked peg becomes its child.
+        #  * drawing node active-> the new peg becomes the drawing's parent/controller, but only if
+        #                          that object has no controlling peg yet (don't steal an existing one).
+        active = tree.nodes.active
+        new_parent = -1          # the new peg's own parent
+        reparent_child = -1      # a peg that should become a child of the new peg
+        bind_drawing = None
+        if active is not None:
+            if active.bl_idname == _PEG_NODE_ID:
+                ci = rig.pegs.find(active.peg_name)
+                if ci >= 0:
+                    reparent_child = ci
+                    new_parent = rig.pegs[ci].parent_index  # insert in place: inherit its parent
+            elif active.bl_idname == _DRAWING_NODE_ID:
+                ob = bpy.data.objects.get(active.object_name)
+                con = _followpeg_constraint(ob) if ob else None
+                if ob is not None and (con is None or not con.peg_name):
+                    bind_drawing = ob
+
+        peg = rig.pegs.new(self.name, parent_index=new_parent)
+        new_idx = rig.pegs.find(peg.name)
+
+        if reparent_child >= 0:
+            rig.pegs[reparent_child].parent_index = new_idx  # clicked peg now hangs under the new one
+        if bind_drawing is not None:
+            con = _followpeg_constraint(bind_drawing) or bind_drawing.constraints.new('FOLLOW_PEG')
+            con.rig = rig
+            con.peg_name = peg.name
+            con.set_inverse_pending = True
+            _auto_pivot_on_bind(rig, peg.name, bind_drawing)
+
+        rig.active_peg_index = new_idx  # select & highlight the freshly-added peg
         rebuild(tree)
         return {'FINISHED'}
 
@@ -565,6 +626,39 @@ class NODE_PT_nuclear_peg(Panel):
         col.operator("node.nuclear_peg_add", icon='ADD')
         col.operator("node.nuclear_peg_remove", icon='REMOVE')
         col.operator("node.nuclear_peg_bind_selected", icon='LINKED')
+
+
+class OBJECT_OT_pegrig_select_child(Operator):
+    """Descend the hierarchy: the counterpart to Select Parent (Ctrl+B). Moves the controlled peg
+    one level DOWN, toward the drawing -- i.e. to the child of the current peg that lies on the path
+    to the object's own peg. Bound to Ctrl+Shift+B in the Peg Pose tool."""
+    bl_idname = "object.pegrig_select_child"
+    bl_label = "Select Child Peg"
+    bl_description = "Make the child of the active peg the controlled peg (descend toward the drawing)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _object_peg_index(context)[1] >= 0
+
+    def execute(self, context):
+        rig, obj_idx = _object_peg_index(context)
+        if rig is None or obj_idx < 0:
+            return {'CANCELLED'}
+        _r, active = _active_peg_index(context)
+        if active < 0 or active == obj_idx:
+            return {'CANCELLED'}  # already at the drawing's own peg; nothing below
+        # Walk up from the object's peg; the node whose parent is `active` is the step down.
+        child = obj_idx
+        guard = 0
+        while 0 <= child < len(rig.pegs) and guard <= len(rig.pegs):
+            parent = rig.pegs[child].parent_index
+            if parent == active:
+                rig.active_peg_index = child  # fires msgbus -> both views redraw
+                return {'FINISHED'}
+            child = parent
+            guard += 1
+        return {'CANCELLED'}
 
 
 class OBJECT_OT_pegrig_pivot_reset(Operator):
@@ -751,6 +845,7 @@ _PEG_POSE_BINDINGS = (
      {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'},
      {"properties": [("release_confirm", True)]}),
     ("object.pegrig_select_parent", {"type": 'B', "value": 'PRESS', "ctrl": True}, None),
+    ("object.pegrig_select_child", {"type": 'B', "value": 'PRESS', "ctrl": True, "shift": True}, None),
     ("object.pegrig_pivot_grab", {"type": 'P', "value": 'PRESS'}, None),
 )
 
@@ -769,9 +864,26 @@ def _ensure_peg_pose_keymap():
         keymap_init_from_data(km, _PEG_POSE_BINDINGS)
 
 
+def _set_render_border_ctrl_b(active):
+    """Toggle the global 3D View Ctrl+B 'Set Render Region' (view3d.render_border). It otherwise
+    shadows the Peg Pose tool's Ctrl+B (Select Parent) whenever the tool's poll falls through, so we
+    disable it while the peg system is registered and restore it on unregister."""
+    wm = bpy.context.window_manager
+    kc = wm.keyconfigs.user if wm else None
+    km = kc.keymaps.get("3D View") if kc else None
+    if km is None:
+        return
+    for kmi in km.keymap_items:
+        if (kmi.idname == "view3d.render_border" and kmi.type == 'B'
+                and kmi.ctrl and not kmi.alt and not kmi.shift):
+            kmi.active = active
+
+
 @bpy.app.handlers.persistent
 def _load_post(*_args):
     _ensure_peg_pose_keymap()
+    _set_render_border_ctrl_b(False)  # keep Ctrl+B free for peg navigation
+    _subscribe_active_peg()  # msgbus subscriptions are cleared on file load; re-arm.
 
 
 # -------------------------------------------------------------------------------------------------
@@ -790,6 +902,32 @@ def _peg_pivot_world(rig, idx):
     return pw @ (mathutils.Vector(peg.pivot) + mathutils.Vector(peg.translation))
 
 
+# Harmony-style colours: the posing/animation chain reads GREEN (rigging mode would be red).
+_CHAIN_GREEN = (0.25, 0.90, 0.35, 0.95)     # the live root->active hierarchy chain
+_CLIMB_GREEN = (0.55, 1.00, 0.55, 1.00)     # the segment the Ctrl+B climb has walked (brighter)
+_PEG_AMBER = (1.00, 0.75, 0.10, 1.00)       # the active peg's articulation (the "you are here")
+_PEG_FAINT = (1.00, 0.70, 0.10, 0.35)       # other pegs, for context
+
+
+def _view_ring(center, right, up, radius, segments=32):
+    """A LINE_STRIP ring of `segments` points facing the viewer, centred at `center`."""
+    return [center + (right * math.cos(a) + up * math.sin(a)) * radius
+            for a in (i / segments * 2.0 * math.pi for i in range(segments + 1))]
+
+
+def _selected_peg_index(context):
+    """Index of the peg to HIGHLIGHT for the active object: the rig's `active_peg_index` (the peg
+    last clicked/picked), falling back to the object's own peg. Returns (rig, index) or (None, -1).
+    Unlike `_active_peg_index`, this is NOT climb-constrained -- any clicked peg highlights itself."""
+    rig, obj_idx = _object_peg_index(context)
+    if rig is None:
+        return None, -1
+    i = rig.active_peg_index
+    if 0 <= i < len(rig.pegs):
+        return rig, i
+    return (rig, obj_idx) if obj_idx >= 0 else (None, -1)
+
+
 def _draw_pivot_overlay():
     context = bpy.context
     if context.mode != 'OBJECT':
@@ -797,12 +935,11 @@ def _draw_pivot_overlay():
     rv3d = context.region_data
     if rv3d is None:
         return
-    rig, peg = active_peg(context)
-    if peg is None:
+    rig, sel = _selected_peg_index(context)
+    if rig is None or sel < 0:
         return
-    active_idx = rig.pegs.find(peg.name)
 
-    # View-facing axes so the marker keeps its shape from any angle, sized stable on screen.
+    # View-facing axes so the markers keep their shape from any angle, sized stable on screen.
     vm = rv3d.view_matrix
     right = mathutils.Vector((vm[0][0], vm[0][1], vm[0][2]))
     up = mathutils.Vector((vm[1][0], vm[1][1], vm[1][2]))
@@ -813,25 +950,23 @@ def _draw_pivot_overlay():
     gpu.state.depth_test_set('NONE')  # always visible, like a pivot gizmo
     shader.bind()
 
-    # Other pegs of the rig: small faint dots, for context.
+    # Other pegs of the rig: small faint dots, just so you can see where they are to click them.
     others = []
     for i in range(len(rig.pegs)):
-        if i == active_idx:
+        if i == sel:
             continue
         c = _peg_pivot_world(rig, i)
         others += [c - right * s * 0.4, c + right * s * 0.4, c - up * s * 0.4, c + up * s * 0.4]
     if others:
         gpu.state.line_width_set(1.0)
-        shader.uniform_float("color", (1.0, 0.7, 0.1, 0.35))
+        shader.uniform_float("color", _PEG_FAINT)
         batch_for_shader(shader, 'LINES', {"pos": others}).draw(shader)
 
-    # Active peg pivot: a simple bright ring at its real world position.
-    c = _peg_pivot_world(rig, active_idx)
-    ring = [c + (right * math.cos(a) + up * math.sin(a)) * s
-            for a in (i / 32.0 * 2.0 * math.pi for i in range(33))]
-    gpu.state.line_width_set(2.0)
-    shader.uniform_float("color", (1.0, 0.75, 0.1, 1.0))
-    batch_for_shader(shader, 'LINE_STRIP', {"pos": ring}).draw(shader)
+    # The selected peg, and ONLY it: a bright ring at its pivot (its rotation centre).
+    c = _peg_pivot_world(rig, sel)
+    gpu.state.line_width_set(2.5)
+    shader.uniform_float("color", _PEG_AMBER)
+    batch_for_shader(shader, 'LINE_STRIP', {"pos": _view_ring(c, right, up, s)}).draw(shader)
 
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
@@ -852,6 +987,156 @@ def _remove_pivot_overlay():
 
 
 # -------------------------------------------------------------------------------------------------
+# Node-editor highlight (GPU): light up the active peg node and its ancestor chain in the Peg Graph
+# -------------------------------------------------------------------------------------------------
+
+_NODE_HL_HANDLE = None
+
+
+def _node_rect_region(node, region, ui_scale):
+    """Bounding box of `node` in region pixel coords: (xmin, ymin, xmax, ymax).
+
+    node.location is the node's top-left in tree space; node.width is in tree units; node.dimensions
+    is in pixels at ui_scale (not view zoom), so its height in tree units is dimensions.y/ui_scale.
+    """
+    v2d = region.view2d
+    x0, y0 = node.location
+    w = node.width
+    h = node.dimensions.y / ui_scale if ui_scale else node.dimensions.y
+    rx0, ry0 = v2d.view_to_region(x0, y0, clip=False)
+    rx1, ry1 = v2d.view_to_region(x0 + w, y0 - h, clip=False)
+    return min(rx0, rx1), min(ry0, ry1), max(rx0, rx1), max(ry0, ry1)
+
+
+def _draw_node_highlight():
+    context = bpy.context
+    space = context.space_data
+    if space is None or space.type != 'NODE_EDITOR' or space.tree_type != _TREE_ID:
+        return
+    tree = space.edit_tree or space.node_tree
+    if tree is None:
+        return
+    region = context.region
+    if region is None:
+        return
+
+    # Highlight the ACTIVE node directly (not via active_peg_index): clicking a node already
+    # redraws the editor, so reading nodes.active here makes the halo appear on the very first
+    # click -- no waiting on the sync timer, no double-click.
+    node = tree.nodes.active
+    if node is None or node.bl_idname != _PEG_NODE_ID:
+        return
+
+    ui_scale = context.preferences.system.ui_scale
+    xmin, ymin, xmax, ymax = _node_rect_region(node, region, ui_scale)
+    pad = 3.0
+    loop = [(xmin - pad, ymin - pad), (xmax + pad, ymin - pad),
+            (xmax + pad, ymax + pad), (xmin - pad, ymax + pad), (xmin - pad, ymin - pad)]
+
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    gpu.state.line_width_set(3.0)
+    shader.bind()
+    shader.uniform_float("color", _PEG_AMBER)
+    batch_for_shader(shader, 'LINE_STRIP', {"pos": loop}).draw(shader)
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set('NONE')
+
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set('NONE')
+
+
+def _add_node_overlay():
+    global _NODE_HL_HANDLE
+    if _NODE_HL_HANDLE is None:
+        _NODE_HL_HANDLE = bpy.types.SpaceNodeEditor.draw_handler_add(
+            _draw_node_highlight, (), 'WINDOW', 'POST_PIXEL')
+
+
+def _remove_node_overlay():
+    global _NODE_HL_HANDLE
+    if _NODE_HL_HANDLE is not None:
+        bpy.types.SpaceNodeEditor.draw_handler_remove(_NODE_HL_HANDLE, 'WINDOW')
+        _NODE_HL_HANDLE = None
+
+
+# -------------------------------------------------------------------------------------------------
+# Redraw on climb: PegRig.active_peg_index changes carry no depsgraph update, so subscribe to it via
+# msgbus and tag the viewports / peg graphs for redraw when the Ctrl+B climb moves the active peg.
+# -------------------------------------------------------------------------------------------------
+
+_MSGBUS_OWNER = object()
+
+
+def _tag_redraw_peg_areas(*_args):
+    for wm in bpy.data.window_managers:
+        for win in wm.windows:
+            for area in win.screen.areas:
+                if area.type in {'VIEW_3D', 'NODE_EDITOR'}:
+                    area.tag_redraw()
+
+
+def _subscribe_active_peg():
+    try:
+        rna = (bpy.types.PegRig, "active_peg_index")
+    except AttributeError:
+        return  # native peg type not available (e.g. stock Blender)
+    bpy.msgbus.clear_by_owner(_MSGBUS_OWNER)
+    bpy.msgbus.subscribe_rna(
+        key=rna, owner=_MSGBUS_OWNER, args=(), notify=_tag_redraw_peg_areas)
+
+
+# -------------------------------------------------------------------------------------------------
+# Node-click -> selection: clicking a peg node in the Peg Graph should also select that peg in the
+# viewport. Node selection fires no callback, so poll the active node and mirror it into the rig's
+# active_peg_index. We only act when the active node *changes* (tracked per tree) so this never
+# fights the Ctrl+B climb, which moves active_peg_index without changing the active node.
+# -------------------------------------------------------------------------------------------------
+
+_LAST_ACTIVE_NODE = {}
+
+
+def _sync_node_selection():
+    for wm in bpy.data.window_managers:
+        for win in wm.windows:
+            for area in win.screen.areas:
+                if area.type != 'NODE_EDITOR':
+                    continue
+                space = area.spaces.active
+                if getattr(space, 'tree_type', '') != _TREE_ID:
+                    continue
+                tree = space.edit_tree or space.node_tree
+                if tree is None or tree.rig is None:
+                    continue
+                rig = tree.rig
+                node = tree.nodes.active
+                cur = node.peg_name if (node and node.bl_idname == _PEG_NODE_ID) else None
+
+                if cur != _LAST_ACTIVE_NODE.get(tree.name):
+                    # The user clicked a different node -> drive the rig's selection (viewport).
+                    _LAST_ACTIVE_NODE[tree.name] = cur
+                    if cur is not None:
+                        idx = rig.pegs.find(cur)
+                        if idx >= 0 and rig.active_peg_index != idx:
+                            rig.active_peg_index = idx
+                            _tag_redraw_peg_areas()
+                else:
+                    # Node selection stable: mirror a viewport pick / Ctrl+B back onto the active
+                    # node so the graph highlights the same peg the viewport does.
+                    i = rig.active_peg_index
+                    if 0 <= i < len(rig.pegs):
+                        want = rig.pegs[i].name
+                        if cur != want:
+                            target = next((n for n in tree.nodes if n.bl_idname == _PEG_NODE_ID
+                                           and n.peg_name == want), None)
+                            if target is not None:
+                                tree.nodes.active = target
+                                _LAST_ACTIVE_NODE[tree.name] = want
+                                _tag_redraw_peg_areas()
+    return 0.05  # seconds
+
+
+# -------------------------------------------------------------------------------------------------
 # Registration
 # -------------------------------------------------------------------------------------------------
 
@@ -866,6 +1151,7 @@ classes = (
     NODE_OT_nuclear_peg_remove,
     NODE_OT_nuclear_peg_bind_selected,
     NODE_PT_nuclear_peg,
+    OBJECT_OT_pegrig_select_child,
     OBJECT_OT_pegrig_pivot_reset,
     OBJECT_OT_pegrig_pivot_to_drawing,
     OBJECT_OT_pegrig_pivot_grab,
@@ -881,10 +1167,20 @@ def register():
     if _load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_load_post)
     _add_pivot_overlay()
+    _add_node_overlay()
     _ensure_peg_pose_keymap()
+    _set_render_border_ctrl_b(False)  # free Ctrl+B for the Peg Pose tool (avoid render-border clash)
+    _subscribe_active_peg()
+    if not bpy.app.timers.is_registered(_sync_node_selection):
+        bpy.app.timers.register(_sync_node_selection, persistent=True)
 
 
 def unregister():
+    _set_render_border_ctrl_b(True)  # restore the stock Ctrl+B 'Set Render Region'
+    if bpy.app.timers.is_registered(_sync_node_selection):
+        bpy.app.timers.unregister(_sync_node_selection)
+    bpy.msgbus.clear_by_owner(_MSGBUS_OWNER)
+    _remove_node_overlay()
     _remove_pivot_overlay()
     if _load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post)
