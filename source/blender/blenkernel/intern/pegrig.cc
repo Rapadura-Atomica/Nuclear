@@ -152,6 +152,12 @@ int BKE_pegrig_peg_add(PegRig *rig, const char *name, const int parent_index)
 
   PegRigPeg *peg = &rig->pegs[new_index];
   copy_v3_fl(peg->scale, 1.0f);
+  /* Squash defaults: inert until #PEGRIGPEG_SQUASH is set, but kept non-degenerate (unit vertical
+   * axis, full volume preservation) so enabling squash never starts from a zero-length axis. The
+   * anchor stays at the origin from the zeroed allocation. */
+  peg->squash_tip[1] = 1.0f;
+  peg->squash_rest_len = 1.0f;
+  peg->squash_volume = 1.0f;
   unit_m4(peg->world_mat);
   peg->parent_index = (parent_index >= 0 && parent_index < new_index) ? parent_index : -1;
 
