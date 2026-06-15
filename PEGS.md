@@ -108,29 +108,40 @@ limitado à cadeia — clicar em qualquer peg destaca exatamente ela.
 
 - **Anel âmbar** no pivô da peg selecionada — e só nela.
 - Os outros pegs aparecem como **pontinhos faint**, só pra você saber onde estão pra clicar.
+- **Drawings que a peg controla** (`_controlled_drawings`): caixa âmbar **brilhante** nos desenhos
+  ligados direto à peg, e caixa **faint** nos que ela carrega pela cadeia (ligados a um peg
+  descendente). Mostra "o que se move" ao posar essa peg. A caixa é o bounding box do objeto
+  (ou um quadradinho view-facing pra objetos sem volume, tipo Empty).
+- **Drawing clicado no Peg Graph** (`_active_drawing_object`): caixa âmbar brilhante em volta do
+  objeto cujo nó de drawing está ativo no grafo.
 
 ### No Peg Graph (`_draw_node_highlight`)
 
-Um draw handler `POST_PIXEL` no `SpaceNodeEditor` acende um **halo âmbar** em volta do nó da
-peg selecionada — só esse nó. As coords de nó (`node.location`/`width`/`dimensions`) viram
-pixels via `region.view2d.view_to_region`, com altura em unidades de árvore = `dimensions.y/ui_scale`.
+Um draw handler `POST_PIXEL` no `SpaceNodeEditor` acende um **halo âmbar** em volta do **nó ativo**
+— seja um nó de **peg** ou de **drawing** — e só ele. Lê `tree.nodes.active` direto (não o
+`active_peg_index`), então o halo aparece já no 1º clique. As coords de nó
+(`node.location`/`width`/`dimensions`) viram pixels via `region.view2d.view_to_region`, com altura
+em unidades de árvore = `dimensions.y/ui_scale`.
 
 ### Seleção sincronizada nas duas direções
 
-- **Viewport → tudo:** clicar um desenho (`OBJECT_OT_pegrig_pick`) ou `Ctrl+B` grava `active_peg_index`.
-- **Peg Graph → tudo:** clicar um nó de peg não dispara callback nenhum, então um timer leve
-  (`_sync_node_selection`, 0.15 s) espelha o nó ativo do grafo em `active_peg_index`. Ele só age
-  quando o nó ativo **muda** (rastreado por árvore), pra nunca brigar com o `Ctrl+B`.
+- **Viewport → tudo:** clicar um desenho (`OBJECT_OT_pegrig_pick`) ou `Ctrl+B`/`Ctrl+Shift+B` grava
+  `active_peg_index`.
+- **Peg Graph → tudo:** clicar um nó não dispara callback, então um timer leve
+  (`_sync_node_selection`, 0.05 s) espelha o nó ativo: nó de **peg** → grava `active_peg_index`;
+  nó de **drawing** → força redraw pra viewport acender aquele desenho (sem mexer no peg ativo).
+  Só age quando o nó ativo **muda** (rastreado por árvore), pra nunca brigar com o `Ctrl+B`.
 - **Redraw imediato:** `active_peg_index` muda **sem** update de depsgraph, então uma assinatura
   `bpy.msgbus.subscribe_rna` em `(PegRig, "active_peg_index")` marca `tag_redraw()` nas áreas
   `VIEW_3D` e `NODE_EDITOR`. Re-armada no `load_post` (msgbus é limpo ao abrir arquivo).
 
 ## Cores
 
-| Elemento                         | Cor                         | Significado                         |
-|----------------------------------|-----------------------------|-------------------------------------|
-| Peg selecionada (anel/halo)      | âmbar (`1,0.75,0.10`)       | a peg que você vai mexer            |
-| Outros pegs (viewport)           | âmbar faint (alpha 0.35)    | contexto, pra localizar/clicar      |
+| Elemento                              | Cor                         | Significado                         |
+|---------------------------------------|-----------------------------|-------------------------------------|
+| Peg selecionada (anel/halo)           | âmbar (`1,0.75,0.10`)       | a peg que você vai mexer            |
+| Drawing direto / drawing clicado      | âmbar (`1,0.75,0.10`)       | desenho ligado direto / selecionado |
+| Outros pegs e drawings da cadeia      | âmbar faint (alpha 0.35)    | contexto / carregado pela cadeia    |
 
 (No Harmony, vermelho seria o modo *rigging*; aqui o overlay é sempre de pose, então fica
 no verde. Os hex são aproximações editáveis no código, não valores oficiais da Toon Boom.)

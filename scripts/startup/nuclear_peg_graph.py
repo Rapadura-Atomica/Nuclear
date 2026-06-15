@@ -928,15 +928,70 @@ def _selected_peg_index(context):
     return (rig, obj_idx) if obj_idx >= 0 else (None, -1)
 
 
+_BBOX_EDGES = ((0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
+               (0, 4), (1, 5), (2, 6), (3, 7))
+
+
+def _drawing_outline(ob, right, up, s):
+    """LINES points outlining a drawing object: its world bounding box, or -- for a boundless
+    object like an Empty -- a small view-facing square at its origin."""
+    corners = [ob.matrix_world @ mathutils.Vector(c) for c in ob.bound_box]
+    xs = [c.x for c in corners]
+    ys = [c.y for c in corners]
+    zs = [c.z for c in corners]
+    if max(max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)) < 1e-4:
+        c = ob.matrix_world.translation
+        r = s * 1.3
+        a, b = c - right * r - up * r, c + right * r - up * r
+        d, e = c + right * r + up * r, c - right * r + up * r
+        return [a, b, b, d, d, e, e, a]
+    pts = []
+    for i, j in _BBOX_EDGES:
+        pts += [corners[i], corners[j]]
+    return pts
+
+
+def _controlled_drawings(rig, sel_idx):
+    """(object, direct) for every drawing the selected peg moves: bound straight to it (direct=True)
+    or to one of its descendant pegs (direct=False, i.e. it moves along through the chain)."""
+    out = []
+    for ob, peg_name in _bound_objects(rig):
+        if not peg_name:
+            continue
+        bidx = rig.pegs.find(peg_name)
+        if bidx == sel_idx:
+            out.append((ob, True))
+        elif bidx >= 0 and _is_ancestor(rig, sel_idx, bidx):
+            out.append((ob, False))
+    return out
+
+
+def _active_drawing_object():
+    """The Grease Pencil object whose drawing node is the active node in an open Peg Graph, or None.
+    Lets a click on a drawing node light up that drawing in the viewport."""
+    for wm in bpy.data.window_managers:
+        for win in wm.windows:
+            for area in win.screen.areas:
+                if area.type != 'NODE_EDITOR':
+                    continue
+                sp = area.spaces.active
+                if getattr(sp, 'tree_type', '') != _TREE_ID:
+                    continue
+                tree = sp.edit_tree or sp.node_tree
+                if tree is None:
+                    continue
+                node = tree.nodes.active
+                if node is not None and node.bl_idname == _DRAWING_NODE_ID:
+                    return bpy.data.objects.get(node.object_name)
+    return None
+
+
 def _draw_pivot_overlay():
     context = bpy.context
     if context.mode != 'OBJECT':
         return
     rv3d = context.region_data
     if rv3d is None:
-        return
-    rig, sel = _selected_peg_index(context)
-    if rig is None or sel < 0:
         return
 
     # View-facing axes so the markers keep their shape from any angle, sized stable on screen.
@@ -950,23 +1005,41 @@ def _draw_pivot_overlay():
     gpu.state.depth_test_set('NONE')  # always visible, like a pivot gizmo
     shader.bind()
 
-    # Other pegs of the rig: small faint dots, just so you can see where they are to click them.
-    others = []
-    for i in range(len(rig.pegs)):
-        if i == sel:
-            continue
-        c = _peg_pivot_world(rig, i)
-        others += [c - right * s * 0.4, c + right * s * 0.4, c - up * s * 0.4, c + up * s * 0.4]
-    if others:
-        gpu.state.line_width_set(1.0)
-        shader.uniform_float("color", _PEG_FAINT)
-        batch_for_shader(shader, 'LINES', {"pos": others}).draw(shader)
+    rig, sel = _selected_peg_index(context)
+    if rig is not None and sel >= 0:
+        # Other pegs of the rig: small faint dots, just so you can see where they are to click them.
+        others = []
+        for i in range(len(rig.pegs)):
+            if i == sel:
+                continue
+            c = _peg_pivot_world(rig, i)
+            others += [c - right * s * 0.4, c + right * s * 0.4, c - up * s * 0.4, c + up * s * 0.4]
+        if others:
+            gpu.state.line_width_set(1.0)
+            shader.uniform_float("color", _PEG_FAINT)
+            batch_for_shader(shader, 'LINES', {"pos": others}).draw(shader)
 
-    # The selected peg, and ONLY it: a bright ring at its pivot (its rotation centre).
-    c = _peg_pivot_world(rig, sel)
-    gpu.state.line_width_set(2.5)
-    shader.uniform_float("color", _PEG_AMBER)
-    batch_for_shader(shader, 'LINE_STRIP', {"pos": _view_ring(c, right, up, s)}).draw(shader)
+        # The drawings this peg moves: bright box for the ones bound straight to it, faint box for
+        # the ones it carries along through the chain (bound to a descendant peg).
+        gpu.state.line_width_set(1.5)
+        for ob, direct in _controlled_drawings(rig, sel):
+            if ob is None:
+                continue
+            shader.uniform_float("color", _PEG_AMBER if direct else _PEG_FAINT)
+            batch_for_shader(shader, 'LINES', {"pos": _drawing_outline(ob, right, up, s)}).draw(shader)
+
+        # The selected peg itself: a bright ring at its pivot (its rotation centre).
+        c = _peg_pivot_world(rig, sel)
+        gpu.state.line_width_set(2.5)
+        shader.uniform_float("color", _PEG_AMBER)
+        batch_for_shader(shader, 'LINE_STRIP', {"pos": _view_ring(c, right, up, s)}).draw(shader)
+
+    # A drawing whose node is actively selected in a Peg Graph: a bright box around it.
+    adraw = _active_drawing_object()
+    if adraw is not None:
+        gpu.state.line_width_set(2.5)
+        shader.uniform_float("color", _PEG_AMBER)
+        batch_for_shader(shader, 'LINES', {"pos": _drawing_outline(adraw, right, up, s)}).draw(shader)
 
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
@@ -1022,9 +1095,9 @@ def _draw_node_highlight():
 
     # Highlight the ACTIVE node directly (not via active_peg_index): clicking a node already
     # redraws the editor, so reading nodes.active here makes the halo appear on the very first
-    # click -- no waiting on the sync timer, no double-click.
+    # click -- no waiting on the sync timer, no double-click. Works for peg AND drawing nodes.
     node = tree.nodes.active
-    if node is None or node.bl_idname != _PEG_NODE_ID:
+    if node is None or node.bl_idname not in (_PEG_NODE_ID, _DRAWING_NODE_ID):
         return
 
     ui_scale = context.preferences.system.ui_scale
@@ -1039,9 +1112,6 @@ def _draw_node_highlight():
     shader.bind()
     shader.uniform_float("color", _PEG_AMBER)
     batch_for_shader(shader, 'LINE_STRIP', {"pos": loop}).draw(shader)
-    gpu.state.line_width_set(1.0)
-    gpu.state.blend_set('NONE')
-
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
 
@@ -1110,28 +1180,39 @@ def _sync_node_selection():
                     continue
                 rig = tree.rig
                 node = tree.nodes.active
-                cur = node.peg_name if (node and node.bl_idname == _PEG_NODE_ID) else None
+                is_drawing = node is not None and node.bl_idname == _DRAWING_NODE_ID
+                if node is None:
+                    key = None
+                elif node.bl_idname == _PEG_NODE_ID:
+                    key = ('peg', node.peg_name)
+                elif is_drawing:
+                    key = ('draw', node.object_name)
+                else:
+                    key = ('other', node.name)
 
-                if cur != _LAST_ACTIVE_NODE.get(tree.name):
-                    # The user clicked a different node -> drive the rig's selection (viewport).
-                    _LAST_ACTIVE_NODE[tree.name] = cur
-                    if cur is not None:
-                        idx = rig.pegs.find(cur)
+                if key != _LAST_ACTIVE_NODE.get(tree.name):
+                    # The user clicked a different node. For a peg, drive the rig's selection; for a
+                    # drawing, just force a redraw so the viewport lights that drawing up.
+                    _LAST_ACTIVE_NODE[tree.name] = key
+                    if key is not None and key[0] == 'peg':
+                        idx = rig.pegs.find(key[1])
                         if idx >= 0 and rig.active_peg_index != idx:
                             rig.active_peg_index = idx
-                            _tag_redraw_peg_areas()
-                else:
-                    # Node selection stable: mirror a viewport pick / Ctrl+B back onto the active
-                    # node so the graph highlights the same peg the viewport does.
+                    _tag_redraw_peg_areas()
+                elif not is_drawing:
+                    # Selection stable and not a drawing: mirror a viewport pick / Ctrl+B back onto
+                    # the active node so the graph highlights the same peg the viewport does. (Skip
+                    # when a drawing node is active, so we never steal focus from a clicked drawing.)
                     i = rig.active_peg_index
                     if 0 <= i < len(rig.pegs):
                         want = rig.pegs[i].name
-                        if cur != want:
+                        cur_peg = node.peg_name if (node and node.bl_idname == _PEG_NODE_ID) else None
+                        if cur_peg != want:
                             target = next((n for n in tree.nodes if n.bl_idname == _PEG_NODE_ID
                                            and n.peg_name == want), None)
                             if target is not None:
                                 tree.nodes.active = target
-                                _LAST_ACTIVE_NODE[tree.name] = want
+                                _LAST_ACTIVE_NODE[tree.name] = ('peg', want)
                                 _tag_redraw_peg_areas()
     return 0.05  # seconds
 
