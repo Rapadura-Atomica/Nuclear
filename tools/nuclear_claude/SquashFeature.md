@@ -188,7 +188,7 @@ reload do `.blend` preserva tudo. Testar também **squash peg + GP com modifier 
 | **P1** | Math do squash em `pegrig_peg_local_matrix` (gated pela flag) + RNA (`use_squash`, `squash_anchor/tip/volume/rest_len`, `matrix_world` read-only). Testar via console Python. | `pegrig.cc`, `rna_pegrig.cc` | **concluído** (build limpo 2026-06-15) |
 | **P2** | Operadores `pegrig_squash_enable` (fit anchor/tip ao bbox dos seguidores + captura rest_len) e `pegrig_squash_reset_rest` + UI (box "Squash & Stretch" no painel **Active Peg**, N-panel do viewport). | `object_pegrig.cc`, `object_intern.hh`, `object_ops.cc`, `nuclear_peg_graph.py` | **concluído** (build 2026-06-15) |
 | **P3** | `nuclear_squash_gizmo.py`: GizmoGroup poll-driven `NUCLEAR_GGT_squash` com 2 gizmos (anchor/tip, `GIZMO_GT_move_3d`), mapeamento mundo↔espaço-do-pai, auto-key, overlay da linha do eixo. | novo `scripts/startup/nuclear_squash_gizmo.py` | **concluído** (build 2026-06-15) |
-| **P4** | Polish: slider `squash_volume`, overlay de linhas, badge no Peg Graph, regressão, **atualizar `NUCLEAR_DIVERGENCE.md` (§1) e este doc**. | vários | pendente |
+| **P4** | Polish: badge "Squash" no nó do Peg Graph, regressão headless automatizada (math + não-interferência), `NUCLEAR_DIVERGENCE.md` §1 atualizado. | `nuclear_peg_graph.py`, `NUCLEAR_DIVERGENCE.md`, este doc | **concluído** (regressão OK 2026-06-15) |
 
 P0–P1 provam a math antes de investir no gizmo. Cada fase é commitável e reversível.
 
@@ -224,5 +224,10 @@ P0–P1 provam a math antes de investir no gizmo. Cada fase é commitável e rev
   `GIZMO_GT_move_3d` (anchor verde plantado, tip laranja), get/set mapeando mundo↔espaço-do-pai
   via `_peg_world_matrix` replicado, auto-key (`use_keyframe_insert_auto`) e overlay da linha do
   eixo. Self-contained (sem import de `nuclear_peg_graph`).
-- **Próximo: P4** (polish: badge no Peg Graph, regressão completa, **atualizar
-  `NUCLEAR_DIVERGENCE.md` §1** com o novo arquivo de startup).
+- **P4 concluído (2026-06-15):** badge "Squash" no nó do peg no Peg Graph
+  (`NuclearPegNode.draw_buttons`); `NUCLEAR_DIVERGENCE.md` §1 atualizado (gizmo novo + nota
+  de que o squash não cria ponto quente novo na §2); regressão headless automatizada
+  (`blender --background --factory-startup`) passando: registro/RNA/gizmo OK, e a math pelo
+  caminho Follow Peg dá `diag (0.5, 2.0, 1.0)` para s=2/volume=1, com squash off = identidade.
+- **Feature completa (P0–P4).** Evoluções futuras possíveis: bulge/falloff por ponto (§8 do
+  plano original), gizmos com overlay mais rico, presets de volume.
