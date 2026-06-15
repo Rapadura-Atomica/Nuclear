@@ -115,6 +115,15 @@ class NuclearPegNode(_PegGraphNode, Node):
     def draw_label(self):
         return self.peg_name or "Peg"
 
+    def draw_buttons(self, _context, layout):
+        # Badge: flag pegs that drive a squash & stretch so they stand out in the graph.
+        rig = getattr(self.id_data, "rig", None)
+        if rig is None:
+            return
+        peg = rig.pegs.get(self.peg_name)
+        if peg is not None and peg.use_squash:
+            layout.label(text="Squash", icon='MOD_SIMPLEDEFORM')
+
 
 class NuclearDrawingNode(_PegGraphNode, Node):
     bl_idname = _DRAWING_NODE_ID
