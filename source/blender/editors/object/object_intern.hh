@@ -258,6 +258,8 @@ void OBJECT_OT_pegrig_new(wmOperatorType *ot);
 void OBJECT_OT_pegrig_peg_new(wmOperatorType *ot);
 void OBJECT_OT_pegrig_pick(wmOperatorType *ot);
 void OBJECT_OT_pegrig_select_parent(wmOperatorType *ot);
+void OBJECT_OT_pegrig_squash_enable(wmOperatorType *ot);
+void OBJECT_OT_pegrig_squash_reset_rest(wmOperatorType *ot);
 
 /* `object_constraint.cc` */
 
