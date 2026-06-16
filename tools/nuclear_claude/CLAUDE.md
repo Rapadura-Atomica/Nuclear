@@ -405,7 +405,21 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-06-12.
+Atualizado em 2026-06-16.
+
+- **Consolidação 1.0 → 1.1 + modifier Contour/masks GP (2026-06-16) — BUMP LOCAL, NÃO
+  PUBLICADO.** O trabalho GP novo (modifier `GreasePencilContour` eType 88 — deformer
+  envelope MVC estilo Toon Boom — + masks nativas de GP) vivia só na linha 1.0
+  (`feat/native-auto-patch`, working tree). Foi commitado lá (`90ac371`) e portado para a
+  linha 1.1 via cherry-pick limpo na branch **`integration/gp-contour-1.1`** (base
+  `origin/auto/integration`). Build validado no `blenderdev` (`ninja install` ok; modifier
+  registra e instancia em GP). Header bumpado para **1.2.0 / `NUCLEAR_BUILD = 3`** (MINOR,
+  recurso novo). **Pendente (externo/manual):** empacotar o `nuclear.zip` novo, regerar o
+  `version.json` (regra de ouro nº2), atualizar o espelho do manifesto, fast-forward de
+  `origin/auto/integration` + push, e deploy. O espelho `version.json` segue apontando o
+  zip publicado da b2 (build 2) até existir zip novo. Nota: várias seams em arquivos
+  upstream (CMakeLists/MOD_*/DNA_modifier_*/rna_modifier + grease_pencil.cc/gpencil engine)
+  ainda precisam entrar no `NUCLEAR_DIVERGENCE.md`.
 
 - **Conserto flat + fallback home + permissão de execução (2026-06-12) — PUBLICADO.**
   `scripts/startup/nuclear_update.py`: (a) flat install se auto-atualiza no lugar; (b)
