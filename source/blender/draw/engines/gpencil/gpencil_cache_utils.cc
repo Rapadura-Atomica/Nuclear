@@ -120,6 +120,14 @@ tObject *gpencil_object_cache_add(Instance *inst,
     BLI_LINKS_APPEND(&inst->tobjects, tgp_ob);
   }
 
+  /* Nuclear: index this object so cross-object mattes can resolve it at draw time. Key by both the
+   * evaluated object and its original, so a matte pointer survives whichever form it takes after
+   * copy-on-write remapping. */
+  inst->object_to_tgp.add_overwrite(ob, tgp_ob);
+  if (ob->id.orig_id != nullptr) {
+    inst->object_to_tgp.add_overwrite(reinterpret_cast<const Object *>(ob->id.orig_id), tgp_ob);
+  }
+
   return tgp_ob;
 }
 
@@ -317,8 +325,23 @@ tLayer *grease_pencil_layer_cache_add(Instance *inst,
   const bool disable_masks_render = is_viewlayer_render &&
                                     (layer.base.flag &
                                      GP_LAYER_TREE_NODE_DISABLE_MASKS_IN_VIEWLAYER) != 0;
-  bool is_masked = !disable_masks_render && layer.use_masks() &&
-                   !BLI_listbase_is_empty(&layer.masks);
+  /* Nuclear: a layer is masked by its own mask list AND by the mask list of every ancestor
+   * group/peg (a mask placed on a group is inherited by all its descendant leaves). `use_masks()`
+   * already folds in the ancestor groups' "Use Masks" flags. */
+  const bool masks_allowed = !disable_masks_render && layer.use_masks();
+  bool has_any_mask = !BLI_listbase_is_empty(&layer.masks);
+  if (!has_any_mask) {
+    for (const bke::greasepencil::LayerGroup *group = layer.as_node().parent_group();
+         group != nullptr;
+         group = group->as_node().parent_group())
+    {
+      if (!BLI_listbase_is_empty(&group->masks)) {
+        has_any_mask = true;
+        break;
+      }
+    }
+  }
+  bool is_masked = masks_allowed && has_any_mask;
 
   const float vert_col_opacity = (override_vertcol) ?
                                      (is_vert_col_mode ? inst->vertex_paint_opacity : 0.0f) :
@@ -342,6 +365,7 @@ tLayer *grease_pencil_layer_cache_add(Instance *inst,
   tgp_layer->mask_bits = nullptr;
   tgp_layer->mask_invert_bits = nullptr;
   tgp_layer->blend_ps = nullptr;
+  tgp_layer->auto_patch = false;
 
   /* Masking: Go through mask list and extract valid masks in a bitmap. */
   if (is_masked) {
@@ -353,25 +377,65 @@ tLayer *grease_pencil_layer_cache_add(Instance *inst,
         BLI_memblock_alloc(inst->gp_maskbit_pool));
     BLI_bitmap_set_all(tgp_layer->mask_bits, false, GP_MAX_MASKBITS);
 
-    LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &layer.masks) {
-      if (mask->flag & GP_LAYER_MASK_HIDE) {
-        continue;
-      }
-      const TreeNode *node = grease_pencil.find_node_by_name(mask->layer_name);
-      if (node == nullptr) {
-        continue;
-      }
-      const Layer &mask_layer = node->as_layer();
+    /* Set the mask bit for a single matte leaf layer of this object. */
+    auto set_mask_bit = [&](const Layer &mask_layer, const bool invert) {
       if ((&mask_layer == &layer) || !mask_layer.is_visible()) {
-        continue;
+        return;
       }
       const int index = *grease_pencil.get_layer_index(mask_layer);
       if (index < GP_MAX_MASKBITS) {
-        const bool invert = (mask->flag & GP_LAYER_MASK_INVERT) != 0;
         BLI_BITMAP_SET(tgp_layer->mask_bits, index, true);
         BLI_BITMAP_SET(tgp_layer->mask_invert_bits, index, invert);
         valid_mask = true;
       }
+    };
+
+    /* Apply one mask list. A mask entry can name a leaf layer (one bit) or a group/peg (expands to
+     * every descendant leaf). Cross-object mattes (mask->object set) are handled elsewhere. */
+    auto apply_mask_list = [&](const ListBase &masks) {
+      LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &masks) {
+        if (mask->flag & GP_LAYER_MASK_HIDE) {
+          continue;
+        }
+        /* Nuclear: Auto-Patch — this layer's mask cuts only the stroke, keeping the fill. */
+        if (mask->flag & GP_LAYER_MASK_AUTO_PATCH) {
+          tgp_layer->auto_patch = true;
+        }
+        if (mask->object != nullptr) {
+          /* Cross-object cutter: the matte is another object's layers, rendered into the mask buffer
+           * at draw time. Record it; the same-object bitmap path below does not apply. Self
+           * references (object pointing back at us) fall through to the local path. */
+          if (mask->object != ob) {
+            const bool invert = (mask->flag & GP_LAYER_MASK_INVERT) != 0;
+            tgp_layer->mattes.append(
+                {mask->object, mask->layer_name ? mask->layer_name : "", invert});
+            valid_mask = true;
+            continue;
+          }
+        }
+        const TreeNode *node = grease_pencil.find_node_by_name(mask->layer_name);
+        if (node == nullptr) {
+          continue;
+        }
+        const bool invert = (mask->flag & GP_LAYER_MASK_INVERT) != 0;
+        if (node->is_layer()) {
+          set_mask_bit(node->as_layer(), invert);
+        }
+        else if (node->is_group()) {
+          for (const Layer *descendant : node->as_group().layers()) {
+            set_mask_bit(*descendant, invert);
+          }
+        }
+      }
+    };
+
+    /* The layer's own masks, then every ancestor group/peg's masks (inherited downward). */
+    apply_mask_list(layer.masks);
+    for (const bke::greasepencil::LayerGroup *group = layer.as_node().parent_group();
+         group != nullptr;
+         group = group->as_node().parent_group())
+    {
+      apply_mask_list(group->masks);
     }
 
     if (valid_mask) {

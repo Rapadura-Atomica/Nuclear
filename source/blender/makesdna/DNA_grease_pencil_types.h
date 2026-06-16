@@ -192,6 +192,10 @@ typedef struct GreasePencilLayerFramesMapStorage {
 typedef enum GreasePencilLayerMaskFlag {
   GP_LAYER_MASK_HIDE = (1 << 0),
   GP_LAYER_MASK_INVERT = (1 << 1),
+  /* Nuclear: Auto-Patch (Toon Boom style). The matte cuts only the STROKE (line-art) of the masked
+   * layer; the FILL (colour-art) is left untouched. Lets a single line+fill material be patched
+   * without splitting line and fill into separate layers. Implies a cross-object/inverted matte. */
+  GP_LAYER_MASK_AUTO_PATCH = (1 << 2),
 } GreasePencilLayerMaskFlag;
 
 /**
@@ -200,9 +204,16 @@ typedef enum GreasePencilLayerMaskFlag {
 typedef struct GreasePencilLayerMask {
   struct GreasePencilLayerMask *next, *prev;
   /**
-   * The name of the layer that is the mask.
+   * The name of the layer (or group) that is the mask. Resolved within #object when set, otherwise
+   * within the owning Grease Pencil.
    */
   char *layer_name;
+  /**
+   * Nuclear: optional external object whose layer/group provides the matte. When null the mask
+   * refers to a node in the *same* Grease Pencil (stock behaviour). When set, the mask is a
+   * cross-object "cutter": #layer_name names a node inside #object's layer tree.
+   */
+  struct Object *object;
   /**
    * Layer mask flag. See `GreasePencilLayerMaskFlag`.
    */
@@ -367,6 +378,13 @@ typedef struct GreasePencilLayerTreeGroup {
    * peg happen around this point.
    */
   float pivot[3];
+  /**
+   * Nuclear: list of `GreasePencilLayerMask`. Lets a whole group/peg be masked: the mask list is
+   * inherited by every leaf layer under the group at draw time. Empty for a plain folder.
+   */
+  ListBase masks;
+  int active_mask_index;
+  char _pad1[4];
   /**
    * Runtime struct pointer.
    */
