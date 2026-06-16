@@ -1,11 +1,9 @@
 # SquashFeature.md — plano da feature "Squash" (Nuclear)
 
 > Documento vivo. Plano de implementação do efeito **Squash & Stretch** do Nuclear.
-> Mantenha atualizado conforme a feature evolui. Trabalho na branch `feature/squashs`
-> (que hoje só carrega a stack de pegs/nuclear — **ainda não há código de squash**;
-> partimos do zero em cima dela).
+> Mantenha atualizado conforme a feature evolui. Trabalho na branch `feature/squashs`.
 >
-> Última atualização: 2026-06-12.
+> Última atualização: 2026-06-15.
 
 ---
 
@@ -36,6 +34,10 @@ possui (`DNA_pegrig_*`, `pegrig.cc`, `rna_pegrig.cc`, `object_pegrig.cc`) mais *
 de startup novo** (`nuclear_squash_gizmo.py`). O Follow Peg constraint **não é alterado** —
 o squash viaja pela `world_mat` que ele já consome.
 
+> **Relação com a refatoração da UI** (trabalho paralelo em `refactor/UI`): independentes.
+> O squash não edita `bl_ui/*` nem o template Nuclear. A UI do squash (§6) é um painelzinho
+> no Peg Graph (Python próprio do fork). Os dois só se encontram na integração futura.
+
 ---
 
 ## 2. Como o corpo é deformado hoje (a base que vamos reusar)
@@ -65,13 +67,12 @@ existentes, Peg Pose, Peg Graph e o transform redirect ficam **intocados**.
 
 ---
 
-## 3. O modelo de dados (DNA)
+## 3. O modelo de dados (DNA) — implementado no P0
 
 Campos novos **anexados ao final** de `PegRigPeg` (em `DNA_pegrig_types.h`) — append puro,
 sem reordenar nada (contrato do `.blend`):
 
 ```c
-/* --- Squash (Nuclear) — só usado quando PEGRIGPEG_SQUASH está setado --- */
 float squash_anchor[3];  /* gizmo de baixo, espaço do PAI do peg; também o pivô do squash */
 float squash_tip[3];     /* gizmo de cima,  espaço do PAI do peg */
 float squash_rest_len;   /* |tip-anchor| capturado no repouso; fator = len_atual / rest_len */
@@ -84,18 +85,21 @@ Nova flag no `short flag` já existente (hoje só 2 bits usados):
 PEGRIGPEG_SQUASH = 1 << 2,
 ```
 
-**Defaults** (`DNA_pegrig_defaults.h` + `dna_defaults.c`): `anchor=(0,0,0)`,
-`tip=(0,1,0)`, `rest_len=1`, `volume=1`. Assim, ligar o squash com defaults dá um eixo
-vertical unitário sensato; o operador de enable (§6) ajusta o eixo ao bounding box do GP.
+**Defaults:** ficam em **`BKE_pegrig_peg_add`** (pegrig.cc), **não** em
+`DNA_pegrig_defaults.h` — porque os pegs vivem num array alocado à parte, então o
+`_DNA_DEFAULT_PegRig` só cobre a struct `PegRig` (pegs=NULL), e os defaults *por peg*
+(scale=1 etc.) já eram aplicados ali. Squash herda esse padrão: `tip=(0,1,0)`,
+`rest_len=1`, `volume=1` (eixo vertical unitário, não-degenerado); `anchor=(0,0,0)` vem do
+zero-init. Tudo inerte enquanto a flag está desligada.
 
 **Versionamento (`blenloader`): nenhum `do_version` necessário.** Arquivos antigos leem os
-campos como zero e a flag fica desligada → squash é pulado por completo. O único cuidado é
-um guard em runtime: `rest_len <= 0` ⇒ trata como 1 (ou pula). Pegs criados depois pegam os
-defaults.
+campos como zero (reflexão do SDNA preenche os campos novos no fim com zero) e a flag fica
+desligada → squash é pulado por completo. Guard de runtime (no P1): `rest_len <= 0` ⇒
+trata como identidade/pula.
 
 ---
 
-## 4. A matemática do squash
+## 4. A matemática do squash (P1)
 
 Tudo no **espaço do pai do peg** (o mesmo espaço de `peg->translation`), para a âncora
 ficar "plantada" independentemente da pose/rotação do próprio peg.
@@ -109,10 +113,9 @@ k  = lerp(1, 1/s, squash_volume)       // compensação ortogonal (preserva áre
 S  = T(anchor) · R(d→Y) · diag(k, s, 1) · R(d→Y)⁻¹ · T(-anchor)
 ```
 
-- `R(d→Y)` é a rotação que alinha o eixo do squash `d` ao eixo Y local (a matriz de
-  escala `diag(k, s, 1)` esmaga ao longo de Y e compensa em X; Z=1 porque é cut-out 2D).
-- `squash_volume = 0` → escala pura no eixo, sem compensação. `= 1` → preserva área no
-  plano de desenho (esmagou Y por `s`, esticou X por `1/s`).
+- `R(d→Y)` alinha o eixo do squash `d` ao Y local; `diag(k, s, 1)` esmaga ao longo de Y e
+  compensa em X (Z=1 porque é cut-out 2D).
+- `squash_volume = 0` → escala pura no eixo. `= 1` → preserva área no plano de desenho.
 
 A matriz local do peg passa a ser:
 
@@ -124,12 +127,12 @@ world  = parent.world_mat · local'
 > ⚠️ **Risco principal de implementação:** a **ordem de composição e o espaço** (pré- vs
 > pós-multiplicar `S`, e em que espaço a âncora vive). O desenho acima (`S` em espaço do
 > pai, `local' = S · local`) é o ponto de partida — **validar empiricamente** no passo de
-> regressão (§7). É a mesma classe de problema que o `nuclear_curve_gizmo.py` já resolveu
-> com `curve_ob.matrix_world`.
+> regressão (§7). Mesma classe de problema que o `nuclear_curve_gizmo.py` já resolveu com
+> `curve_ob.matrix_world`.
 
 ---
 
-## 5. RNA (`rna_pegrig.cc`)
+## 5. RNA (`rna_pegrig.cc`) — P1
 
 Expor em `PegRigPeg` (todos com `update`/`tag` que disparam recálculo + redraw):
 - `use_squash` (bool, mapeia a flag `PEGRIGPEG_SQUASH`).
@@ -139,97 +142,92 @@ Expor em `PegRigPeg` (todos com `update`/`tag` que disparam recálculo + redraw)
 - `squash_rest_len` (float, read-only ou settável via operador de reset).
 - **`matrix_world` (float[4][4], read-only)** — a `world_mat` resolvida do peg. **Novo,
   mas necessário:** dá ao gizmo um frame limpo para mapear mundo↔espaço-do-pai sem
-  reimplementar a math da cadeia de pais em Python. (O pai = `matrix_world` do peg pai, ou
-  identidade se for root.)
+  reimplementar a math da cadeia de pais em Python.
 
 ---
 
-## 6. Operadores e UI
+## 6. Operadores e UI — P2
 
 Em `object_pegrig.cc` (domínio de peg — não precisa de arquivo novo; se crescer, extrair
 para `object_squash.cc`):
 
 - **`OBJECT_OT_pegrig_squash_enable`** — liga `PEGRIGPEG_SQUASH` no peg ativo, posiciona
-  `anchor`/`tip` ao longo do bounding box do(s) GP que seguem o peg (base no rodapé, topo
-  no teto), e captura `rest_len`. Idempotente.
-- **`OBJECT_OT_pegrig_squash_reset_rest`** — recaptura `rest_len = |tip-anchor|` atual,
-  tornando a pose corrente o novo neutro (squash volta a 1).
-- (opcional) **`OBJECT_OT_pegrig_squash_disable`** — limpa a flag.
+  `anchor`/`tip` ao longo do bounding box do(s) GP que seguem o peg, e captura `rest_len`.
+- **`OBJECT_OT_pegrig_squash_reset_rest`** — recaptura `rest_len = |tip-anchor|` atual.
+- (opcional) **`OBJECT_OT_pegrig_squash_disable`**.
 
-Registro em `object_ops.cc` (ponto quente já existente do PegRig — só somar linhas, não é
-ponto quente novo).
+Registro em `object_ops.cc` (ponto quente já existente do PegRig — só somar linhas).
 
-**UI:** botão "Enable Squash" + slider `squash_volume` num painel. Opções, mais simples
-primeiro:
-- (a) N-panel do **Peg Graph** (`nuclear_peg_graph.py`) quando um peg está ativo — Python
-  puro, zero C. **Recomendado** para começar.
-- (b) Painel do Follow Peg constraint (`properties_constraint.py` — a feature/squashs já
-  mexe nesse arquivo).
+**UI:** botão "Enable Squash" + slider `squash_volume`. Começar pelo **N-panel do Peg
+Graph** (`nuclear_peg_graph.py`) — Python puro, zero C.
 
 ---
 
 ## 7. Garantias de não-interferência (o pedido central do autor)
 
-Enumerando por que isto **não atrapalha o workflow de pegs existente**:
-
-1. **Peg sem a flag** → `pegrig_peg_local_matrix` faz early-out e retorna resultado
-   idêntico ao de hoje. `world_mat` byte-idêntica. Rigs existentes intocados.
+1. **Peg sem a flag** → `pegrig_peg_local_matrix` faz early-out; `world_mat` byte-idêntica.
 2. **Follow Peg constraint:** zero alterações. O squash viaja pela `world_mat`.
-3. **Peg Pose / transform redirect:** inalterados. Editam `translation/rotation/scale`,
-   ortogonais aos campos de squash. Dá pra continuar pegando/girando/escalando o peg de
-   squash normalmente — o squash é uma camada extra.
-4. **Peg Graph:** inalterado; o peg de squash aparece como peg normal. (Opcional: um badge
-   visual depois.)
-5. **Convivência de gizmos:** `NUCLEAR_GGT_squash` é um GizmoGroup novo com poll próprio
-   (só aparece quando o GP ativo segue um peg com `use_squash`). Convive com o gizmo de
-   curva e os do Peg Pose exatamente como eles já convivem entre si.
-6. **Compat `.blend`:** campos anexados, gated por flag, com defaults, sem `do_version`.
-7. **Superfície de rebase:** tudo em arquivos que o Nuclear já possui + um startup novo.
-   **Zero pontos quentes novos.** Cresce a §1 do `NUCLEAR_DIVERGENCE.md` (arquivos novos),
-   a §2 (pontos quentes) **não**.
+3. **Peg Pose / transform redirect:** inalterados (editam translation/rotation/scale).
+4. **Peg Graph:** inalterado; peg de squash aparece como peg normal.
+5. **Convivência de gizmos:** `NUCLEAR_GGT_squash` é GizmoGroup novo com poll próprio.
+6. **Compat `.blend`:** campos anexados, gated por flag, defaults sãos, sem `do_version`.
+7. **Superfície de rebase:** arquivos que o Nuclear já possui + um startup novo. **Zero
+   pontos quentes novos.** Cresce a §1 do `NUCLEAR_DIVERGENCE.md`, a §2 **não**.
 
 **Regressão a rodar antes de fechar:** PegRig → bind GP → Peg Pose → Peg Graph → modifier
-Curve **continua idêntico** com squash desligado; e com squash ligado, esmagar/esticar +
-auto-key + reload do `.blend` preserva tudo. Testar também a combinação **squash peg + GP
-com modifier Curve** (constraint é matriz no objeto, modifier é por ponto — devem compor).
+Curve **idêntico** com squash desligado; com squash ligado, esmagar/esticar + auto-key +
+reload do `.blend` preserva tudo. Testar também **squash peg + GP com modifier Curve**.
 
 ---
 
 ## 8. Fases de implementação
 
-| Fase | Entrega | Arquivos |
-|---|---|---|
-| **P0** | DNA: campos + flag + defaults. Build limpo, **zero mudança de comportamento**. | `DNA_pegrig_types.h`, `DNA_pegrig_defaults.h`, `dna_defaults.c` |
-| **P1** | Math do squash em `pegrig_peg_local_matrix` (gated pela flag) + RNA (campos + `matrix_world` read-only). Testar setando campos pelo console Python e ver o corpo esmagar. | `pegrig.cc`, `rna_pegrig.cc` |
-| **P2** | Operadores enable/reset + UI (N-panel do Peg Graph). | `object_pegrig.cc`, `object_ops.cc`, `nuclear_peg_graph.py` |
-| **P3** | `nuclear_squash_gizmo.py`: dois gizmos (anchor + tip), mapeamento mundo↔espaço-do-pai, auto-key. **É o "feel" da feature.** | novo `scripts/startup/nuclear_squash_gizmo.py` |
-| **P4** | Polish: slider `squash_volume`, linhas de overlay (estilo curve gizmo), badge no Peg Graph, passe de regressão, **atualizar `NUCLEAR_DIVERGENCE.md` (§1) e este doc**. | vários |
+| Fase | Entrega | Arquivos | Status |
+|---|---|---|---|
+| **P0** | DNA: campos + flag + defaults (em `peg_add`). Build limpo, **zero mudança de comportamento**. | `DNA_pegrig_types.h`, `pegrig.cc` (peg_add), `DNA_pegrig_defaults.h` (comentário) | **concluído** (build limpo no distrobox `blender`) |
+| **P1** | Math do squash em `pegrig_peg_local_matrix` (gated pela flag) + RNA (`use_squash`, `squash_anchor/tip/volume/rest_len`, `matrix_world` read-only). Testar via console Python. | `pegrig.cc`, `rna_pegrig.cc` | **concluído** (build limpo 2026-06-15) |
+| **P2** | Operadores `pegrig_squash_enable` (fit anchor/tip ao bbox dos seguidores + captura rest_len) e `pegrig_squash_reset_rest` + UI (box "Squash & Stretch" no painel **Active Peg**, N-panel do viewport). | `object_pegrig.cc`, `object_intern.hh`, `object_ops.cc`, `nuclear_peg_graph.py` | **concluído** (build 2026-06-15) |
+| **P3** | `nuclear_squash_gizmo.py`: GizmoGroup poll-driven `NUCLEAR_GGT_squash` com 2 gizmos (anchor/tip, `GIZMO_GT_move_3d`), mapeamento mundo↔espaço-do-pai, auto-key, overlay da linha do eixo. | novo `scripts/startup/nuclear_squash_gizmo.py` | **concluído** (build 2026-06-15) |
+| **P4** | Polish: badge "Squash" no nó do Peg Graph, regressão headless automatizada (math + não-interferência), `NUCLEAR_DIVERGENCE.md` §1 atualizado. | `nuclear_peg_graph.py`, `NUCLEAR_DIVERGENCE.md`, este doc | **concluído** (regressão OK 2026-06-15) |
 
-Cada fase é commitável e reversível de forma independente. P0–P1 provam a math antes de
-investir no gizmo.
+P0–P1 provam a math antes de investir no gizmo. Cada fase é commitável e reversível.
 
 ---
 
 ## 9. Riscos e questões em aberto
 
-- **Ordem de composição / espaço da matriz** (§4) — o maior risco; resolver
-  empiricamente em P1.
-- **Placement visual do gizmo:** os pontos vivem em espaço-de-rig, mas o corpo também leva
-  o `invmat` do constraint + o transform do objeto. O gizmo precisa pousar visualmente
-  sobre o corpo — validar usando `peg.matrix_world` (novo no RNA) combinado com o
+- **Ordem de composição / espaço da matriz** (§4) — maior risco; resolver em P1.
+- **Placement visual do gizmo:** validar via `peg.matrix_world` (novo no RNA) + o
   `matrix_world` do GP seguidor, como o curve gizmo faz.
-- **Stretch além do repouso** (`s > 1`): permitir livre (é stretch). Sem clamp por padrão.
-- **Múltiplos GP no mesmo peg de squash:** todos esmagam juntos — é o comportamento
-  desejado (corpo inteiro).
-- **Pivô do peg vs âncora do squash:** são conceitos distintos (o `pivot` existente é o
-  centro de rot/escala da pose; a `anchor` é o ponto plantado do squash). Documentar pra
-  não confundir o usuário.
-- **Peg de squash não-master:** funciona em qualquer peg, mas só faz sentido visual na peg
-  master (ou num galho inteiro). A UI pode sugerir, não impedir.
+- **Stretch além do repouso** (`s > 1`): permitir livre. Sem clamp por padrão.
+- **Múltiplos GP no mesmo peg:** todos esmagam juntos — é o desejado.
+- **Pivô do peg vs âncora do squash:** conceitos distintos; documentar pra não confundir.
 
 ---
 
 ## 10. Estado atual
 
-- **Branch:** `feature/squashs` — sem código de squash ainda. Próximo passo: **P0**.
-- Plano aprovado: mecanismo via matriz do peg, gizmos topo+base plantada, flag por peg.
+- **Branch:** `feature/squashs` (local, criada de `origin/feature/squashs`).
+- **Build:** compilado no distrobox `blender` (`cd Nuclear/build && ninja && ninja install`).
+- **P0 concluído:** campos DNA + flag `PEGRIGPEG_SQUASH` + defaults em `BKE_pegrig_peg_add`.
+- **P1 concluído (2026-06-15):** math do squash dobrada em `pegrig_peg_local_matrix` (gated
+  pela flag, `S * local` em espaço do pai, `I + (s-1)d⊗d + (k-1)e⊗e`, Z=1 no plano 2D) +
+  RNA em `PegRigPeg`: `use_squash`, `squash_anchor`, `squash_tip` (animáveis), `squash_volume`,
+  `squash_rest_len`, e `matrix_world` (read-only). Pronto para validação visual via console.
+- **P2 concluído (2026-06-15):** operadores `OBJECT_OT_pegrig_squash_enable` (liga a flag no
+  peg ativo, ajusta anchor/tip ao bbox mundial dos GP seguidores mapeado pro espaço do pai, e
+  captura `rest_len`) e `OBJECT_OT_pegrig_squash_reset_rest`. UI: box "Squash & Stretch" no
+  painel **Active Peg** (N-panel "Peg" do viewport) — botão "Enable Squash" quando off; quando
+  on, checkbox + slider `squash_volume` + anchor/tip + rest_len com reset.
+- **P3 concluído (2026-06-15):** `scripts/startup/nuclear_squash_gizmo.py` — GizmoGroup
+  `NUCLEAR_GGT_squash` (poll: peg controlado com `use_squash`, Object mode), dois rings
+  `GIZMO_GT_move_3d` (anchor verde plantado, tip laranja), get/set mapeando mundo↔espaço-do-pai
+  via `_peg_world_matrix` replicado, auto-key (`use_keyframe_insert_auto`) e overlay da linha do
+  eixo. Self-contained (sem import de `nuclear_peg_graph`).
+- **P4 concluído (2026-06-15):** badge "Squash" no nó do peg no Peg Graph
+  (`NuclearPegNode.draw_buttons`); `NUCLEAR_DIVERGENCE.md` §1 atualizado (gizmo novo + nota
+  de que o squash não cria ponto quente novo na §2); regressão headless automatizada
+  (`blender --background --factory-startup`) passando: registro/RNA/gizmo OK, e a math pelo
+  caminho Follow Peg dá `diag (0.5, 2.0, 1.0)` para s=2/volume=1, com squash off = identidade.
+- **Feature completa (P0–P4).** Evoluções futuras possíveis: bulge/falloff por ponto (§8 do
+  plano original), gizmos com overlay mais rico, presets de volume.
