@@ -131,6 +131,7 @@ typedef enum ModifierType {
   eModifierType_GreasePencilSimplify = 85,
   eModifierType_GreasePencilTexture = 86,
   eModifierType_GreasePencilCurve = 87,
+  eModifierType_GreasePencilContour = 88,
   NUM_MODIFIER_TYPES,
 } ModifierType;
 
@@ -3112,6 +3113,27 @@ typedef enum GreasePencilHookFalloff {
   MOD_GREASE_PENCIL_HOOK_Falloff_Sphere = 7,
   MOD_GREASE_PENCIL_HOOK_Falloff_InvSquare = 8,
 } GreasePencilHookFalloff;
+
+/**
+ * Contour (envelope) deformer: deforms stroke points by Mean Value Coordinates against a closed
+ * cage of contour points (a mesh object whose vertices form the outline). Toon Boom style.
+ */
+typedef struct GreasePencilContourModifierData {
+  ModifierData modifier;
+  GreasePencilModifierInfluenceData influence;
+
+  /** Cage object: a mesh whose vertices form the deforming contour. */
+  struct Object *object;
+  /** Overall deformation strength. */
+  float strength;
+  /** #GreasePencilContourFlag. */
+  int flag;
+} GreasePencilContourModifierData;
+
+typedef enum GreasePencilContourFlag {
+  /** Reserved for the conformal (Green Coordinates) deform mode. Not implemented yet. */
+  MOD_GREASE_PENCIL_CONTOUR_CONFORMAL = (1 << 0),
+} GreasePencilContourFlag;
 
 /* This enum is for modifier internal state only. */
 typedef enum eGreasePencilLineartFlags {

@@ -281,6 +281,20 @@ static void grease_pencil_foreach_id(ID *id, LibraryForeachIDData *data)
     if (layer->parent) {
       BKE_LIB_FOREACHID_PROCESS_IDSUPER(data, layer->parent, IDWALK_CB_USER);
     }
+    /* Nuclear: external matte objects referenced by cross-object layer masks. */
+    LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &layer->masks) {
+      if (mask->object) {
+        BKE_LIB_FOREACHID_PROCESS_IDSUPER(data, mask->object, IDWALK_CB_USER);
+      }
+    }
+  }
+  /* Nuclear: external matte objects referenced by cross-object group/peg masks. */
+  for (const blender::bke::greasepencil::LayerGroup *group : grease_pencil->layer_groups()) {
+    LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &group->masks) {
+      if (mask->object) {
+        BKE_LIB_FOREACHID_PROCESS_IDSUPER(data, mask->object, IDWALK_CB_USER);
+      }
+    }
   }
 }
 
@@ -1166,6 +1180,7 @@ int64_t TreeNode::depth() const
 LayerMask::LayerMask()
 {
   this->layer_name = nullptr;
+  this->object = nullptr;
   this->flag = 0;
 }
 
@@ -1177,6 +1192,7 @@ LayerMask::LayerMask(const StringRef name) : LayerMask()
 LayerMask::LayerMask(const LayerMask &other) : LayerMask()
 {
   this->layer_name = BLI_strdup_null(other.layer_name);
+  this->object = other.object;
   this->flag = other.flag;
 }
 
@@ -1678,6 +1694,9 @@ LayerGroup::LayerGroup()
   copy_v3_fl(this->scale, 1.0f);
   zero_v3(this->pivot);
 
+  BLI_listbase_clear(&this->masks);
+  this->active_mask_index = 0;
+
   this->runtime = MEM_new<LayerGroupRuntime>(__func__);
 }
 
@@ -1714,11 +1733,24 @@ LayerGroup::LayerGroup(const LayerGroup &other) : LayerGroup()
   copy_v3_v3(this->rotation, other.rotation);
   copy_v3_v3(this->scale, other.scale);
   copy_v3_v3(this->pivot, other.pivot);
+
+  /* Nuclear: deep-copy the group/peg mask list (mirrors Layer's mask copy). */
+  LISTBASE_FOREACH (GreasePencilLayerMask *, other_mask, &other.masks) {
+    LayerMask *new_mask = MEM_new<LayerMask>(__func__, *reinterpret_cast<LayerMask *>(other_mask));
+    BLI_addtail(&this->masks, reinterpret_cast<GreasePencilLayerMask *>(new_mask));
+  }
+  this->active_mask_index = other.active_mask_index;
 }
 
 LayerGroup::~LayerGroup()
 {
   this->base.wrap().~TreeNode();
+
+  /* Nuclear: free the group/peg mask list. */
+  LISTBASE_FOREACH_MUTABLE (GreasePencilLayerMask *, mask, &this->masks) {
+    MEM_delete(reinterpret_cast<LayerMask *>(mask));
+  }
+  BLI_listbase_clear(&this->masks);
 
   LISTBASE_FOREACH_MUTABLE (GreasePencilLayerTreeNode *, child, &this->children) {
     switch (child->type) {
@@ -4167,6 +4199,10 @@ static GreasePencilModifierInfluenceData *influence_data_from_modifier(ModifierD
       auto *hmd = reinterpret_cast<GreasePencilHookModifierData *>(md);
       return &hmd->influence;
     }
+    case eModifierType_GreasePencilContour: {
+      auto *cmd = reinterpret_cast<GreasePencilContourModifierData *>(md);
+      return &cmd->influence;
+    }
     case eModifierType_GreasePencilLattice: {
       auto *lmd = reinterpret_cast<GreasePencilLatticeModifierData *>(md);
       return &lmd->influence;
@@ -4272,14 +4308,27 @@ void GreasePencil::rename_node(Main &bmain,
   /* Update layer name dependencies. */
   if (node.is_layer()) {
     BKE_animdata_fix_paths_rename_all(&this->id, "layers", old_name.c_str(), node.name().c_str());
-    /* Update names in layer masks. */
-    for (bke::greasepencil::Layer *layer : this->layers_for_write()) {
-      LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &layer->masks) {
-        if (STREQ(mask->layer_name, old_name.c_str())) {
-          mask->layer_name = BLI_strdup(node.name().c_str());
-        }
+  }
+
+  /* Update names in masks. A mask can target either a layer or a group, and masks now live on both
+   * leaf layers and groups/pegs, so any node rename must fix references in every mask list. Only
+   * same-object masks (no external #object) are renamed; cross-object refs are fixed by the matte
+   * object's own rename path. */
+  auto fix_mask_names = [&](ListBase &masks) {
+    LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &masks) {
+      if (mask->object == nullptr && mask->layer_name &&
+          STREQ(mask->layer_name, old_name.c_str()))
+      {
+        MEM_SAFE_FREE(mask->layer_name);
+        mask->layer_name = BLI_strdup(node.name().c_str());
       }
     }
+  };
+  for (bke::greasepencil::Layer *layer : this->layers_for_write()) {
+    fix_mask_names(layer->masks);
+  }
+  for (bke::greasepencil::LayerGroup *group : this->layer_groups_for_write()) {
+    fix_mask_names(group->masks);
   }
 
   /* Update name dependencies outside of the ID. */
@@ -4590,6 +4639,13 @@ static void read_layer_tree_group(BlendDataReader *reader,
 {
   BLO_read_string(reader, &node->base.name);
   node->base.parent = parent;
+
+  /* Nuclear: read group/peg masks (the matte `object` pointer is lib-linked via foreach_id). */
+  BLO_read_struct_list(reader, GreasePencilLayerMask, &node->masks);
+  LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &node->masks) {
+    BLO_read_string(reader, &mask->layer_name);
+  }
+
   /* Read list of children. */
   BLO_read_struct_list(reader, GreasePencilLayerTreeNode, &node->children);
   LISTBASE_FOREACH (GreasePencilLayerTreeNode *, child, &node->children) {
@@ -4650,6 +4706,13 @@ static void write_layer_tree_group(BlendWriter *writer, GreasePencilLayerTreeGro
 {
   BLO_write_struct(writer, GreasePencilLayerTreeGroup, node);
   BLO_write_string(writer, node->base.name);
+
+  /* Nuclear: write group/peg masks. */
+  BLO_write_struct_list(writer, GreasePencilLayerMask, &node->masks);
+  LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &node->masks) {
+    BLO_write_string(writer, mask->layer_name);
+  }
+
   LISTBASE_FOREACH (GreasePencilLayerTreeNode *, child, &node->children) {
     switch (child->type) {
       case GP_LAYER_TREE_LEAF: {

@@ -33,11 +33,83 @@ const EnumPropertyItem rna_enum_tree_node_move_type_items[] = {
 #  include "BKE_grease_pencil.hh"
 #  include "BKE_grease_pencil_vertex_groups.hh"
 #  include "BKE_report.hh"
+#  include "DNA_grease_pencil_types.h"
 #  include "DNA_meshdata_types.h"
+#  include "DNA_object_types.h"
+
+#  include "BLI_listbase.h"
 
 #  include "DEG_depsgraph.hh"
 
 #  include "rna_curves_utils.hh"
+
+/* Nuclear: shared helpers to create/remove mask entries on a layer or group/peg mask list. */
+static GreasePencilLayerMask *rna_grease_pencil_mask_new(ListBase *masks,
+                                                         ID *id,
+                                                         const char *name,
+                                                         Object *object,
+                                                         const bool invert)
+{
+  using namespace blender::bke::greasepencil;
+  LayerMask *mask = MEM_new<LayerMask>(__func__, blender::StringRef(name));
+  mask->object = object;
+  if (invert) {
+    mask->flag |= GP_LAYER_MASK_INVERT;
+  }
+  BLI_addtail(masks, reinterpret_cast<GreasePencilLayerMask *>(mask));
+
+  GreasePencil *grease_pencil = reinterpret_cast<GreasePencil *>(id);
+  DEG_id_tag_update(&grease_pencil->id, ID_RECALC_GEOMETRY);
+  WM_main_add_notifier(NC_GPENCIL | ND_DATA, grease_pencil);
+  return reinterpret_cast<GreasePencilLayerMask *>(mask);
+}
+
+static void rna_grease_pencil_mask_remove(ListBase *masks,
+                                          ID *id,
+                                          ReportList *reports,
+                                          PointerRNA *mask_ptr)
+{
+  GreasePencilLayerMask *mask = static_cast<GreasePencilLayerMask *>(mask_ptr->data);
+  if (BLI_findindex(masks, mask) == -1) {
+    BKE_report(reports, RPT_ERROR, "Mask not found in this mask list");
+    return;
+  }
+  BLI_remlink(masks, mask);
+  MEM_delete(reinterpret_cast<blender::bke::greasepencil::LayerMask *>(mask));
+  mask_ptr->invalidate();
+
+  GreasePencil *grease_pencil = reinterpret_cast<GreasePencil *>(id);
+  DEG_id_tag_update(&grease_pencil->id, ID_RECALC_GEOMETRY);
+  WM_main_add_notifier(NC_GPENCIL | ND_DATA, grease_pencil);
+}
+
+static GreasePencilLayerMask *rna_GreasePencilLayer_mask_new(
+    ID *id, GreasePencilLayer *layer, const char *name, Object *object, const bool invert)
+{
+  return rna_grease_pencil_mask_new(&layer->masks, id, name, object, invert);
+}
+
+static void rna_GreasePencilLayer_mask_remove(ID *id,
+                                              GreasePencilLayer *layer,
+                                              ReportList *reports,
+                                              PointerRNA *mask_ptr)
+{
+  rna_grease_pencil_mask_remove(&layer->masks, id, reports, mask_ptr);
+}
+
+static GreasePencilLayerMask *rna_GreasePencilLayerGroup_mask_new(
+    ID *id, GreasePencilLayerTreeGroup *group, const char *name, Object *object, const bool invert)
+{
+  return rna_grease_pencil_mask_new(&group->masks, id, name, object, invert);
+}
+
+static void rna_GreasePencilLayerGroup_mask_remove(ID *id,
+                                                   GreasePencilLayerTreeGroup *group,
+                                                   ReportList *reports,
+                                                   PointerRNA *mask_ptr)
+{
+  rna_grease_pencil_mask_remove(&group->masks, id, reports, mask_ptr);
+}
 
 static void rna_GreasePencilDrawing_add_curves(ID *grease_pencil_id,
                                                GreasePencilDrawing *drawing_ptr,

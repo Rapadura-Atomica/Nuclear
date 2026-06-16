@@ -33,6 +33,10 @@ class GREASE_PENCIL_UL_masks(UIList):
         mask = item
         row = layout.row(align=True)
         row.prop(mask, "name", text="", emboss=False, icon_value=icon)
+        # Nuclear: optional external matte object (cross-object "cutter"). Empty = same object.
+        row.prop(mask, "object", text="", icon='OBJECT_DATA')
+        # Nuclear: Auto-Patch (Toon Boom) — cut only the line-art, keep the fill.
+        row.prop(mask, "use_auto_patch", text="", emboss=False, icon='MOD_MASK')
         row.prop(mask, "invert", text="", emboss=False)
         row.prop(mask, "hide", text="", emboss=False)
 
@@ -72,6 +76,10 @@ class GreasePencil_LayerMaskPanel:
         sub = col.column(align=True)
         sub.operator("grease_pencil.layer_mask_reorder", icon='TRIA_UP', text="").direction = 'UP'
         sub.operator("grease_pencil.layer_mask_reorder", icon='TRIA_DOWN', text="").direction = 'DOWN'
+
+        # Nuclear: one-click Auto-Patch (Toon Boom). Active object = part to patch, other selected
+        # Grease Pencil object = the occluder whose silhouette cuts the line-art at the joint.
+        layout.operator("grease_pencil.auto_patch", icon='MOD_MASK')
 
 
 class GreasePencil_LayerTransformPanel:
