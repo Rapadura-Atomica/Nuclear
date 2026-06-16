@@ -34,6 +34,7 @@ revisão se as APIs do core que eles consomem mudarem.
 ### Add-ons / scripts de startup
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
+- `scripts/startup/nuclear_squash_gizmo.py` — gizmos de squash & stretch (anchor/tip) no viewport
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
 
 ### Application Template Nuclear (a "costura" de UI — P0/P1/P2)
@@ -107,6 +108,16 @@ revisão se as APIs do core que eles consomem mudarem.
   GPENCIL c/ footer off, viewport na câmera. Backup do base em `Nuclear-git/nuclear_startup_2Dbase.blend.bak`
 - `scripts/startup/bl_app_templates_system/Nuclear/nuclear_logo.png` — logo (de `~/nuclear.svg`,
   256×256) mostrada no canto do topbar
+
+### Squash & Stretch (extensão do PegRig — ver `SquashFeature.md`)
+Feita **inteiramente dentro de arquivos do fork que já existem** + um startup novo
+(`nuclear_squash_gizmo.py` acima). **Não cria nenhum ponto quente novo na §2.**
+- `DNA_pegrig_types.h` — campos `squash_anchor/tip/rest_len/volume` + flag `PEGRIGPEG_SQUASH`
+- `pegrig.cc` — defaults inertes em `peg_add` + a math (gated) em `pegrig_peg_local_matrix`
+- `rna_pegrig.cc` — `use_squash`, `squash_*` e `matrix_world` (read-only)
+- `object_pegrig.cc` — `object.pegrig_squash_enable` / `object.pegrig_squash_reset_rest`
+- `nuclear_peg_graph.py` — box "Squash & Stretch" no painel Active Peg + badge no nó do peg
+
 
 ### Meta / contexto de projeto (docs do fork)
 - `CLAUDE.md` (raiz) — ponteiro fino que importa `tools/nuclear_claude/CLAUDE.md`
