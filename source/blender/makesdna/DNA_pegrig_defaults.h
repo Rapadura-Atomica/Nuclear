@@ -21,8 +21,8 @@
     .active_peg_index = -1, \
   }
 
-/* Per-peg defaults (scale = 1) are applied by BKE_pegrig_peg_add, since pegs live in a
- * separately-allocated array rather than in the struct itself. */
+/* Per-peg defaults (scale = 1, inert squash params) are applied by BKE_pegrig_peg_add, since pegs
+ * live in a separately-allocated array rather than in the struct itself. */
 
 /** \} */
 

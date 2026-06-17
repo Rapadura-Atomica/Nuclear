@@ -113,6 +113,48 @@ static void rna_def_pegrig_peg(BlenderRNA *brna)
   RNA_def_property_float_sdna(prop, nullptr, "pivot");
   RNA_def_property_ui_text(prop, "Pivot", "Pivot point for rotation and scale, in local space");
   RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  /* Squash & Stretch (see SquashFeature.md). Inert unless `use_squash` is enabled. */
+  prop = RNA_def_property(srna, "use_squash", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", PEGRIGPEG_SQUASH);
+  RNA_def_property_ui_text(
+      prop, "Use Squash", "Deform followers of this peg with a volume-preserving squash & stretch");
+  RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  prop = RNA_def_property(srna, "squash_anchor", PROP_FLOAT, PROP_TRANSLATION);
+  RNA_def_property_float_sdna(prop, nullptr, "squash_anchor");
+  RNA_def_property_ui_text(
+      prop, "Squash Anchor", "Planted base point of the squash, in the peg's parent space");
+  RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  prop = RNA_def_property(srna, "squash_tip", PROP_FLOAT, PROP_TRANSLATION);
+  RNA_def_property_float_sdna(prop, nullptr, "squash_tip");
+  RNA_def_property_ui_text(
+      prop, "Squash Tip", "Top point of the squash; with the anchor defines the axis and length");
+  RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  prop = RNA_def_property(srna, "squash_volume", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "squash_volume");
+  RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_ui_text(
+      prop,
+      "Squash Volume",
+      "Orthogonal compensation: 0 scales only along the axis, 1 preserves area in the plane");
+  RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  prop = RNA_def_property(srna, "squash_rest_len", PROP_FLOAT, PROP_DISTANCE);
+  RNA_def_property_float_sdna(prop, nullptr, "squash_rest_len");
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_text(
+      prop, "Squash Rest Length", "Anchor-to-tip distance at rest; the squash factor is relative to it");
+  RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  prop = RNA_def_property(srna, "matrix_world", PROP_FLOAT, PROP_MATRIX);
+  RNA_def_property_float_sdna(prop, nullptr, "world_mat");
+  RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  RNA_def_property_ui_text(
+      prop, "World Matrix", "Resolved world matrix of the peg from the last evaluation (read-only)");
 }
 
 static void rna_def_pegrig_pegs(BlenderRNA *brna, PropertyRNA *cprop)

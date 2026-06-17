@@ -44,12 +44,28 @@ typedef struct PegRigPeg {
    * Recomputed from the parent chain each evaluation; not meaningful when read from disk.
    */
   float world_mat[4][4];
+
+  /* --- Squash & Stretch (Nuclear) — only meaningful when #PEGRIGPEG_SQUASH is set. ---
+   * A volume-preserving non-uniform scale folded into the peg's local matrix, anchored at
+   * #squash_anchor and aligned along (#squash_tip - #squash_anchor). Inert (identity) while the
+   * flag is unset, so a peg without squash behaves exactly as before. See SquashFeature.md. */
+
+  /** Bottom gizmo: the planted anchor point and pivot of the squash, in the peg's parent space. */
+  float squash_anchor[3];
+  /** Top gizmo: with #squash_anchor defines the squash axis and length, in the peg's parent space. */
+  float squash_tip[3];
+  /** Rest length |tip - anchor| captured when squash is enabled; factor = current_len / rest_len. */
+  float squash_rest_len;
+  /** Orthogonal compensation amount [0..1]: 0 = pure axis scale, 1 = preserve area in the plane. */
+  float squash_volume;
 } PegRigPeg;
 
 /** #PegRigPeg::flag */
 typedef enum PegRigPeg_Flag {
   PEGRIGPEG_SELECT = 1 << 0,
   PEGRIGPEG_EXPAND = 1 << 1,
+  /** Squash & Stretch active on this peg (the two squash gizmos appear and deform its followers). */
+  PEGRIGPEG_SQUASH = 1 << 2,
 } PegRigPeg_Flag;
 
 typedef struct PegRig {

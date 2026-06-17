@@ -34,18 +34,96 @@ revisão se as APIs do core que eles consomem mudarem.
 ### Add-ons / scripts de startup
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
+- `scripts/startup/nuclear_squash_gizmo.py` — gizmos de squash & stretch (anchor/tip) no viewport
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
 
-### Application Template Nuclear (a "costura" de UI — P0)
-- `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam: handler de
-  startup + pontos de extensão para tradução-remap e de/registro de painéis (vazios até P1/P2)
-- `scripts/startup/bl_app_templates_system/Nuclear/startup.blend` — **base** copiada do
-  `2D_Animation`; regenerar de dentro do Nuclear com o layout 2D/cut-out final
+### Application Template Nuclear (a "costura" de UI — P0/P1/P2)
+- `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam central. Contém:
+  - **Seam 1 (tradução):** `_TRANSLATIONS` (branding Blender→Nuclear, locale en_US) +
+    `_ensure_interface_translation` (força `use_translate_interface`/`language`).
+  - **Seam 2 (classes):** `_HIDDEN_CLASS_NAMES` (esconde por nome, reversível — inclui os
+    `MATERIAL_PT_gpencil_*` verbosos p/ a aba Color ficar compacta) / `_NUCLEAR_CLASSES`
+    (`NUCLEAR_MT_logo`, `NUCLEAR_MT_view`, `NUCLEAR_OT_set_area_tab` = troca tipo de editor,
+    `NUCLEAR_MT_add_tab` = menu "+", `NUCLEAR_PT_color_palette` + `NUCLEAR_UL_color_palette` =
+    paleta Color limpa (swatch arredondado + nome renomeável; sem ghost/hide/lock nem Stroke/Fill),
+    `NUCLEAR_OT_palette_add` = "+" da paleta que cria um material GP real (não slot vazio — senão
+    não dava p/ editar)).
+  - **Seam 3 (header overrides — Fase A):** troca em runtime métodos de header e restaura no
+    `unregister` (`_orig_draws`): `TOPBAR_MT_editor_menus.draw` (menu curado File/Edit/View/
+    Render/Help, sem Blender/Window), `TOPBAR_HT_upper_bar.draw_left` (logo Nuclear clicável →
+    `NUCLEAR_MT_logo` + esconde abas de workspace), `VIEW3D_HT_header.draw` (mode selector + toggle **Onion** via `overlay.use_gpencil_onion_skin`),
+    `DOPESHEET_HT_header.draw` (Fase C: no modo GPENCIL desenha o transporte minimal Nuclear —
+    Mute/Scrub, +KF/−KF, REW/Play/FF, Frame/Start/End; outros modos caem no original).
+    `_update_startup_timeline` força `DOPESHEET_EDITOR.mode='GPENCIL'` (camadas + keyframes).
+    `VIEW3D_HT_tool_header.draw` (Fase E: barra ADDONS **dinâmica** — `_sidebar_categories`
+    enumera as categorias do N-panel e `popover_group` traz cada uma pro header; cresce/encolhe
+    com os addons. Ex.: categoria "Peg" do PegRig aparece sozinha).
+  - **Properties (Fase D):** `_update_startup_properties` usa os toggles nativos
+    `SpaceProperties.show_properties_*` (importa `bl_ui.space_properties.tab_list`) p/ manter só
+    Tool/Object/Modifiers/Effects/Data/Material e esconder o resto. Paleta Color = aba Material.
+  - **Abas do painel direito (Fase D — 100%):** `_draw_nuclear_tabs` prependado (via Seam 3)
+    nos headers `PROPERTIES_HT_header`/`IMAGE_HT_header`/`NODE_HT_header`/`FILEBROWSER_HT_header`
+    → strip Properties/Reference/Library/Color/Node + "+". `NUCLEAR_OT_set_area_tab` troca
+    `area.ui_type`. Cada área-direita é independente (2 áreas = 2 boxes do mockup). Mesmo aviso
+    de acoplamento de runtime (nomes dos headers + enum `ui_type`).
+  - **Abas por-box sem DNA:** `_TABSETS` (main/shading/all) + `_assign_tabsets` (atribui por
+    posição da área no load) + `_resolve_tabset` (por índice) + `_apply_default_tabs` (parkeia
+    cada box na 1ª aba: main→Properties/Tool, shading→Color/Material). Dá os subconjuntos
+    distintos do mockup sem custom data na `ScrArea` (sem mudança de formato de arquivo).
+  - **Seam 4 (toolbar — Fase B):** troca reversível da entrada `'PAINT_GREASE_PENCIL'` de
+    `VIEW3D_PT_tools_active._tools` (dict de classe salvo em `_orig_tools`, restaurado no
+    `unregister`). Set curado: brush/borracha/balde/grupo-linha/eyedropper. Mesmo aviso de
+    acoplamento de runtime do Seam 3 (depende de `VIEW3D_PT_tools_active._tools` e dos defs
+    `_defs_grease_pencil_paint.*` do upstream — se sumirem, deixa o toolbar nativo intacto).
+  - **Logo:** `nuclear_logo.png` carregada via `bpy.utils.previews` (load no `register`,
+    unload no `unregister`).
+  - **Canvas (Fase A):** `_update_startup_canvas` trava VIEW_3D na câmera e esconde
+    floor/eixos/grid/cursor/gizmos (overlays GP ficam).
+  - **Seam 7 (Xsheet Toon Boom):** mapeia X pelo **view2d nativo** (`region.view2d` via
+    `_xsheet_fx`/`_xsheet_layout`) → células/agulha alinham com a régua e o indicador de frame
+    nativos (que é desenhado por cima e não dá p/ cobrir); ganha scroll/zoom nativos. Canais
+    nativos escondidos (`show_region_channels=False`) p/ não duplicar a coluna de camadas.
+    `_xsheet_draw` (draw_handler POST_PIXEL em
+    `SpaceDopeSheetEditor`/WINDOW, gated a modo GPENCIL + objeto GP) desenha em GPU a grade
+    camada×frame: célula cheia=exposição, marca forte no keyframe, barra de hold, régua+playhead+
+    nomes. Cobre o Dope Sheet nativo com fundo opaco. `_enable_xsheet`/`_disable_xsheet` no
+    register/unregister. Imports `gpu`/`blf`/`gpu_extras` guardados (`_GPU_OK`). **T2:** realce
+    camada ativa/coluna do frame + vis/lock. **T3:** `NUCLEAR_OT_xsheet_click` (LEFTMOUSE) p/
+    clique→frame/camada, scrub e toggles vis/lock (poll/hit em `_xsheet_poll`/`_xsheet_hit`).
+    **T4:** `NUCLEAR_OT_xsheet_toggle` (Ctrl+LEFTMOUSE) cria/apaga exposição via
+    `layer.frames.new/remove`, UNDO, respeita lock. **T4.1:** `NUCLEAR_OT_xsheet_drag`
+    (Alt+arrastar=mover `frames.move`; Shift+Alt=duplicar `frames.copy`; ghost via `_xsheet_drag`).
+    **T5:** nº do desenho na célula + linha de grupo a cada 5 frames. Keymap Dopesheet = 4 itens.
+    **Falta T5.1** (seleção/nome custom).
+    nos grupos de widget e backgrounds dos editores; originais salvos em `_THEME_BACKUP` e
+    restaurados no `unregister`. **O look pílula/arredondado é TEMA (dado), não C** — não houve
+    edição de `interface_widgets.cc`. (Tema é pref global; o template aplica/reverte ao ativar.)
+  > ⚠️ **Acoplamento de runtime (não é conflito de merge, mas vigiar no rebase):** os
+  > monkeypatches do Seam 3 dependem dos nomes de classe (`TOPBAR_MT_editor_menus`,
+  > `VIEW3D_HT_header`) e da assinatura de `draw` do upstream. Se o upstream renomear/
+  > refatorar esses headers, os overrides param de aplicar (degradam de forma silenciosa,
+  > não quebram). Conferir a cada subida de versão.
+- `scripts/startup/bl_app_templates_system/Nuclear/startup.blend` — **regenerado (2026-06-12)**
+  a partir do 2D_Animation: OUTLINER→PROPERTIES (2 boxes Properties à direita), dopesheet
+  GPENCIL c/ footer off, viewport na câmera. Backup do base em `Nuclear-git/nuclear_startup_2Dbase.blend.bak`
+- `scripts/startup/bl_app_templates_system/Nuclear/nuclear_logo.png` — logo (de `~/nuclear.svg`,
+  256×256) mostrada no canto do topbar
+
+### Squash & Stretch (extensão do PegRig — ver `SquashFeature.md`)
+Feita **inteiramente dentro de arquivos do fork que já existem** + um startup novo
+(`nuclear_squash_gizmo.py` acima). **Não cria nenhum ponto quente novo na §2.**
+- `DNA_pegrig_types.h` — campos `squash_anchor/tip/rest_len/volume` + flag `PEGRIGPEG_SQUASH`
+- `pegrig.cc` — defaults inertes em `peg_add` + a math (gated) em `pegrig_peg_local_matrix`
+- `rna_pegrig.cc` — `use_squash`, `squash_*` e `matrix_world` (read-only)
+- `object_pegrig.cc` — `object.pegrig_squash_enable` / `object.pegrig_squash_reset_rest`
+- `nuclear_peg_graph.py` — box "Squash & Stretch" no painel Active Peg + badge no nó do peg
+
 
 ### Meta / contexto de projeto (docs do fork)
 - `CLAUDE.md` (raiz) — ponteiro fino que importa `tools/nuclear_claude/CLAUDE.md`
 - `tools/nuclear_claude/CLAUDE.md` — contexto canônico do projeto (sincronizado entre máquinas)
 - `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md` — este registro
+- `tools/nuclear_claude/NUCLEAR_UI_LAYOUT.md` — spec do P2 (layout-alvo do mockup)
 - `tools/nuclear_claude/readme.txt` — notas para devs humanos
 
 > **Diretriz:** novas features Nuclear devem nascer aqui (arquivos `*_pegrig.*`,
@@ -97,8 +175,9 @@ cada rebase. Quando possível, migrar a lógica para arquivo novo + uma "costura
 ### Branding (ver seção 3)
 | Arquivo | O que foi alterado |
 |---|---|
-| `source/blender/blenkernel/BKE_blender_version.h` | `NUCLEAR_NAME`, `NUCLEAR_VERSION_STRING` |
+| `source/blender/blenkernel/BKE_blender_version.h` | `NUCLEAR_NAME`, `NUCLEAR_VERSION_STRING`, `NUCLEAR_VERSION_STRING_NO_NAME` |
 | `source/blender/windowmanager/intern/wm_window.cc` | título de janela usa `NUCLEAR_NAME` (≈559, 644) |
+| `source/blender/python/intern/bpy.cc` | expõe `_bpy._nuclear_version_string()` (versão do fork sem o nome) p/ o About derivar do header |
 
 ---
 
@@ -111,15 +190,15 @@ os demais são pendências do plano de rebranding.
 - [feito] `windowmanager/intern/wm_window.cc` — título da janela
 - [feito] `windowmanager/intern/wm_splash_screen.cc` — About: título "Nuclear" (≈476), nome/descrição do operador "About Nuclear" (≈499/501), e logo do Blender trocado pela arte da splash (reusa `wm_block_splash_image`, ≈453-471)
 - [feito] `scripts/startup/bl_operators/wm.py` — menu About: Version/Date/Hash/Branch + linha de licença Nuclear
-- [ ] `windowmanager/intern/wm_splash_screen.cc` — URLs do manual ainda pendentes (≈391, 396); botões de link do About (Donate/Credits/Store/Website) ainda apontam para blender.org
-- [ ] `source/creator/creator_args.cc` — prints "Blender %s" (≈599, 622, 627, 656, 1340)
-- [ ] `windowmanager/intern/wm_init_exit.cc` — "Blender quit" (≈697)
-- [ ] `release/datafiles/splash.png` (fonte: `splash_template.xcf`) — ou env `BLENDER_CUSTOM_SPLASH` / `splash.png` no diretório do template
+- [feito] `source/creator/creator_args.cc` — prints de versão usam `NUCLEAR_VERSION_STRING` (≈599, 621, 627, 656, 1340) + doc do `--version` → "Print Nuclear version"
+- [feito] `windowmanager/intern/wm_init_exit.cc` — "Nuclear quit" (≈697)
+- [feito] `release/datafiles/splash.png` — splash trocada por arte interna do autor (fora desta sessão)
+- [feito] **Strings residuais via truque de tradução** (template `Nuclear/__init__.py`, locale `en_US`, SEM editar C; valida com `pgettext_iface`): "Blender Version", "Blender Drivers Editor", "Blender Info Log", "Load Factory Blender Preferences" → Nuclear. O template força `use_translate_interface=True` + `language='en_US'`. Isso **substitui** a necessidade de editar `screen_ops.cc`/`wm_files.cc` para essas strings — não viram pontos quentes.
+- [feito] `scripts/startup/bl_operators/wm.py` — About: versão agora derivada via `_bpy._nuclear_version_string()` (não diverge mais do CLI); botões reorganizados → removidos Donate e Blender Store; "What's New" → GitHub releases do Nuclear; "Nuclear Website" → rapaduraatomica.com.br; Credits e License mantidos em blender.org (atribuição + GPL, por exigência legal)
+- [ ] `windowmanager/intern/wm_splash_screen.cc` — URLs do manual ainda pendentes (≈391, 396, instalação macOS/Windows)
 - [ ] `release/windows/icons/winblender.{ico,rc}` — RC tem "Blender Foundation"/"ProductName: Blender"
 - [ ] `release/freedesktop/icons/.../blender.svg` + `.desktop`
-- [ ] `editors/screen/screen_ops.cc` — "Blender Drivers Editor", "Blender Info Log" (≈6437, 6494)
-- [ ] `windowmanager/intern/wm_files.cc` — "Load Factory Blender Preferences" (≈2782)
-- [ ] `makesrna/intern/rna_space.cc` — "Filter Blender*" (≈7479, 7486, 7535)
+- [ ] `makesrna/intern/rna_space.cc` — "Filter Blender*" (≈7479, 7486, 7535) — descrevem o formato `.blend`; decisão pendente (renomear p/ Nuclear ou manter)
 - [ ] `windowmanager/intern/wm_platform_support.cc` — URL docs.blender.org (≈74)
 - [ ] `blenkernel/intern/preferences.cc` — URLs extensions.blender.org (≈224, 226)
 - [ ] `source/creator/buildinfo.c`, `source/creator/CMakeLists.txt` — metadados de build/RC
