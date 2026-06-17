@@ -76,6 +76,8 @@ void Instance::init()
   this->gp_layer_pool->clear();
   this->gp_vfx_pool->clear();
   BLI_memblock_clear(this->gp_maskbit_pool, nullptr);
+  /* Nuclear: the per-sync object->tObject index is rebuilt as objects are cached. */
+  this->object_to_tgp.clear();
 
   this->view_layer = draw_ctx->view_layer;
   this->scene = draw_ctx->scene;
@@ -290,6 +292,34 @@ bool Instance::is_used_as_layer_mask_in_viewlayer(const GreasePencil &grease_pen
                                                   const ViewLayer &view_layer)
 {
   using namespace bke::greasepencil;
+
+  /* Nuclear: does a mask list reference `mask_layer`, directly (leaf name) or via a group/peg whose
+   * descendant leaves include it? Cross-object mattes are handled by the cross-object path. */
+  auto list_references = [&](const ListBase &masks) -> bool {
+    LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &masks) {
+      if (mask->object != nullptr) {
+        continue;
+      }
+      const TreeNode *node = grease_pencil.find_node_by_name(mask->layer_name);
+      if (node == nullptr) {
+        continue;
+      }
+      if (node->is_layer()) {
+        if (&node->as_layer() == &mask_layer) {
+          return true;
+        }
+      }
+      else if (node->is_group()) {
+        for (const Layer *descendant : node->as_group().layers()) {
+          if (descendant == &mask_layer) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
   for (const Layer *layer : grease_pencil.layers()) {
     if (layer->view_layer_name().is_empty() ||
         !STREQ(view_layer.name, layer->view_layer_name().c_str()))
@@ -301,8 +331,14 @@ bool Instance::is_used_as_layer_mask_in_viewlayer(const GreasePencil &grease_pen
       continue;
     }
 
-    LISTBASE_FOREACH (GreasePencilLayerMask *, mask, &layer->masks) {
-      if (STREQ(mask->layer_name, mask_layer.name().c_str())) {
+    /* The layer's own masks, then every ancestor group/peg's (inherited) masks. */
+    if (list_references(layer->masks)) {
+      return true;
+    }
+    for (const LayerGroup *group = layer->as_node().parent_group(); group != nullptr;
+         group = group->as_node().parent_group())
+    {
+      if (list_references(group->masks)) {
         return true;
       }
     }
@@ -468,6 +504,8 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
     /* Since we don't use the sbuffer in GPv3, this is always 0. */
     pass.push_constant("gp_stroke_index_offset", 0.0f);
     pass.push_constant("viewport_size", float2(draw_ctx->viewport_size_get()));
+    /* Nuclear: Auto-Patch defaults off; toggled per fill/stroke drawcall below for patched layers. */
+    pass.push_constant("gp_mask_bypass", 0);
 
     const VArray<int> stroke_materials = *attributes.lookup_or_default<int>(
         "material_index", bke::AttrDomain::Curve, 0);
@@ -552,6 +590,11 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
       if (show_fill) {
         const int v_first = t_offset * 3;
         const int v_count = num_triangles_per_stroke[pos] * 3;
+        /* Nuclear: Auto-Patch keeps the fill (colour-art) even where the matte cuts. */
+        if (tgp_layer->auto_patch) {
+          drawcall_flush(pass);
+          pass.push_constant("gp_mask_bypass", 1);
+        }
         drawcall_add(pass, geom, v_first, v_count);
       }
 
@@ -560,6 +603,11 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
       if (show_stroke) {
         const int v_first = t_offset * 3;
         const int v_count = num_vertices_per_stroke[pos] * 2 * 3;
+        /* Nuclear: Auto-Patch cuts the stroke (line-art) under the matte. */
+        if (tgp_layer->auto_patch) {
+          drawcall_flush(pass);
+          pass.push_constant("gp_mask_bypass", 0);
+        }
         drawcall_add(pass, geom, v_first, v_count);
       }
 
@@ -706,22 +754,29 @@ void Instance::draw_mask(View &view, tObject *ob, tLayer *layer)
 
   GPU_framebuffer_bind(this->mask_fb);
 
+  /* Shared clear/invert state machine for both same-object mask layers and cross-object mattes. */
+  auto ensure_cleared = [&]() {
+    if (!cleared) {
+      cleared = true;
+      GPU_framebuffer_clear_color_depth(this->mask_fb, clear_col, clear_depth);
+    }
+  };
+  auto set_inverted = [&](const bool want) {
+    if (want != inverted) {
+      if (cleared) {
+        manager->submit(this->mask_invert_ps);
+      }
+      inverted = want;
+    }
+  };
+
   for (int i = 0; i < GP_MAX_MASKBITS; i++) {
     if (!BLI_BITMAP_TEST(layer->mask_bits, i)) {
       continue;
     }
 
-    if (BLI_BITMAP_TEST_BOOL(layer->mask_invert_bits, i) != inverted) {
-      if (cleared) {
-        manager->submit(this->mask_invert_ps);
-      }
-      inverted = !inverted;
-    }
-
-    if (!cleared) {
-      cleared = true;
-      GPU_framebuffer_clear_color_depth(this->mask_fb, clear_col, clear_depth);
-    }
+    set_inverted(BLI_BITMAP_TEST_BOOL(layer->mask_invert_bits, i));
+    ensure_cleared();
 
     tLayer *mask_layer = grease_pencil_layer_cache_get(ob, i, true);
     /* When filtering by view-layer, the mask could be null and must be ignored. */
@@ -732,7 +787,57 @@ void Instance::draw_mask(View &view, tObject *ob, tLayer *layer)
     manager->submit(*mask_layer->geom_ps, view);
   }
 
-  if (!inverted) {
+  /* Nuclear: cross-object mattes. Render the matte object's (cached) layer passes into the same mask
+   * buffer. Limitation: the matte object must be evaluated/visible in the view layer to be cached;
+   * a matte object that was never synced resolves to an empty silhouette. */
+  for (const tMatteRef &matte : layer->mattes) {
+    tObject *matte_tgp = this->object_to_tgp.lookup_default(matte.object, nullptr);
+    if (matte_tgp == nullptr) {
+      continue;
+    }
+    set_inverted(matte.invert);
+    ensure_cleared();
+
+    /* Optional node filter: empty = whole object; a layer name = that layer; a group name = all its
+     * descendant leaves. */
+    using namespace blender::bke::greasepencil;
+    const GreasePencil *matte_gp = static_cast<const GreasePencil *>(matte.object->data);
+    const TreeNode *want = (!matte.node_name.empty() && matte_gp != nullptr) ?
+                               matte_gp->find_node_by_name(matte.node_name) :
+                               nullptr;
+    const blender::Span<const Layer *> matte_layers = matte_gp ? matte_gp->layers() :
+                                                                 blender::Span<const Layer *>();
+
+    LISTBASE_FOREACH (tLayer *, ml, &matte_tgp->layers) {
+      if (ml->is_onion) {
+        continue;
+      }
+      if (want != nullptr) {
+        if (ml->layer_id < 0 || ml->layer_id >= matte_layers.size()) {
+          continue;
+        }
+        const Layer *cand = matte_layers[ml->layer_id];
+        bool included = false;
+        if (want->is_layer()) {
+          included = (&want->as_layer() == cand);
+        }
+        else if (want->is_group()) {
+          for (const Layer *descendant : want->as_group().layers()) {
+            if (descendant == cand) {
+              included = true;
+              break;
+            }
+          }
+        }
+        if (!included) {
+          continue;
+        }
+      }
+      manager->submit(*ml->geom_ps, view);
+    }
+  }
+
+  if (cleared && !inverted) {
     /* Blend shader expect an opacity mask not a reavealage buffer. */
     manager->submit(this->mask_invert_ps);
   }
