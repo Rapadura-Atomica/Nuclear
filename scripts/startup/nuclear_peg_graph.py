@@ -38,6 +38,7 @@ _RIG_NODE_ID = "NuclearRigNode"
 _PEG_NODE_ID = "NuclearPegNode"
 _DRAWING_NODE_ID = "NuclearDrawingNode"
 _SOCK_ID = "NuclearPegSocket"
+_MATTE_SOCK_ID = "NuclearMatteSocket"
 
 # Reentrancy guard between rebuild() (rig -> graph) and update() (graph -> rig).
 _SYNCING = False
@@ -56,6 +57,19 @@ class NuclearPegSocket(NodeSocket):
 
     def draw_color(self, _context, _node):
         return (0.9, 0.6, 0.2, 1.0)
+
+
+class NuclearMatteSocket(NodeSocket):
+    """Matte/cutter relation socket. A link A.matte_out -> B.matte_in means "A masks B"
+    (Toon Boom Cutter style), distinct in colour from the orange peg-control links."""
+    bl_idname = _MATTE_SOCK_ID
+    bl_label = "Matte"
+
+    def draw(self, _context, layout, _node, text):
+        layout.label(text=text)
+
+    def draw_color(self, _context, _node):
+        return (0.2, 0.8, 0.9, 1.0)
 
 
 class NuclearPegTree(NodeTree):
@@ -125,11 +139,37 @@ class NuclearDrawingNode(_PegGraphNode, Node):
 
     def init(self, _context):
         self.inputs.new(_SOCK_ID, "Peg")
+        # Matte ("cutter"): a drawing can be masked by another drawing wired into "Matte In", and can
+        # itself act as a matte through "Matte Out". Kept separate from the peg-control socket.
+        self.inputs.new(_MATTE_SOCK_ID, "Matte In")
+        self.outputs.new(_MATTE_SOCK_ID, "Matte Out")
         self.use_custom_color = True
         self.color = (0.12, 0.20, 0.28)
 
     def draw_label(self):
         return self.object_name or "Drawing"
+
+    def draw_buttons(self, _context, layout):
+        # Manage this drawing's cross-object mattes entirely from the Peg View: each incoming matte
+        # gets an invert toggle and a remove button, so there is no need to open Object Data.
+        ob = bpy.data.objects.get(self.object_name)
+        mattes = _object_matte_objects(ob)
+        if not mattes:
+            return
+        col = layout.column(align=True)
+        col.label(text="Masked by:", icon='MOD_MASK')
+        for mo in mattes:
+            masks = _object_cutter_masks(ob, mo)
+            inverted = bool(masks) and all(m.invert for m in masks)
+            row = col.row(align=True)
+            row.label(text=mo.name, icon='OUTLINER_OB_GREASEPENCIL')
+            op = row.operator("node.nuclear_matte_invert", text="", icon='SELECT_INTERSECT',
+                              depress=inverted)
+            op.masked_object = self.object_name
+            op.matte_object = mo.name
+            op = row.operator("node.nuclear_matte_remove", text="", icon='X')
+            op.masked_object = self.object_name
+            op.matte_object = mo.name
 
 
 # -------------------------------------------------------------------------------------------------
@@ -163,6 +203,82 @@ def _followpeg_constraint(ob):
         if con.type == 'FOLLOW_PEG':
             return con
     return None
+
+
+# -------------------------------------------------------------------------------------------------
+# Matte (cutter) helpers: a "whole-object cutter" is a cross-object Grease Pencil mask whose `object`
+# is set and whose name is empty (meaning: the whole matte object cuts this one). They are added to
+# every leaf layer of the masked object so the entire drawing is cut, and rendered by the GP engine.
+# -------------------------------------------------------------------------------------------------
+
+def _is_whole_object_cutter(mask):
+    return mask.object is not None and mask.name == ""
+
+
+def _object_matte_objects(ob):
+    """Distinct matte objects masking `ob` through whole-object cutter masks."""
+    res = []
+    if ob is None or ob.type != 'GREASEPENCIL':
+        return res
+    for lay in ob.data.layers:
+        for m in lay.mask_layers:
+            if _is_whole_object_cutter(m) and m.object not in res:
+                res.append(m.object)
+    return res
+
+
+def _object_cutter_masks(ob, matte_obj=None):
+    """Every whole-object cutter mask of `ob`, optionally only those for `matte_obj`. A whole-object
+    cutter is added to each leaf layer, so this spans all layers."""
+    res = []
+    if ob is None or ob.type != 'GREASEPENCIL':
+        return res
+    for lay in ob.data.layers:
+        for m in lay.mask_layers:
+            if _is_whole_object_cutter(m) and (matte_obj is None or m.object == matte_obj):
+                res.append(m)
+    return res
+
+
+def _set_object_mattes(ob, matte_objects):
+    """Reconcile `ob`'s whole-object cutter masks to exactly `matte_objects`. The masks are added to
+    every leaf layer (so the whole object is cut). Returns True if anything changed."""
+    if ob is None or ob.type != 'GREASEPENCIL':
+        return False
+    want = [m for m in matte_objects if m is not None and m is not ob]
+    changed = False
+    for lay in ob.data.layers:
+        have = {}
+        for m in list(lay.mask_layers):
+            if _is_whole_object_cutter(m):
+                have[m.object] = m
+        for obj, m in have.items():
+            if obj not in want:
+                lay.mask_layers.remove(m)
+                changed = True
+        for obj in want:
+            if obj not in have:
+                lay.mask_layers.new(name="", object=obj)
+                changed = True
+        # Masks are opt-in per layer; enable them when a cutter is wired so the matte actually
+        # renders (and there is no point leaving them on once the last cutter is removed).
+        if want and not lay.use_masks:
+            lay.use_masks = True
+            changed = True
+    return changed
+
+
+def _matte_input_sources(node):
+    """Drawing nodes wired into this drawing node's "Matte In" socket."""
+    res = []
+    sock = node.inputs.get("Matte In")
+    if sock is None:
+        return res
+    for link in sock.links:
+        fn = link.from_node
+        if fn is not None and fn.bl_idname == _DRAWING_NODE_ID:
+            res.append(fn)
+    return res
 
 
 def _would_cycle(rig, child_index, new_parent_index):
@@ -360,6 +476,21 @@ def rebuild(tree):
                 tree.links.new(peg_node.outputs[0], dn.inputs[0])
             else:
                 tree.links.new(rig_node.outputs[0], dn.inputs[0])
+
+        # Recreate matte (cutter) links from each object's stored whole-object cutter masks.
+        drawing_by_obj = {n.object_name: n
+                          for n in tree.nodes if n.bl_idname == _DRAWING_NODE_ID}
+        for obj_name, dn in drawing_by_obj.items():
+            ob = bpy.data.objects.get(obj_name)
+            if ob is None:
+                continue
+            matte_in = dn.inputs.get("Matte In")
+            if matte_in is None:
+                continue
+            for matte_obj in _object_matte_objects(ob):
+                src = drawing_by_obj.get(matte_obj.name)
+                if src is not None and src.outputs:
+                    tree.links.new(src.outputs[0], matte_in)
     finally:
         _SYNCING = False
 
@@ -371,7 +502,11 @@ def _graph_signature(tree):
         return ""
     pegs = ";".join(f"{p.name}:{p.parent_index}" for p in rig.pegs)
     bound = ";".join(sorted(f"{ob.name}->{name}" for ob, name in _bound_objects(rig)))
-    return pegs + "|" + bound
+    mattes = ";".join(sorted(
+        f"{ob.name}<={mo.name}"
+        for ob, _name in _bound_objects(rig)
+        for mo in _object_matte_objects(ob)))
+    return pegs + "|" + bound + "|" + mattes
 
 
 # -------------------------------------------------------------------------------------------------
@@ -428,6 +563,21 @@ def _apply_graph_to_rig(tree):
                 elif con is not None:
                     ob.constraints.remove(con)
 
+        # Matte (cutter) links: A."Matte Out" -> B."Matte In" means "A masks B". Reconcile every
+        # masked object's whole-object cutter masks to the set of incoming matte links.
+        for node in tree.nodes:
+            if node.bl_idname != _DRAWING_NODE_ID:
+                continue
+            ob = bpy.data.objects.get(node.object_name)
+            if ob is None:
+                continue
+            matte_objs = []
+            for src in _matte_input_sources(node):
+                src_ob = bpy.data.objects.get(src.object_name)
+                if src_ob is not None and src_ob is not ob and src_ob not in matte_objs:
+                    matte_objs.append(src_ob)
+            _set_object_mattes(ob, matte_objs)
+
         if rig.id_data:
             rig.id_data.update_tag()
     finally:
@@ -437,6 +587,57 @@ def _apply_graph_to_rig(tree):
 # -------------------------------------------------------------------------------------------------
 # Operators
 # -------------------------------------------------------------------------------------------------
+
+def _redraw_peg_graphs():
+    for tree in bpy.data.node_groups:
+        if tree.bl_idname == _TREE_ID and tree.rig is not None:
+            rebuild(tree)
+    _tag_redraw_peg_areas()
+
+
+class NODE_OT_nuclear_matte_invert(Operator):
+    bl_idname = "node.nuclear_matte_invert"
+    bl_label = "Invert Matte"
+    bl_description = "Toggle invert on this cross-object matte (keep where the matte is NOT)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    masked_object: StringProperty()
+    matte_object: StringProperty()
+
+    def execute(self, context):
+        ob = bpy.data.objects.get(self.masked_object)
+        mo = bpy.data.objects.get(self.matte_object)
+        masks = _object_cutter_masks(ob, mo)
+        if not masks:
+            return {'CANCELLED'}
+        new_val = not all(m.invert for m in masks)
+        for m in masks:
+            m.invert = new_val
+        ob.data.update_tag()
+        _tag_redraw_peg_areas()
+        return {'FINISHED'}
+
+
+class NODE_OT_nuclear_matte_remove(Operator):
+    bl_idname = "node.nuclear_matte_remove"
+    bl_label = "Remove Matte"
+    bl_description = "Remove this cross-object matte from the drawing"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    masked_object: StringProperty()
+    matte_object: StringProperty()
+
+    def execute(self, context):
+        ob = bpy.data.objects.get(self.masked_object)
+        mo = bpy.data.objects.get(self.matte_object)
+        if ob is None or mo is None:
+            return {'CANCELLED'}
+        keep = [m for m in _object_matte_objects(ob) if m != mo]
+        _set_object_mattes(ob, keep)
+        ob.data.update_tag()
+        _redraw_peg_graphs()  # drop the now-stale matte link
+        return {'FINISHED'}
+
 
 def _active_peg_tree(context):
     space = context.space_data
@@ -1223,6 +1424,7 @@ def _sync_node_selection():
 
 classes = (
     NuclearPegSocket,
+    NuclearMatteSocket,
     NuclearPegTree,
     NuclearRigNode,
     NuclearPegNode,
@@ -1231,6 +1433,8 @@ classes = (
     NODE_OT_nuclear_peg_add,
     NODE_OT_nuclear_peg_remove,
     NODE_OT_nuclear_peg_bind_selected,
+    NODE_OT_nuclear_matte_invert,
+    NODE_OT_nuclear_matte_remove,
     NODE_PT_nuclear_peg,
     OBJECT_OT_pegrig_select_child,
     OBJECT_OT_pegrig_pivot_reset,
