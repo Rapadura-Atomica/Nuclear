@@ -92,6 +92,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
     `intern/ghost/intern/GHOST_SystemWin32.cc`,
     `source/blender/windowmanager/intern/wm_playanim.cc`,
     `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md`.
+### Changed
 - Separadas, em branches independentes, as duas features que o commit `90ac371` havia fundido:
   o modifier GP Contour (envelope) e as masks nativas (auto-patch). Cada metade agora é
   cherry-pickável isoladamente — `feat/gp-contour` e `feat/gp-masks`, ambas a partir do pai

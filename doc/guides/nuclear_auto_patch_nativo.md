@@ -62,8 +62,8 @@ ver §5). Os arquivos do *envelope* estão deliberadamente **fora** desta lista.
 - `source/blender/blenkernel/intern/grease_pencil.cc` — ctor/copy/dtor do `LayerGroup`;
   **`foreach_id`** (remap/delete do matte — o template foi `layer->parent`); blend
   read/write dos masks de grupo; rename-fixup para layers **e** grupos.
-- `source/blender/grease_pencil/intern/grease_pencil_layers.cc` — lógica de máscara em
-  camadas/grupos (núcleo do cutter cross-object).
+- `source/blender/editors/grease_pencil/intern/grease_pencil_layers.cc` — lógica de máscara
+  em camadas/grupos (núcleo do cutter cross-object).
 
 ### RNA / API de autoria
 - `source/blender/makesrna/intern/rna_grease_pencil.cc` — `mask.object` (poll só
@@ -115,16 +115,27 @@ ver §5). Os arquivos do *envelope* estão deliberadamente **fora** desta lista.
 
 | Item | Valor |
 |---|---|
-| Commit | `90ac371d58a` — *"feat(gp): modifier Contour (envelope MVC) + masks nativas de GP"* |
-| Branch de origem | `feat/native-auto-patch` |
+| Commit fundido (origem) | `90ac371d58a` — *"feat(gp): modifier Contour (envelope MVC) + masks nativas de GP"* |
+| Branch de origem | `feat/native-auto-patch` (preservada, intocada) |
 | Cherry-pick preservado em | `integration/gp-contour-1.1` (base `origin/auto/integration`) |
+| **Split FEITO (2026-06-17)** | `feat/gp-masks` (`d949910`, 14 arq/992 ins) **+** `feat/gp-contour` (`570ff05`, 9 arq/458 ins), ambas a partir do pai real `8d7e310` |
 | Linha de release 1.1 | `integration/1.1-ui-squash` — **masks/auto-patch EXCLUÍDOS de propósito** |
 | Bump de versão | `1.2.0` / `NUCLEAR_BUILD 3` — **pertence à linha UI/squash, não ao auto-patch** |
 
-O código do auto-patch **existe e compila**, mas está **parqueado**: foi cherry-picked para
-`integration/gp-contour-1.1` e deliberadamente **deixado de fora** da build 1.1 que foi
-empacotada (citação do chat: *"Contour/masks GP — excluído de propósito (preservado em
-`integration/gp-contour-1.1`)"*).
+O código do auto-patch **existe e compila** (à época da v1), mas está **parqueado**: foi
+cherry-picked para `integration/gp-contour-1.1` e deliberadamente **deixado de fora** da build
+1.1 empacotada.
+
+**Separação concluída (2026-06-17, sessão /council Tier 3 — ver ADR
+`docs/decisions/2026-06-17-separar-contour-e-masks.md`).** O commit `90ac371` fundia os dois
+projetos; agora cada metade vive numa branch independente, cherry-pickável isoladamente:
+- **`feat/gp-masks`** — só as masks/auto-patch.
+- **`feat/gp-contour`** — só o modifier Contour/envelope.
+O único arquivo que precisava de split em nível de hunk era `grease_pencil.cc` (1 hunk de
+contour — o `case eModifierType_GreasePencilContour` em `influence_data_from_modifier` — vs.
+8 hunks de mask). Verificado por reconstrução: `8d7e310 + contour + masks == 90ac371`
+byte-a-byte, e nenhum lado referencia símbolos do outro. **Build de validação de cada branch
+ainda pendente** (ver §7).
 
 ---
 
@@ -149,10 +160,13 @@ primeiro **separar** os dois dentro de `90ac371`.
 ## 7. O que ainda falta
 
 ### Integração / release
-- [ ] **Separar** masks (auto-patch) do contour (envelope) — hoje fundidos no commit `90ac371`.
-      Re-commitar como mudanças independentes se a ideia for shippar um sem o outro.
+- [x] **Separar** masks (auto-patch) do contour (envelope) — ~~hoje fundidos no commit `90ac371`~~
+      **FEITO em 2026-06-17**: branches `feat/gp-masks` e `feat/gp-contour` (ver §5 e o ADR).
+- [ ] **Build de validação** de cada branch separada no distrobox `blenderdev` (cada metade
+      compila sozinha sobre `8d7e310`) — a independência foi provada por análise/reconstrução,
+      falta a prova empírica de compilação.
 - [ ] **Integrar** o auto-patch na linha de release canônica (`origin/auto/integration` / 1.1)
-      — atualmente excluído da build empacotada.
+      — atualmente excluído da build empacotada. Agora basta cherry-pick de `feat/gp-masks`.
 - [ ] Documentar os *seams* (pontos de divergência do upstream) no `NUCLEAR_DIVERGENCE.md`.
 - [ ] Empacotar build / regerar `version.json` **se** o auto-patch entrar numa release (hoje
       o bump `1.2.0`/`build 3` é da linha UI, não cobre o auto-patch).
