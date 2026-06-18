@@ -97,6 +97,10 @@ SAMPLER(1, sampler2D, reveal_buf)
 SAMPLER(2, sampler2D, mask_buf)
 PUSH_CONSTANT(int, blend_mode)
 PUSH_CONSTANT(float, blend_opacity)
+/* Nuclear: Auto-Patch. When set, the layer-blend step skips the matte mask so the fill (already
+ * kept by gp_mask_bypass in the geometry pass) is not cut a second time here; the stroke was
+ * already removed from color_buf by the geometry pass's mask discard. */
+PUSH_CONSTANT(int, blend_auto_patch)
 /* Reminder: This is considered SRC color in blend equations.
  * Same operation on all buffers. */
 FRAGMENT_OUT(0, float4, frag_color)
