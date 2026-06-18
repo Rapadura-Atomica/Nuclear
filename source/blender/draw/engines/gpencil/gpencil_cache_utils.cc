@@ -44,7 +44,8 @@ namespace blender::draw::gpencil {
 tObject *gpencil_object_cache_add(Instance *inst,
                                   Object *ob,
                                   const bool is_stroke_order_3d,
-                                  const Bounds<float3> bounds)
+                                  const Bounds<float3> bounds,
+                                  const bool cache_only)
 {
   tObject *tgp_ob = static_cast<tObject *>(BLI_memblock_alloc(inst->gp_object_pool));
 
@@ -112,12 +113,16 @@ tObject *gpencil_object_cache_add(Instance *inst,
   rescale_m4(tgp_ob->plane_mat, float3{radius, radius, radius});
   copy_v3_v3(tgp_ob->plane_mat[3], center);
 
-  /* Add to corresponding list if is in front. */
-  if (ob->dtx & OB_DRAW_IN_FRONT) {
-    BLI_LINKS_APPEND(&inst->tobjects_infront, tgp_ob);
-  }
-  else {
-    BLI_LINKS_APPEND(&inst->tobjects, tgp_ob);
+  /* Add to corresponding list if is in front. Nuclear (Auto-Patch Mod B, half 2): in `cache_only`
+   * mode (a hidden matte synced by the deferred pass) the object must NOT be drawn -- skip both
+   * draw lists. It is still indexed into #object_to_tgp below so it can be used as a matte. */
+  if (!cache_only) {
+    if (ob->dtx & OB_DRAW_IN_FRONT) {
+      BLI_LINKS_APPEND(&inst->tobjects_infront, tgp_ob);
+    }
+    else {
+      BLI_LINKS_APPEND(&inst->tobjects, tgp_ob);
+    }
   }
 
   /* Nuclear: index this object so cross-object mattes can resolve it at draw time. Key by both the
@@ -402,14 +407,29 @@ tLayer *grease_pencil_layer_cache_add(Instance *inst,
           tgp_layer->auto_patch = true;
         }
         if (mask->object != nullptr) {
-          /* Cross-object cutter: the matte is another object's layers, rendered into the mask buffer
-           * at draw time. Record it; the same-object bitmap path below does not apply. Self
-           * references (object pointing back at us) fall through to the local path. */
-          if (mask->object != ob) {
+          /* Cross-object cutter: the matte is another object's layers, rendered into the mask
+           * buffer at draw time. Record it; the same-object bitmap path below does not apply.
+           * Nuclear (Mod C, self-patch): a self reference (object == ob) with Auto-Patch is also
+           * routed here so the matte uses the fill-only pass (Mod A) and may name the very layer
+           * being patched (the local bitmap path rejects the own layer). A non-Auto-Patch self
+           * reference still falls through to the local path below.
+           * KNOWN BUG (see doc/guides/nuclear_auto_patch_bc_followup.md): the fill bypass is not
+           * honoured for a SAME-OBJECT matte (self-patch) nor for a hidden/deferred occluder — the
+           * whole layer is cut instead of only the stroke. Suspected cause is the hardware depth
+           * test, not this routing (rerouting self via mask_bits did not fix it). */
+          const bool is_auto_patch = (mask->flag & GP_LAYER_MASK_AUTO_PATCH) != 0;
+          if (mask->object != ob || is_auto_patch) {
             const bool invert = (mask->flag & GP_LAYER_MASK_INVERT) != 0;
             tgp_layer->mattes.append(
                 {mask->object, mask->layer_name ? mask->layer_name : "", invert});
             valid_mask = true;
+            /* Nuclear (Auto-Patch Mod B, half 2): remember this matte so the deferred pass can
+             * cache it if it turns out to be a hidden occluder never reached by the draw iterator.
+             * Self references (object == ob) are already synced (the active object) and are
+             * skipped to avoid a needless deferred re-sync. */
+            if (mask->object != ob) {
+              inst->referenced_mattes.add(mask->object);
+            }
             continue;
           }
         }
@@ -481,6 +501,10 @@ tLayer *grease_pencil_layer_cache_add(Instance *inst,
     pass.shader_set(ShaderCache::get().layer_blend.get());
     pass.push_constant("blend_mode", int(layer.blend_mode));
     pass.push_constant("blend_opacity", layer_opacity);
+    /* Nuclear: Auto-Patch. Tell the blend step to skip the matte mask for an auto-patch layer so
+     * the fill kept by gp_mask_bypass in the geometry pass is not cut again here (the stroke was
+     * already removed from color_buf by the geometry pass). */
+    pass.push_constant("blend_auto_patch", tgp_layer->auto_patch ? 1 : 0);
     pass.bind_texture("color_buf", &inst->color_layer_tx);
     pass.bind_texture("reveal_buf", &inst->reveal_layer_tx);
     pass.bind_texture("mask_buf", (is_masked) ? &inst->mask_tx : &inst->dummy_tx);
@@ -537,6 +561,29 @@ tLayer *grease_pencil_layer_cache_add(Instance *inst,
 
     pass.push_constant("gp_layer_opacity", layer_alpha);
     pass.state_stencil(0xFF, 0xFF, 0xFF);
+
+    /* Nuclear: fill-only mirror of the geometry pass, used as a cross-object matte. Same shader,
+     * state and default binds as geom_ps above; only the fill drawcalls are mirrored into it in
+     * object_sync_do, so the seam patch follows the colour border (Harmony style), not the stroke.
+     * TODO Nuclear: build fill_ps on demand (only for layers referenced as a matte) to avoid
+     * mirroring fill drawcalls every frame. */
+    if (tgp_layer->fill_ps == nullptr) {
+      tgp_layer->fill_ps = std::make_unique<PassSimple>("GPencil Layer Fill-Only");
+    }
+    PassSimple &fill_pass = *tgp_layer->fill_ps;
+    fill_pass.init();
+    fill_pass.state_set(state);
+    fill_pass.shader_set(ShaderCache::get().geometry.get());
+    fill_pass.bind_texture("gp_scene_depth_tx", depth_tex);
+    fill_pass.bind_texture("gp_mask_tx", mask_tex);
+    fill_pass.push_constant("gp_normal", tgp_ob->plane_normal);
+    fill_pass.push_constant("gp_stroke_order3d", tgp_ob->is_drawmode3d);
+    fill_pass.push_constant("gp_vertex_color_opacity", vert_col_opacity);
+    fill_pass.bind_texture("gp_fill_tx", inst->dummy_tx);
+    fill_pass.bind_texture("gp_stroke_tx", inst->dummy_tx);
+    fill_pass.push_constant("gp_layer_tint", gpl_color);
+    fill_pass.push_constant("gp_layer_opacity", layer_alpha);
+    fill_pass.state_stencil(0xFF, 0xFF, 0xFF);
   }
 
   return tgp_layer;
