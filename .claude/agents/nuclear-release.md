@@ -14,6 +14,13 @@ Você é o agente de release do **Nuclear** (fork do Blender). Sua função é c
 de versão e do sistema de auto-update de ponta a ponta, com disciplina, sem quebrar as
 máquinas dos usuários.
 
+`tools/nuclear_release.py` tem subcomandos para os passos mecânicos (`bump`, `stamp`,
+`manifest`, `verify-zip`, `check-manifest`) — use-os em vez de editar o header à mão ou
+recalcular sha256/unzip manualmente; eles têm menos chance de erro. Programadores humanos
+têm o atalho `tools/nuclear_release.sh` (chama os mesmos subcomandos, com confirmação nos
+passos de build/publish) para rodar um release sem precisar de você — se o pedido for só
+"como eu mesmo faço isso", aponte pra ele em vez de executar o fluxo.
+
 # Regra zero: leia e mantenha a documentação viva
 
 ANTES de qualquer coisa, leia `tools/nuclear_claude/CLAUDE.md` — é a fonte da verdade do
@@ -41,24 +48,27 @@ perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
    `sha256` e `size` do manifesto têm que casar exatamente com o zip servido. (Foi o que
    causou o "checksum não confere" em 2026-06-11.)
 3. **O zip empacotado TEM que conter `Nuclear/5.0/scripts/startup/nuclear_update.py`** (e
-   `Nuclear/nuclear_version.json` ao lado do binário). Antes de publicar, confira:
-   `unzip -l nuclear.zip | grep nuclear_update.py`. Em 2026-06-11 o build foi empacotado
+   `Nuclear/nuclear_version.json` ao lado do binário). Em 2026-06-11 o build foi empacotado
    SEM o updater — instalações limpas ficavam sem auto-update. Se faltar, dá pra injetar
    sem rebuild (`zip -g` nos caminhos internos + regerar o manifesto).
 4. **O zip tem que ser AUTO-CONTIDO**: além do updater, traz as deps Python do fork
    (pyclipper, triangle, scipy, scikit-image + transitivas) em
    `Nuclear/5.0/python/lib/python3.11/site-packages/`. Senão **todo auto-update perde
    essas libs** (a apply troca a pasta da versão pela extraída do zip) e features 2D
-   quebram. Confira `unzip -l nuclear.zip | grep -c site-packages/scipy` (> 0). Não
-   duplique a `numpy` (o Blender já bundla a dele).
+   quebram. Não duplique a `numpy` (o Blender já bundla a dele).
+
+Antes de publicar, confira #3 e #4 de uma vez: `python tools/nuclear_release.py
+verify-zip --zip <nuclear.zip>` (falha alto e claro se faltar o updater ou as deps).
 
 # Fluxo de release (siga em ordem)
 
 1. Ler `tools/nuclear_claude/CLAUDE.md` (estado atual, build vigente).
-2. Bump em `BKE_blender_version.h`: ajuste MAJOR/MINOR/PATCH e **+1 no NUCLEAR_BUILD**.
-3. Rebuild: você **pode** compilar nesta máquina via o container distrobox `blender`
+2. Bump: `python tools/nuclear_release.py bump {patch|minor|major}` — ajusta
+   MAJOR/MINOR/PATCH conforme o tipo e **sempre +1 no NUCLEAR_BUILD** (o subcomando já
+   cuida disso sozinho, sem precisar editar o header à mão).
+3. Rebuild: você **pode** compilar nesta máquina via o container distrobox `blenderdev`
    (blocker de ownership do `build/` resolvido em 2026-06-08):
-   `distrobox enter blender -- bash -lc 'cd <repo>/Nuclear/build && ninja && ninja install'`
+   `distrobox enter blenderdev -- bash -lc 'cd <repo>/Nuclear/build && ninja && ninja install'`
    (`ninja install` sincroniza os scripts no `bin/5.0`). É demorado (~20min incremental,
    mais para full) e pode haver build concorrente — então **confirme com o usuário antes de
    disparar**, não builde por conta própria. Se a tarefa exige um zip novo e o build não foi
@@ -66,8 +76,9 @@ perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
 4. Carimbar: `python tools/nuclear_release.py stamp <pasta-do-build>`.
 5. Gerar manifesto do zip empacotado:
    `python tools/nuclear_release.py manifest --zip <nuclear.zip> --notes "..." -o version.json`.
-6. **Verificar** que `sha256`/`size` do manifesto batem com o zip (recalcule e compare)
-   **e** que o zip contém `scripts/startup/nuclear_update.py` (regra de ouro nº3).
+6. **Verificar**: `python tools/nuclear_release.py check-manifest --zip <nuclear.zip>
+   --manifest version.json` confere que `sha256`/`size` batem (é o que evita o
+   "checksum não confere"); `verify-zip` (passo das regras nº3/nº4) já deve ter passado.
 7. Publicar zip + manifesto juntos em `estacao/`.
 8. Atualizar `tools/nuclear_claude/CLAUDE.md` e o espelho `tools/nuclear_telemetry/server/version.json`.
 9. Commit no repo (mensagem clara; termine com a linha Co-Authored-By padrão do projeto).
@@ -86,7 +97,9 @@ perguntar ao usuário no meio — então seja explícito sobre o que assumiu.
 
 # Correção rápida de "checksum não confere"
 
-Quase sempre o zip foi trocado e o manifesto ficou velho. Recalcule no servidor, atualize
+Quase sempre o zip foi trocado e o manifesto ficou velho. Recalcule no servidor (ou rode
+`python tools/nuclear_release.py check-manifest --zip <nuclear.zip> --manifest
+version.json` se tiver os dois localmente — ele já diz exatamente o que diverge), atualize
 `sha256` + `size` no `version.json` (repo + servidor), e atualize o CLAUDE.md. Não precisa
 rebuild nem bump se a versão não mudou.
 

@@ -293,9 +293,9 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
 1. **Bump de versão** em `BKE_blender_version.h`: ajuste MAJOR/MINOR/PATCH conforme o tipo
    de mudança e **incremente `NUCLEAR_BUILD`**.
 2. **Rebuild** do Nuclear. O Claude **pode** compilar nesta máquina via o container
-   distrobox `blender` (o blocker de ownership do `build/` foi resolvido em 2026-06-08):
+   distrobox `blenderdev` (o blocker de ownership do `build/` foi resolvido em 2026-06-08):
    ```sh
-   distrobox enter blender -- bash -lc 'cd <repo>/Nuclear/build && ninja && ninja install'
+   distrobox enter blenderdev -- bash -lc 'cd <repo>/Nuclear/build && ninja && ninja install'
    ```
    (`ninja install` sincroniza os scripts Python/UI no `bin/5.0`). É demorado (~20min
    incremental sem ccache, mais para um full) e pode haver build concorrente em outro
@@ -328,6 +328,26 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
 > no mundo versionado/auto-update isso não vale mais. Confira:
 > `unzip -l nuclear.zip | grep -c site-packages/scipy` (tem que ser > 0).
 > Não duplique a `numpy` (o Blender já bundla a dele).
+
+### Atalho: rodar o release sozinho, sem o Claude
+`tools/nuclear_release.sh` encadeia os passos 1-9 acima num script só, pra quem prefere
+rodar o release na mão. Ele bumpa a versão (subcomando `bump` novo do
+`nuclear_release.py`, que já cuida da regra de ouro nº1 sozinho), empacota, roda
+`verify-zip`/`check-manifest` (checagem automática das regras nº3/nº4 e do "checksum não
+confere") e só publica/comita depois de confirmação explícita. Nunca builda sem
+`--build`, nunca toca `ping.php`/`instalarNuclear.sh`, e nunca edita este CLAUDE.md por
+você — ele só imprime o bloco pronto pra colar na seção "Estado atual" (§10).
+```sh
+tools/nuclear_release.sh patch --build --notes "o que mudou"   # fluxo completo
+tools/nuclear_release.sh minor --dry-run                       # só mostra os comandos
+tools/nuclear_release.sh --help
+```
+Os subcomandos novos do `nuclear_release.py` também funcionam soltos, se preferir montar
+o fluxo na mão: `bump {patch|minor|major}`, `verify-zip --zip Z`,
+`check-manifest --zip Z --manifest version.json`.
+
+Guia completo (flags, exemplos, troubleshooting) em
+[`tools/nuclear_release.md`](../nuclear_release.md).
 
 ### Atalho: só corrigir o manifesto de um zip que já está no servidor
 Se o zip mudou mas a versão não, recalcule e regrave só o manifesto:
