@@ -28,6 +28,7 @@
 
 #include "DNA_defaults.h"
 #include "DNA_grease_pencil_types.h"
+#include "DNA_material_types.h"
 #include "DNA_modifier_types.h"
 
 #include "BLI_listbase.h"
@@ -40,6 +41,7 @@
 #include "BKE_geometry_set.hh"
 #include "BKE_grease_pencil.hh"
 #include "BKE_lib_query.hh"
+#include "BKE_material.hh"
 #include "BKE_modifier.hh"
 
 #include "BLO_read_write.hh"
@@ -125,6 +127,27 @@ static bool is_disabled(const Scene * /*scene*/, ModifierData *md, bool /*use_re
 }
 
 /**
+ * A material slot on the masked object suitable for rasterizing the injected matte as a solid
+ * silhouette. The mask pass renders mask layers through the same per-material draw as normal
+ * geometry, so a matte assigned to a stroke-only material (Fill off) only contributes its
+ * outline to the mask, not the filled interior it needs to clip against. Prefer the masked
+ * object's own first Fill-enabled slot (almost any character part has one) over assuming slot 0
+ * is fill-capable -- the previous hard-coded slot 0 broke as soon as that slot was a line-art
+ * material, which is the common case (slot 0 added by default, then a fill material added after).
+ */
+static int find_fill_material_index(Object &masked_ob)
+{
+  for (int i = 0; i < masked_ob.totcol; i++) {
+    const Material *ma = BKE_object_material_get(&masked_ob, short(i + 1));
+    if (ma != nullptr && ma->gp_style != nullptr && (ma->gp_style->flag & GP_MATERIAL_FILL_SHOW))
+    {
+      return i;
+    }
+  }
+  return 0;
+}
+
+/**
  * Collect the matte object's visible strokes at \a frame, each transformed into \a ctx->object's
  * (the masked object's) local space, joined into a single curves geometry. Returns false if the
  * matte has nothing to contribute.
@@ -155,13 +178,12 @@ static bool gather_matte_curves(const ModifierEvalContext *ctx,
     curves.transform(matte_obj_to_local * layer->layer_to_object_space());
 
     /* The matte's material indices reference the matte object's slots, which do not exist on the
-     * masked object. Remap them to the first slot so the silhouette rasterizes into the mask
-     * buffer using the masked object's materials. For a solid matte the masked object's first
-     * material should have a fill. */
+     * masked object. Remap them to a Fill-enabled slot on the masked object so the silhouette
+     * rasterizes as a solid area into the mask buffer (see find_fill_material_index). */
     bke::MutableAttributeAccessor attributes = curves.attributes_for_write();
     bke::SpanAttributeWriter<int> materials = attributes.lookup_or_add_for_write_span<int>(
         "material_index", bke::AttrDomain::Curve);
-    materials.span.fill(0);
+    materials.span.fill(find_fill_material_index(*ctx->object));
     materials.finish();
 
     parts.append(bke::GeometrySet::from_curves(bke::curves_new_nomain(std::move(curves))));
