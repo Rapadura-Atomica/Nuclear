@@ -134,6 +134,11 @@ class NuclearDrawingNode(_PegGraphNode, Node):
 
     def init(self, _context):
         self.inputs.new(_SOCK_ID, "Peg")
+        # Second input: a "Cutter" matte. Linking another drawing's Matte output here clips this
+        # drawing to that drawing's silhouette (Toon Boom Cutter) via a Grease Pencil Mask modifier.
+        self.inputs.new(_SOCK_ID, "Cutter")
+        # Output: lets this drawing act as a matte for another drawing's Cutter input.
+        self.outputs.new(_SOCK_ID, "Matte")
         self.use_custom_color = True
         self.color = (0.12, 0.20, 0.28)
 
@@ -171,6 +176,14 @@ def _followpeg_constraint(ob):
     for con in ob.constraints:
         if con.type == 'FOLLOW_PEG':
             return con
+    return None
+
+
+def _cutter_modifier(ob):
+    """The object's Grease Pencil Mask (Cutter) modifier, or None."""
+    for mod in ob.modifiers:
+        if mod.type == 'GREASE_PENCIL_MASK':
+            return mod
     return None
 
 
@@ -360,15 +373,30 @@ def rebuild(tree):
         # Drawing nodes linked to their controlling peg, or to the composite hub when loose.
         peg_node_by_name = {n.peg_name: n for n in peg_nodes}
         max_depth = max(rows.keys(), default=0)
+        draw_node_by_obname = {}
         for ob, peg_name in _bound_objects(rig):
             dn = tree.nodes.new(_DRAWING_NODE_ID)
             dn.object_name = ob.name
+            draw_node_by_obname[ob.name] = dn
             place(dn, max_depth + 1, ('draw', ob.name))
             peg_node = peg_node_by_name.get(peg_name) if peg_name else None
             if peg_node is not None:
                 tree.links.new(peg_node.outputs[0], dn.inputs[0])
             else:
                 tree.links.new(rig_node.outputs[0], dn.inputs[0])
+
+        # Cutter links: matte drawing's "Matte" output -> masked drawing's "Cutter" input,
+        # reconstructed from each object's Grease Pencil Mask (Cutter) modifier.
+        for ob_name, dn in draw_node_by_obname.items():
+            ob = bpy.data.objects.get(ob_name)
+            if ob is None:
+                continue
+            mask_mod = _cutter_modifier(ob)
+            if mask_mod is None or mask_mod.object is None:
+                continue
+            src = draw_node_by_obname.get(mask_mod.object.name)
+            if src is not None:
+                tree.links.new(src.outputs[-1], dn.inputs[1])
     finally:
         _SYNCING = False
 
@@ -380,7 +408,11 @@ def _graph_signature(tree):
         return ""
     pegs = ";".join(f"{p.name}:{p.parent_index}" for p in rig.pegs)
     bound = ";".join(sorted(f"{ob.name}->{name}" for ob, name in _bound_objects(rig)))
-    return pegs + "|" + bound
+    cutters = ";".join(sorted(
+        f"{ob.name}=>{m.object.name}"
+        for ob, _ in _bound_objects(rig)
+        if (m := _cutter_modifier(ob)) is not None and m.object is not None))
+    return pegs + "|" + bound + "|" + cutters
 
 
 # -------------------------------------------------------------------------------------------------
@@ -436,6 +468,23 @@ def _apply_graph_to_rig(tree):
                     con.peg_name = ""
                 elif con is not None:
                     ob.constraints.remove(con)
+
+                # Cutter / mask: the second input fed by another drawing's Matte output adds (or
+                # removes) a Grease Pencil Mask modifier clipping this object to that matte.
+                cutter_src = None
+                if len(node.inputs) > 1 and node.inputs[1].links:
+                    s = node.inputs[1].links[0].from_node
+                    if s is not None and s.bl_idname == _DRAWING_NODE_ID:
+                        cutter_src = s
+                mask_mod = _cutter_modifier(ob)
+                if cutter_src is not None:
+                    matte_ob = bpy.data.objects.get(cutter_src.object_name)
+                    if matte_ob is not None and matte_ob != ob:
+                        if mask_mod is None:
+                            mask_mod = ob.modifiers.new("Cutter", 'GREASE_PENCIL_MASK')
+                        mask_mod.object = matte_ob
+                elif mask_mod is not None:
+                    ob.modifiers.remove(mask_mod)
 
         if rig.id_data:
             rig.id_data.update_tag()
@@ -602,6 +651,58 @@ class NODE_OT_nuclear_peg_bind_selected(Operator):
             self.report({'WARNING'}, "No Grease Pencil objects selected")
             return {'CANCELLED'}
         rebuild(tree)
+        return {'FINISHED'}
+
+
+class NODE_OT_nuclear_peg_locate(Operator):
+    """Frame the node of the selected stroke or peg (the 'O' shortcut). Resolution priority:
+      1. the active object, if it is a Grease Pencil drawing bound to this rig -> its drawing node;
+      2. otherwise the active peg (PegRig.active_peg_index) -> its peg node;
+      3. otherwise whatever node is currently active.
+    The matched node is selected/made-active and then framed via View Selected."""
+    bl_idname = "node.nuclear_peg_locate"
+    bl_label = "Locate Selected in Graph"
+    bl_description = "Frame the node of the selected stroke or peg in the Peg Graph"
+    bl_options = {'REGISTER'}
+
+    @classmethod
+    def poll(cls, context):
+        tree = _active_peg_tree(context)
+        return tree is not None and tree.rig is not None
+
+    def execute(self, context):
+        tree = _active_peg_tree(context)
+        rig = tree.rig
+        target = None
+
+        # 1. selected stroke: the active object, if it is a drawing bound to this rig.
+        ob = context.active_object
+        if ob is not None and ob.type == 'GREASEPENCIL':
+            con = _followpeg_constraint(ob)
+            if con is not None and con.rig == rig:
+                target = next((n for n in tree.nodes
+                               if n.bl_idname == _DRAWING_NODE_ID and n.object_name == ob.name), None)
+
+        # 2. selected peg: the rig's active peg.
+        if target is None:
+            i = rig.active_peg_index
+            if 0 <= i < len(rig.pegs):
+                want = rig.pegs[i].name
+                target = next((n for n in tree.nodes
+                               if n.bl_idname == _PEG_NODE_ID and n.peg_name == want), None)
+
+        # 3. fall back to the currently active node.
+        if target is None:
+            target = tree.nodes.active
+        if target is None:
+            self.report({'WARNING'}, "Nothing selected to locate")
+            return {'CANCELLED'}
+
+        for n in tree.nodes:
+            n.select = False
+        target.select = True
+        tree.nodes.active = target
+        bpy.ops.node.view_selected('INVOKE_DEFAULT')
         return {'FINISHED'}
 
 
@@ -1022,7 +1123,7 @@ def _draw_pivot_overlay():
     vm = rv3d.view_matrix
     right = mathutils.Vector((vm[0][0], vm[0][1], vm[0][2]))
     up = mathutils.Vector((vm[1][0], vm[1][1], vm[1][2]))
-    s = max(rv3d.view_distance, 0.001) * 0.025
+    s = max(rv3d.view_distance, 0.001) * 0.0125
 
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     gpu.state.blend_set('ALPHA')
@@ -1242,6 +1343,32 @@ def _sync_node_selection():
 
 
 # -------------------------------------------------------------------------------------------------
+# Keymap: "O" in the Peg Graph frames the selected stroke/peg. Bound in the Node Editor keymap; the
+# operator's poll restricts it to our tree, so on other node trees the 'O' event falls through.
+# -------------------------------------------------------------------------------------------------
+
+_locate_keymaps = []
+
+
+def _add_locate_keymap():
+    kc = bpy.context.window_manager.keyconfigs.addon
+    if kc is None:  # missing in --background; the sidebar button still works
+        return
+    km = kc.keymaps.new(name="Node Editor", space_type='NODE_EDITOR')
+    kmi = km.keymap_items.new("node.nuclear_peg_locate", 'O', 'PRESS')
+    _locate_keymaps.append((km, kmi))
+
+
+def _remove_locate_keymap():
+    for km, kmi in _locate_keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except (RuntimeError, ReferenceError):
+            pass
+    _locate_keymaps.clear()
+
+
+# -------------------------------------------------------------------------------------------------
 # Registration
 # -------------------------------------------------------------------------------------------------
 
@@ -1255,6 +1382,7 @@ classes = (
     NODE_OT_nuclear_peg_add,
     NODE_OT_nuclear_peg_remove,
     NODE_OT_nuclear_peg_bind_selected,
+    NODE_OT_nuclear_peg_locate,
     NODE_PT_nuclear_peg,
     OBJECT_OT_pegrig_select_child,
     OBJECT_OT_pegrig_pivot_reset,
@@ -1274,13 +1402,21 @@ def register():
     _add_pivot_overlay()
     _add_node_overlay()
     _ensure_peg_pose_keymap()
+    _add_locate_keymap()
     _set_render_border_ctrl_b(False)  # free Ctrl+B for the Peg Pose tool (avoid render-border clash)
+    # Nuclear default: zoom towards the mouse pointer (the wheel zoom in view2d already honours this
+    # global preference; it is off in stock Blender). Applies to all 2D editors + the 3D viewport.
+    try:
+        bpy.context.preferences.inputs.use_zoom_to_mouse = True
+    except (AttributeError, RuntimeError):
+        pass
     _subscribe_active_peg()
     if not bpy.app.timers.is_registered(_sync_node_selection):
         bpy.app.timers.register(_sync_node_selection, persistent=True)
 
 
 def unregister():
+    _remove_locate_keymap()
     _set_render_border_ctrl_b(True)  # restore the stock Ctrl+B 'Set Render Region'
     if bpy.app.timers.is_registered(_sync_node_selection):
         bpy.app.timers.unregister(_sync_node_selection)

@@ -31,6 +31,13 @@ revisão se as APIs do core que eles consomem mudarem.
 - `source/blender/modifiers/MOD_grease_pencil_curve.hh`
 - `source/blender/modifiers/intern/MOD_grease_pencil_curve.cc`
 
+### Modifier Grease Pencil "Cutter" (máscara cross-object, estilo Toon Boom — ver `CutterFeature.md`)
+- `source/blender/modifiers/intern/MOD_grease_pencil_mask.cc` — injeta as strokes do objeto-matte
+  como layer oculta (opacity 0) na GP avaliada e liga uma `GreasePencilLayerMask` nativa, para
+  recortar um objeto pela silhueta de outro (ex.: pupila dentro do olho). Sem `.hh` (sem helper
+  compartilhado nem operator). Reaproveita 100% do pipeline de máscara nativo (sem mexer no
+  draw engine).
+
 ### Add-ons / scripts de startup
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
@@ -165,6 +172,23 @@ cada rebase. Quando possível, migrar a lógica para arquivo novo + uma "costura
 | `source/blender/makesrna/intern/rna_constraint.cc` | RNA do Follow Peg constraint |
 | `source/blender/makesrna/intern/makesrna.cc` | registro de `rna_pegrig` |
 | `source/blender/makesrna/intern/rna_main.cc` | `pegrigs` na Main |
+
+### Registro do modifier "Cutter" (`eModifierType_GreasePencilMask`)
+Costuras de 1 linha para plugar o modifier novo (mesmo padrão que o "Curve" usou — antes não
+documentado). No rebase, re-aplicar cada uma:
+| Arquivo | O que foi adicionado |
+|---|---|
+| `source/blender/makesdna/DNA_modifier_types.h` | `eModifierType_GreasePencilMask = 88` + struct `GreasePencilMaskModifierData` + enum de flags |
+| `source/blender/makesdna/DNA_modifier_defaults.h` | bloco `_DNA_DEFAULT_GreasePencilMaskModifierData` |
+| `source/blender/makesdna/intern/dna_defaults.c` | `SDNA_DEFAULT_DECL_STRUCT` + `SDNA_DEFAULT_DECL` do struct |
+| `source/blender/modifiers/MOD_modifiertypes.hh` | `extern ModifierTypeInfo modifierType_GreasePencilMask;` |
+| `source/blender/modifiers/intern/MOD_util.cc` | `INIT_TYPE(GreasePencilMask);` |
+| `source/blender/modifiers/CMakeLists.txt` | `intern/MOD_grease_pencil_mask.cc` |
+| `source/blender/makesrna/intern/rna_modifier.cc` | item no enum, `RNA_MOD_OBJECT_SET`, filtros material/vgroup, `rna_def_modifier_grease_pencil_mask` + chamada |
+| `source/blender/makesrna/intern/rna_object.cc` | `rna_GreasePencil_object_poll` (poll p/ ponteiro de objeto GP) |
+| `source/blender/makesrna/intern/rna_internal.hh` | declaração de `rna_GreasePencil_object_poll` |
+| `scripts/startup/bl_ui/properties_data_modifier.py` | `GREASE_PENCIL_MASK` no menu Add (categoria Generate) |
+| `source/blender/blenkernel/BKE_blender_version.h` | `BLENDER_FILE_SUBVERSION` 119→120 (struct DNA novo; sem `do_version`) |
 
 ### Tool / UI Python
 | Arquivo | O que foi adicionado |

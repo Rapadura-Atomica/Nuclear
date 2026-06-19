@@ -386,6 +386,7 @@ bool rna_Armature_object_poll(PointerRNA *ptr, PointerRNA value);
 bool rna_Camera_object_poll(PointerRNA *ptr, PointerRNA value);
 bool rna_Curve_object_poll(PointerRNA *ptr, PointerRNA value);
 bool rna_GPencil_object_poll(PointerRNA *ptr, PointerRNA value);
+bool rna_GreasePencil_object_poll(PointerRNA *ptr, PointerRNA value);
 bool rna_Light_object_poll(PointerRNA *ptr, PointerRNA value);
 bool rna_Lattice_object_poll(PointerRNA *ptr, PointerRNA value);
 bool rna_Mesh_object_poll(PointerRNA *ptr, PointerRNA value);
