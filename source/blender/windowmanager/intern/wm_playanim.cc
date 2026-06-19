@@ -1876,7 +1876,7 @@ static std::optional<int> wm_main_playanim_intern(int argc, const char **argv, P
       GHOST_UseNativePixels();
 
       ps.ghost_data.window = playanim_window_open(ps.ghost_data.system,
-                                                  "Blender Animation Player",
+                                                  "Nuclear Animation Player",
                                                   window_pos[0],
                                                   window_pos[1],
                                                   ibuf->x,

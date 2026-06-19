@@ -22,6 +22,40 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
     `.claude/agents/nuclear-release.md`, `tools/nuclear_claude/CLAUDE.md`.
 
 ### Changed
+- Ícone do aplicativo (logo Nuclear) no `.desktop` e na taskbar: arte do autor em
+  `release/freedesktop/icons/scalable/apps/blender.svg` (+ variante `*-symbolic.svg`),
+  mantendo os nomes de arquivo para não divergir o `CMakeLists.txt`. `.desktop` rebrandizado
+  (Name=Nuclear, 2D Animation, `StartupWMClass=Nuclear`) no template do repo e na `.desktop`
+  gerada pelo `instalarNuclear.sh`. `app_id` Wayland → "Nuclear" (`GHOST_SystemWayland.cc`);
+  WM_CLASS X11 já era "Nuclear" via título → ícone associa na taskbar.
+  - Arquivos afetados: `release/freedesktop/icons/scalable/apps/blender.svg`,
+    `release/freedesktop/icons/symbolic/apps/blender-symbolic.svg`,
+    `release/freedesktop/blender.desktop`, `tools/nuclear_install/instalarNuclear.sh`,
+    `intern/ghost/intern/GHOST_SystemWayland.cc`, `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md`.
+- Set de ícones da UI: os 773 SVGs em `release/datafiles/icons_svg/` trocados pela arte
+  própria do Nuclear (redesenho 16×16 baseado em stroke, no lugar do set Inkscape preenchido
+  do upstream). Match de nomes 1:1 → nenhuma edição de C/CMake/Python; o pipeline existente
+  (`SVG_FILENAMES_NOEXT` → `data_to_c_simple` → `svg_icons.cc`, render nanosvg) embute o novo
+  set no rebuild. **Correção de escala:** os SVGs vinham `viewBox="0 0 16 16"` sem `width`,
+  e o rasterizador de ícones do Blender (`blf_glyph.cc`, `scale = size/1600`) espera fonte
+  ~1600px → colapsavam para 1 pixel (invisíveis, reportado pelo usuário). Fix de dados:
+  `width="1600" height="1600"` nos 773 (nanosvg escala o conteúdo ×100). Provado com teste C
+  do nanosvg antes do rebuild. Reversível via `git checkout`.
+  - Arquivos afetados: `release/datafiles/icons_svg/*.svg` (773),
+    `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md`.
+- Branding visual (Blender→Nuclear) no título da janela e nos diálogos de baixo nível que
+  disparam no startup, **antes** do seam de tradução do template — por isso editados em C e
+  não via `bpy.app.translations`: título inicial da janela principal (`NUCLEAR_NAME`),
+  títulos e mensagens dos diálogos de suporte de GPU, o diálogo de tarefa Win32 e o título
+  da janela do player de animação standalone. O `applicationName` "Blender" enviado ao
+  Vulkan/XR foi deliberadamente preservado (drivers podem keyar workarounds nele).
+  splash.png já estava resolvida; `.desktop`, ícones e URLs `docs.blender.org` ficam para
+  ciclos futuros.
+  - Arquivos afetados: `source/blender/windowmanager/intern/wm_window.cc`,
+    `source/blender/windowmanager/intern/wm_platform_support.cc`,
+    `intern/ghost/intern/GHOST_SystemWin32.cc`,
+    `source/blender/windowmanager/intern/wm_playanim.cc`,
+    `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md`.
 - Separadas, em branches independentes, as duas features que o commit `90ac371` havia fundido:
   o modifier GP Contour (envelope) e as masks nativas (auto-patch). Cada metade agora é
   cherry-pickável isoladamente — `feat/gp-contour` e `feat/gp-masks`, ambas a partir do pai

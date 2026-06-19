@@ -19,6 +19,7 @@
 #include "BLT_translation.hh"
 
 #include "BKE_appdir.hh"
+#include "BKE_blender_version.h"
 #include "BKE_global.hh"
 
 #include "GPU_context.hh"
@@ -141,7 +142,7 @@ bool WM_platform_support_perform_checks()
 
     case GPU_SUPPORT_LEVEL_LIMITED: {
       size_t slen = 0;
-      STR_CONCAT(title, slen, "Blender - ");
+      STR_CONCAT(title, slen, NUCLEAR_NAME " - ");
       STR_CONCAT(
           title, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Limited Platform Support"));
       slen = 0;
@@ -161,7 +162,7 @@ bool WM_platform_support_perform_checks()
           slen,
           CTX_IFACE_(
               BLT_I18NCONTEXT_ID_WINDOWMANAGER,
-              "Newer graphics drivers might be available with better Blender compatibility."));
+              "Newer graphics drivers might be available with better Nuclear compatibility."));
       STR_CONCAT(message, slen, "\n \n");
       STR_CONCAT(message, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Graphics card:\n"));
       STR_CONCAT(message, slen, GPU_platform_gpu_name());
@@ -172,7 +173,7 @@ bool WM_platform_support_perform_checks()
 
     case GPU_SUPPORT_LEVEL_UNSUPPORTED: {
       size_t slen = 0;
-      STR_CONCAT(title, slen, "Blender - ");
+      STR_CONCAT(title, slen, NUCLEAR_NAME " - ");
       STR_CONCAT(
           title, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Platform Unsupported"));
       slen = 0;
@@ -195,7 +196,7 @@ bool WM_platform_support_perform_checks()
             message,
             slen,
             CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER,
-                       "Upgrading to the latest macOS version may improve Blender support"));
+                       "Upgrading to the latest macOS version may improve Nuclear support"));
       }
 #else
       STR_CONCAT(message,
@@ -208,7 +209,7 @@ bool WM_platform_support_perform_checks()
           slen,
           CTX_IFACE_(
               BLT_I18NCONTEXT_ID_WINDOWMANAGER,
-              "Newer graphics drivers might be available with better Blender compatibility."));
+              "Newer graphics drivers might be available with better Nuclear compatibility."));
 
       STR_CONCAT(message, slen, "\n \n");
       STR_CONCAT(message, slen, CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Graphics card:\n"));
@@ -219,7 +220,7 @@ bool WM_platform_support_perform_checks()
       if (!show_continue) {
         STR_CONCAT(message,
                    slen,
-                   CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Blender will now close."));
+                   CTX_IFACE_(BLT_I18NCONTEXT_ID_WINDOWMANAGER, "Nuclear will now close."));
         dialog_options = GHOST_DialogError;
         result = false;
       }
