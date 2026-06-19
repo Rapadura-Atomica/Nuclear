@@ -99,13 +99,14 @@ ICON="$CURRENT_LINK/blender.svg"
 cat > "$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Name=Nuclear
-GenericName=3D Creation
+GenericName=2D Animation
 Exec=$CURRENT_LINK/blender %F
 Icon=$ICON
 Type=Application
-Categories=Graphics;3DGraphics;
+Categories=Graphics;2DGraphics;
 MimeType=application/x-blender;
 StartupNotify=true
+StartupWMClass=Nuclear
 Terminal=false
 EOF
 update-desktop-database "$(dirname "$DESKTOP_FILE")" >/dev/null 2>&1 || true
