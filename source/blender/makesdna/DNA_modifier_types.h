@@ -131,6 +131,7 @@ typedef enum ModifierType {
   eModifierType_GreasePencilSimplify = 85,
   eModifierType_GreasePencilTexture = 86,
   eModifierType_GreasePencilCurve = 87,
+  eModifierType_GreasePencilMask = 88,
   NUM_MODIFIER_TYPES,
 } ModifierType;
 
@@ -2916,6 +2917,29 @@ typedef struct GreasePencilCurveModifierData {
   short deform_axis;
   char _pad[2];
 } GreasePencilCurveModifierData;
+
+typedef enum GreasePencilMaskModifierFlag {
+  /* Show the masked strokes OUTSIDE the matte silhouette instead of inside. */
+  MOD_GREASE_PENCIL_MASK_INVERT = (1 << 0),
+} GreasePencilMaskModifierFlag;
+
+/**
+ * Nuclear: Toon Boom-style "Cutter" / cross-object mask. Lives on the masked object (e.g. a
+ * pupil) and clips it to the silhouette of another Grease Pencil object (e.g. an eye). At eval
+ * time the modifier injects the matte object's strokes as a hidden (opacity-0) layer and wires a
+ * native #GreasePencilLayerMask on the filtered layers, so the existing same-object GPU mask
+ * pipeline produces the alpha matte. The matte follows its own peg automatically (its evaluated
+ * world transform is baked into the injected geometry).
+ */
+typedef struct GreasePencilMaskModifierData {
+  ModifierData modifier;
+  GreasePencilModifierInfluenceData influence;
+  /** The matte object whose silhouette clips this object. Poll: #OB_GREASE_PENCIL. */
+  struct Object *object;
+  /** #GreasePencilMaskModifierFlag. */
+  int flag;
+  char _pad[4];
+} GreasePencilMaskModifierData;
 
 typedef struct GreasePencilDashModifierSegment {
   char name[64];

@@ -2024,6 +2024,11 @@ bool rna_Curve_object_poll(PointerRNA * /*ptr*/, PointerRNA value)
   return (reinterpret_cast<Object *>(value.owner_id))->type == OB_CURVES_LEGACY;
 }
 
+bool rna_GreasePencil_object_poll(PointerRNA * /*ptr*/, PointerRNA value)
+{
+  return (reinterpret_cast<Object *>(value.owner_id))->type == OB_GREASE_PENCIL;
+}
+
 bool rna_Armature_object_poll(PointerRNA * /*ptr*/, PointerRNA value)
 {
   return (reinterpret_cast<Object *>(value.owner_id))->type == OB_ARMATURE;

@@ -188,6 +188,7 @@ class OBJECT_MT_modifier_add_generate(ModifierAddMenu, Menu):
             self.operator_modifier_add(layout, 'GREASE_PENCIL_DASH')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_ENVELOPE')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_LENGTH')
+            self.operator_modifier_add(layout, 'GREASE_PENCIL_MASK')
             self.operator_modifier_add(layout, 'LINEART')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_MIRROR')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_MULTIPLY')

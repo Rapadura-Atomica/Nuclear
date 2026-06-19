@@ -889,6 +889,12 @@
     .deform_axis = MOD_CURVE_POSX, \
   }
 
+#define _DNA_DEFAULT_GreasePencilMaskModifierData \
+  { \
+    .object = NULL, \
+    .flag = 0, \
+  }
+
 #define _DNA_DEFAULT_GreasePencilDashModifierData \
   { \
     .dash_offset = 0, \
