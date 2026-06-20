@@ -71,6 +71,10 @@ PUSH_CONSTANT(float, gp_layer_opacity)
 PUSH_CONSTANT(float, gp_stroke_index_offset)
 /* Nuclear: Auto-Patch. When 1, this drawcall (the fill/colour-art) ignores the layer mask. */
 PUSH_CONSTANT(int, gp_mask_bypass)
+/* Nuclear: Auto-Patch. When 1, this pass is being rendered as a cross-object matte (silhouette) into
+ * the isolated mask buffer, so it skips the scene depth test (a visible occluder must not clip its own
+ * matte in the overlap region). 0 for normal scene drawing. */
+PUSH_CONSTANT(int, gp_in_mask_pass)
 FRAGMENT_OUT(0, float4, frag_color)
 FRAGMENT_OUT(1, float4, revealColor)
 VERTEX_OUT(gpencil_geometry_iface)

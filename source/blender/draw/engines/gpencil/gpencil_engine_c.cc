@@ -519,6 +519,8 @@ tObject *Instance::object_sync_do(Object *ob,
     /* Nuclear: Auto-Patch defaults off; toggled per fill/stroke drawcall below for patched layers.
      */
     pass.push_constant("gp_mask_bypass", 0);
+    /* Nuclear: this is the normal scene pass (not a matte), so the scene depth test applies. */
+    pass.push_constant("gp_in_mask_pass", 0);
 
     /* Nuclear: mirror the same initial binds on the fill-only matte pass. gp_mask_bypass is
      * irrelevant in the mask buffer, kept at 0. */
@@ -530,6 +532,10 @@ tObject *Instance::object_sync_do(Object *ob,
     fill_pass.push_constant("gp_stroke_index_offset", 0.0f);
     fill_pass.push_constant("viewport_size", float2(draw_ctx->viewport_size_get()));
     fill_pass.push_constant("gp_mask_bypass", 0);
+    /* Nuclear: this pass is submitted only as a cross-object matte; skip the scene depth test so a
+     * VISIBLE occluder does not clip its own matte in the overlap (auto-patch cut now works with both
+     * the patched part and the occluder visible, not only when the occluder is hidden). */
+    fill_pass.push_constant("gp_in_mask_pass", 1);
 
     const VArray<int> stroke_materials = *attributes.lookup_or_default<int>(
         "material_index", bke::AttrDomain::Curve, 0);
