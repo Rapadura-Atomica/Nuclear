@@ -4088,6 +4088,10 @@ static Object *greasepencil_envelope_create_for_drawing(bContext *C,
 
   Curve *cu = static_cast<Curve *>(curve_ob->data);
   cu->flag |= CU_3D;
+  /* Thin bevel so the envelope reads as a drawn Bezier line (like a native curve), not an
+   * invisible path. The Contour samples `deformed_nurbs`, which is built before the bevel's mesh
+   * conversion, so this does not affect the deformation. */
+  cu->bevel_radius = 0.008f;
 
   Nurb *nu = MEM_callocN<Nurb>(__func__);
   nu->type = CU_BEZIER;
@@ -4136,11 +4140,16 @@ static Object *envelope_add_hook(Main *bmain,
                                  const int index,
                                  const int drawtype,
                                  const float size,
-                                 const char *name)
+                                 const char *name,
+                                 const blender::float3 &color)
 {
   Object *emp = BKE_object_add(bmain, scene, view_layer, OB_EMPTY, name);
   emp->empty_drawtype = drawtype;
   emp->empty_drawsize = size;
+  emp->color[0] = color.x;
+  emp->color[1] = color.y;
+  emp->color[2] = color.z;
+  emp->color[3] = 1.0f;
   emp->parent = parent;
   emp->partype = PAROBJECT;
   copy_v3_v3(emp->loc, local_loc);
@@ -4202,6 +4211,11 @@ static void greasepencil_envelope_add_controls(
     const float3 knot(nu->bezt[i].vec[1]);
     const float3 hr(nu->bezt[i].vec[2]);
 
+    /* Anchor = warm dot (like a control point); handles = cool dots (like handle lines). Small
+     * sizes so they read as native Bezier points, not big gizmos. */
+    const float3 anchor_color(1.0f, 0.55f, 0.1f);
+    const float3 handle_color(0.25f, 0.7f, 1.0f);
+
     /* Anchor (knot): parented to the drawing, hooks control point 3i+1 (f2). */
     Object *anchor = envelope_add_hook(bmain,
                                        scene,
@@ -4212,8 +4226,9 @@ static void greasepencil_envelope_add_controls(
                                        knot,
                                        i * 3 + 1,
                                        OB_EMPTY_SPHERE,
-                                       0.09f,
-                                       "Env Anchor");
+                                       0.035f,
+                                       "Env Anchor",
+                                       anchor_color);
     /* Tangent handles: parented to the anchor (ride along), hook 3i (f1) and 3i+2 (f3). */
     Object *eh_l = envelope_add_hook(bmain,
                                      scene,
@@ -4224,8 +4239,9 @@ static void greasepencil_envelope_add_controls(
                                      hl,
                                      i * 3,
                                      OB_CUBE,
-                                     0.04f,
-                                     "Env Handle");
+                                     0.022f,
+                                     "Env Handle",
+                                     handle_color);
     Object *eh_r = envelope_add_hook(bmain,
                                      scene,
                                      view_layer,
@@ -4235,8 +4251,9 @@ static void greasepencil_envelope_add_controls(
                                      hr,
                                      i * 3 + 2,
                                      OB_CUBE,
-                                     0.04f,
-                                     "Env Handle");
+                                     0.022f,
+                                     "Env Handle",
+                                     handle_color);
     BKE_collection_object_move(bmain, scene, coll, nullptr, anchor);
     BKE_collection_object_move(bmain, scene, coll, nullptr, eh_l);
     BKE_collection_object_move(bmain, scene, coll, nullptr, eh_r);

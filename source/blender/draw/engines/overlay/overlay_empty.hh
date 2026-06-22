@@ -119,7 +119,18 @@ class Empties : Overlay {
       return;
     }
 
-    const float4 color = res.object_wire_color(ob_ref, state);
+    float4 color = res.object_wire_color(ob_ref, state);
+    /* Nuclear: let an empty carry a custom viewport color (its Object > Viewport Display color)
+     * instead of the flat theme gray, so rig controls (e.g. the Bezier envelope handles) can be
+     * tinted. Only when unselected/unhighlighted and the color was actually changed from the white
+     * default; selected/active keep the theme highlight so picking still reads normally. */
+    const Object *empty_ob = ob_ref.object;
+    if (res.object_wire_theme_id(ob_ref, state) == TH_EMPTY &&
+        (empty_ob->color[0] < 0.999f || empty_ob->color[1] < 0.999f ||
+         empty_ob->color[2] < 0.999f))
+    {
+      color = float4(empty_ob->color[0], empty_ob->color[1], empty_ob->color[2], color[3]);
+    }
     const select::ID select_id = res.select_id(ob_ref);
     if (ob_ref.object->empty_drawtype == OB_EMPTY_IMAGE) {
       image_sync(ob_ref, select_id, manager, res, state, call_buffers_.image_buf);
