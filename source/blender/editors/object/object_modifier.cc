@@ -4111,16 +4111,70 @@ static Object *greasepencil_envelope_create_for_drawing(bContext *C,
   }
   BLI_addtail(&cu->nurb, nu);
   BKE_nurb_handles_calc(nu);
+  /* Freeze the auto-computed handles as FREE so the per-handle controls can bend the tangents
+   * without the handle solver pulling them back. */
+  for (const int k : blender::IndexRange(anchors_num)) {
+    nu->bezt[k].h1 = nu->bezt[k].h2 = HD_FREE;
+  }
 
   return curve_ob;
 }
 
-/* Add one Empty + Hook per Bezier anchor so the envelope is shaped in OBJECT MODE: grabbing an
- * empty moves its anchor (knot + both handles) of the cage, which the Contour modifier turns into
- * a deformation of the drawing. Hooks deform the spline's control points (pre-tessellation), so
- * they reach the Contour cage through `deformed_nurbs`. Both the curve and the empties are
- * identity- parented to the drawing, so each hook's `parentinv` reduces to a translation by minus
- * the anchor and the whole rig travels with the drawing object. */
+/* Create one control Empty parented to `parent`, sitting on the cage point `cage_vec`
+ * (curve-local), plus a Hook on `curve_ob` binding the single control point `index` to it. The
+ * curve and the whole control chain are identity-parented to the drawing, so the hook's
+ * `parentinv` is just T(-cage_vec) and the empty's local loc is its offset from its parent.
+ * Returns the empty. */
+static Object *envelope_add_hook(Main *bmain,
+                                 Scene *scene,
+                                 ViewLayer *view_layer,
+                                 Object *curve_ob,
+                                 Object *parent,
+                                 const blender::float3 &local_loc,
+                                 const blender::float3 &cage_vec,
+                                 const int index,
+                                 const int drawtype,
+                                 const float size)
+{
+  Object *emp = BKE_object_add(bmain, scene, view_layer, OB_EMPTY, "Env Ctrl");
+  emp->empty_drawtype = drawtype;
+  emp->empty_drawsize = size;
+  emp->parent = parent;
+  emp->partype = PAROBJECT;
+  copy_v3_v3(emp->loc, local_loc);
+  zero_v3(emp->rot);
+  unit_qt(emp->quat);
+  copy_v3_fl(emp->scale, 1.0f);
+  unit_m4(emp->parentinv);
+  emp->rotmode = parent->rotmode;
+
+  HookModifierData *hmd = (HookModifierData *)BKE_modifier_new(eModifierType_Hook);
+  BLI_addtail(&curve_ob->modifiers, hmd);
+  BKE_modifier_unique_name(&curve_ob->modifiers, (ModifierData *)hmd);
+  BKE_modifiers_persistent_uid_init(*curve_ob, hmd->modifier);
+  hmd->object = emp;
+  hmd->force = 1.0f;
+  hmd->falloff = 0.0f; /* rigid: only this control point follows the empty */
+  copy_v3_v3(hmd->cent, cage_vec);
+  int *indexar = MEM_malloc_arrayN<int>(1, __func__);
+  indexar[0] = index;
+  hmd->indexar = indexar;
+  hmd->indexar_num = 1;
+  /* parentinv = T(-cage_vec): the drawing transform cancels for the identity-parented chain. */
+  unit_m4(hmd->parentinv);
+  hmd->parentinv[3][0] = -cage_vec.x;
+  hmd->parentinv[3][1] = -cage_vec.y;
+  hmd->parentinv[3][2] = -cage_vec.z;
+
+  DEG_id_tag_update(&emp->id, ID_RECALC_TRANSFORM);
+  return emp;
+}
+
+/* Add full Bezier controls per anchor so the envelope is shaped in OBJECT MODE like a real Bezier:
+ * an anchor empty (the knot) plus two tangent-handle empties parented to it. Grabbing the anchor
+ * moves the whole point (the handles ride along); grabbing a handle bends the tangent. Each
+ * control drives one spline point through a Hook (a pre-tessellation spline deformer that reaches
+ * the Contour cage via `deformed_nurbs`). */
 static void greasepencil_envelope_add_controls(
     Main *bmain, Scene *scene, ViewLayer *view_layer, Object *gp_ob, Object *curve_ob)
 {
@@ -4132,41 +4186,18 @@ static void greasepencil_envelope_add_controls(
   }
   const int n = nu->pntsu;
   for (const int i : IndexRange(n)) {
+    const float3 hl(nu->bezt[i].vec[0]);
     const float3 knot(nu->bezt[i].vec[1]);
+    const float3 hr(nu->bezt[i].vec[2]);
 
-    Object *emp = BKE_object_add(bmain, scene, view_layer, OB_EMPTY, "Envelope Ctrl");
-    emp->empty_drawtype = OB_EMPTY_SPHERE;
-    emp->empty_drawsize = 0.12f;
-    emp->parent = gp_ob;
-    emp->partype = PAROBJECT;
-    copy_v3_v3(emp->loc, knot);
-    zero_v3(emp->rot);
-    unit_qt(emp->quat);
-    copy_v3_fl(emp->scale, 1.0f);
-    unit_m4(emp->parentinv);
-    emp->rotmode = gp_ob->rotmode;
-
-    HookModifierData *hmd = (HookModifierData *)BKE_modifier_new(eModifierType_Hook);
-    BLI_addtail(&curve_ob->modifiers, hmd);
-    BKE_modifier_unique_name(&curve_ob->modifiers, (ModifierData *)hmd);
-    BKE_modifiers_persistent_uid_init(*curve_ob, hmd->modifier);
-    hmd->object = emp;
-    hmd->force = 1.0f;
-    hmd->falloff = 0.0f; /* rigid: only this anchor's points follow the empty */
-    copy_v3_v3(hmd->cent, knot);
-    int *indexar = MEM_malloc_arrayN<int>(3, __func__);
-    indexar[0] = i * 3;     /* handle-left  (f1) */
-    indexar[1] = i * 3 + 1; /* knot         (f2) */
-    indexar[2] = i * 3 + 2; /* handle-right (f3) */
-    hmd->indexar = indexar;
-    hmd->indexar_num = 3;
-    /* parentinv = T(-knot) (the drawing transform cancels for identity-parented curve & empty). */
-    unit_m4(hmd->parentinv);
-    hmd->parentinv[3][0] = -knot.x;
-    hmd->parentinv[3][1] = -knot.y;
-    hmd->parentinv[3][2] = -knot.z;
-
-    DEG_id_tag_update(&emp->id, ID_RECALC_TRANSFORM);
+    /* Anchor (knot): parented to the drawing, hooks control point 3i+1 (f2). */
+    Object *anchor = envelope_add_hook(
+        bmain, scene, view_layer, curve_ob, gp_ob, knot, knot, i * 3 + 1, OB_EMPTY_SPHERE, 0.10f);
+    /* Tangent handles: parented to the anchor (ride along), hook 3i (f1) and 3i+2 (f3). */
+    envelope_add_hook(
+        bmain, scene, view_layer, curve_ob, anchor, hl - knot, hl, i * 3, OB_CUBE, 0.05f);
+    envelope_add_hook(
+        bmain, scene, view_layer, curve_ob, anchor, hr - knot, hr, i * 3 + 2, OB_CUBE, 0.05f);
   }
 }
 
