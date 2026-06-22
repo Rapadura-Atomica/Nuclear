@@ -980,6 +980,13 @@
     .force = 0.5f, \
   }
 
+#define _DNA_DEFAULT_GreasePencilContourModifierData \
+  { \
+    .object = NULL, \
+    .strength = 1.0f, \
+    .flag = 0, \
+  }
+
 #define _DNA_DEFAULT_GreasePencilLineartModifierData \
   { \
     .edge_types = MOD_LINEART_EDGE_FLAG_INIT_TYPE, \

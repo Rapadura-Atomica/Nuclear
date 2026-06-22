@@ -11,6 +11,7 @@
 #include "BLT_translation.hh"
 
 #include "DNA_grease_pencil_types.h"
+#include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 
 #include "RNA_define.hh"
@@ -321,6 +322,33 @@ static void rna_grease_pencil_active_mask_index_range(
   GreasePencilLayer *layer = static_cast<GreasePencilLayer *>(ptr->data);
   *min = 0;
   *max = max_ii(0, BLI_listbase_count(&layer->masks) - 1);
+}
+
+/* Nuclear: group/peg masks reuse the same collection UI but cast to the group struct. */
+static int rna_grease_pencil_group_active_mask_index_get(PointerRNA *ptr)
+{
+  GreasePencilLayerTreeGroup *group = static_cast<GreasePencilLayerTreeGroup *>(ptr->data);
+  return group->active_mask_index;
+}
+
+static void rna_grease_pencil_group_active_mask_index_set(PointerRNA *ptr, int value)
+{
+  GreasePencilLayerTreeGroup *group = static_cast<GreasePencilLayerTreeGroup *>(ptr->data);
+  group->active_mask_index = value;
+}
+
+static void rna_grease_pencil_group_active_mask_index_range(
+    PointerRNA *ptr, int *min, int *max, int * /*softmin*/, int * /*softmax*/)
+{
+  GreasePencilLayerTreeGroup *group = static_cast<GreasePencilLayerTreeGroup *>(ptr->data);
+  *min = 0;
+  *max = max_ii(0, BLI_listbase_count(&group->masks) - 1);
+}
+
+static bool rna_GreasePencilLayerMask_object_poll(PointerRNA * /*ptr*/, PointerRNA value)
+{
+  const Object *ob = static_cast<const Object *>(value.data);
+  return ob && ob->type == OB_GREASE_PENCIL;
 }
 
 static void tree_node_name_get(blender::bke::greasepencil::TreeNode &node, char *dst)
@@ -900,6 +928,30 @@ static void rna_def_grease_pencil_layer_mask(BlenderRNA *brna)
   RNA_def_property_ui_icon(prop, ICON_SELECT_INTERSECT, 1);
   RNA_def_property_ui_text(prop, "Invert", "Invert mask");
   RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
+
+  /* Nuclear: Auto-Patch (Toon Boom style) cuts only the stroke (line-art), keeping the fill. */
+  prop = RNA_def_property(srna, "use_auto_patch", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", GP_LAYER_MASK_AUTO_PATCH);
+  RNA_def_property_ui_text(
+      prop,
+      "Auto-Patch",
+      "Cut only the line-art (stroke) of the masked layer where the matte overlaps, keeping the "
+      "fill (colour-art) intact, like Toon Boom's Auto-Patch");
+  RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
+
+  /* Nuclear: optional external matte object for cross-object ("cutter") masks. */
+  prop = RNA_def_property(srna, "object", PROP_POINTER, PROP_NONE);
+  RNA_def_property_pointer_sdna(prop, nullptr, "object");
+  RNA_def_property_struct_type(prop, "Object");
+  RNA_def_property_flag(prop, PROP_EDITABLE);
+  RNA_def_property_pointer_funcs(
+      prop, nullptr, nullptr, nullptr, "rna_GreasePencilLayerMask_object_poll");
+  RNA_def_property_ui_text(
+      prop,
+      "Object",
+      "Grease Pencil object whose layer/group provides the matte. When empty, the mask refers to "
+      "a layer or group in the same object");
+  RNA_def_property_update(prop, NC_GPENCIL | ND_DATA, "rna_grease_pencil_update");
 }
 
 static void rna_def_grease_pencil_layer_masks(BlenderRNA *brna, PropertyRNA *cprop)
@@ -920,6 +972,75 @@ static void rna_def_grease_pencil_layer_masks(BlenderRNA *brna, PropertyRNA *cpr
                              "rna_grease_pencil_active_mask_index_set",
                              "rna_grease_pencil_active_mask_index_range");
   RNA_def_property_ui_text(prop, "Active Layer Mask Index", "Active index in layer mask array");
+
+  /* Nuclear: create/remove mask entries (so masks can be authored from scripts and the Peg Graph,
+   * including cross-object cutters via the `object` argument). */
+  FunctionRNA *func;
+  PropertyRNA *parm;
+
+  func = RNA_def_function(srna, "new", "rna_GreasePencilLayer_mask_new");
+  RNA_def_function_ui_description(func, "Add a new mask layer");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID);
+  parm = RNA_def_string(
+      func, "name", nullptr, MAX_NAME, "Name", "Name of the layer or group used as a mask");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_pointer(
+      func, "object", "Object", "Object", "External matte object (None for the same object)");
+  RNA_def_boolean(func, "invert", false, "Invert", "Invert the mask");
+  parm = RNA_def_pointer(func, "mask", "GreasePencilLayerMask", "", "The newly created mask");
+  RNA_def_function_return(func, parm);
+
+  func = RNA_def_function(srna, "remove", "rna_GreasePencilLayer_mask_remove");
+  RNA_def_function_ui_description(func, "Remove a mask layer");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_REPORTS);
+  parm = RNA_def_pointer(func, "mask", "GreasePencilLayerMask", "", "The mask to remove");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+  RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, ParameterFlag(0));
+}
+
+/* Nuclear: collection wrapper for the masks owned by a group/peg. Mirrors the layer mask
+ * collection but the active-index accessors cast to the group struct. */
+static void rna_def_grease_pencil_group_layer_masks(BlenderRNA *brna, PropertyRNA *cprop)
+{
+  StructRNA *srna;
+  PropertyRNA *prop;
+
+  RNA_def_property_srna(cprop, "GreasePencilGroupLayerMasks");
+  srna = RNA_def_struct(brna, "GreasePencilGroupLayerMasks", nullptr);
+  RNA_def_struct_sdna(srna, "GreasePencilLayerTreeGroup");
+  RNA_def_struct_ui_text(
+      srna, "Grease Pencil Group Mask Layers", "Collection of masking layers for a group/peg");
+
+  prop = RNA_def_property(srna, "active_mask_index", PROP_INT, PROP_UNSIGNED);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_int_funcs(prop,
+                             "rna_grease_pencil_group_active_mask_index_get",
+                             "rna_grease_pencil_group_active_mask_index_set",
+                             "rna_grease_pencil_group_active_mask_index_range");
+  RNA_def_property_ui_text(prop, "Active Group Mask Index", "Active index in group mask array");
+
+  /* Nuclear: create/remove mask entries on a group/peg. */
+  FunctionRNA *func;
+  PropertyRNA *parm;
+
+  func = RNA_def_function(srna, "new", "rna_GreasePencilLayerGroup_mask_new");
+  RNA_def_function_ui_description(func, "Add a new mask layer to the group/peg");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID);
+  parm = RNA_def_string(
+      func, "name", nullptr, MAX_NAME, "Name", "Name of the layer or group used as a mask");
+  RNA_def_parameter_flags(parm, PropertyFlag(0), PARM_REQUIRED);
+  parm = RNA_def_pointer(
+      func, "object", "Object", "Object", "External matte object (None for the same object)");
+  RNA_def_boolean(func, "invert", false, "Invert", "Invert the mask");
+  parm = RNA_def_pointer(func, "mask", "GreasePencilLayerMask", "", "The newly created mask");
+  RNA_def_function_return(func, parm);
+
+  func = RNA_def_function(srna, "remove", "rna_GreasePencilLayerGroup_mask_remove");
+  RNA_def_function_ui_description(func, "Remove a mask layer from the group/peg");
+  RNA_def_function_flag(func, FUNC_USE_SELF_ID | FUNC_USE_REPORTS);
+  parm = RNA_def_pointer(func, "mask", "GreasePencilLayerMask", "", "The mask to remove");
+  RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+  RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, ParameterFlag(0));
 }
 
 static void rna_def_grease_pencil_tree_node(BlenderRNA *brna)
@@ -1332,6 +1453,15 @@ static void rna_def_grease_pencil_layer_group(BlenderRNA *brna)
       "Transformation from this peg's space to object space, including all ancestor pegs");
   RNA_def_property_float_funcs(
       prop, "rna_GreasePencilLayerGroup_matrix_to_object_get", nullptr, nullptr);
+
+  /* Nuclear: group/peg masks. A whole group can be masked; the list is inherited by every leaf
+   * layer under the group at draw time. */
+  prop = RNA_def_property(srna, "mask_layers", PROP_COLLECTION, PROP_NONE);
+  RNA_def_property_collection_sdna(prop, nullptr, "masks", nullptr);
+  RNA_def_property_struct_type(prop, "GreasePencilLayerMask");
+  RNA_def_property_ui_text(
+      prop, "Masks", "List of layers or groups used as a matte for this group/peg");
+  rna_def_grease_pencil_group_layer_masks(brna, prop);
 }
 
 static void rna_def_grease_pencil_layer_groups(BlenderRNA *brna, PropertyRNA *cprop)

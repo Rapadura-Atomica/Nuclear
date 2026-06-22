@@ -124,10 +124,14 @@ void main()
 
   /* FIXME(fclem): Grrr. This is bad for performance but it's the easiest way to not get
    * depth written where the mask obliterate the layer. */
-  float mask = texture(gp_mask_tx, uvs).r;
-  if (mask < 0.001f) {
-    gpu_discard_fragment();
-    return;
+  /* Nuclear: Auto-Patch. Fill/colour-art drawcalls set gp_mask_bypass so they ignore the matte;
+   * only the stroke/line-art is cut where the matte covers it. */
+  if (gp_mask_bypass == 0) {
+    float mask = texture(gp_mask_tx, uvs).r;
+    if (mask < 0.001f) {
+      gpu_discard_fragment();
+      return;
+    }
   }
 
   /* We override the fragment depth using the fragment shader to ensure a constant value.

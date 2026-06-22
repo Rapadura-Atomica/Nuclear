@@ -8,8 +8,12 @@
 
 #pragma once
 
+#include <string>
+
 #include "BLI_bitmap.h"
+#include "BLI_map.hh"
 #include "BLI_memblock.h"
+#include "BLI_vector.hh"
 
 #include "DNA_shader_fx_types.h"
 #include "DRW_render.hh"
@@ -75,6 +79,17 @@ struct tVfx {
   gpu::FrameBuffer **target_fb = nullptr;
 };
 
+/* Nuclear: a cross-object "cutter" matte. The layers of another Grease Pencil object are rendered
+ * into this layer's mask buffer. */
+struct tMatteRef {
+  /** Evaluated matte object whose layers provide the matte. */
+  const Object *object;
+  /** Name of a node (layer or group) inside `object`'s layer tree, or empty for the whole object. */
+  std::string node_name;
+  /** Invert the matte (cut away the silhouette instead of keeping it). */
+  bool invert;
+};
+
 /* Temporary gpencil layer reflection used by the gpencil::Instance. */
 struct tLayer {
   /** Single linked-list. */
@@ -86,10 +101,15 @@ struct tLayer {
   /** Layer id of the mask. */
   BLI_bitmap *mask_bits;
   BLI_bitmap *mask_invert_bits;
+  /** Nuclear: cross-object mattes that also cut this layer (in addition to #mask_bits). */
+  blender::Vector<tMatteRef> mattes;
   /** Index in the layer list. Used as id for masking. */
   int layer_id;
   /** True if this pass is part of the onion skinning. */
   bool is_onion;
+  /** Nuclear: Auto-Patch. When true, the layer's mask cuts only the STROKE drawcalls; the FILL
+   * drawcalls bypass the mask (Toon Boom style line-only seam patch). */
+  bool auto_patch;
 };
 
 /* Temporary object reflection used by the gpencil::Instance. */
@@ -205,6 +225,9 @@ struct Instance final : public DrawEngine {
   struct {
     tObject *first, *last;
   } tobjects, tobjects_infront;
+  /* Nuclear: map from each synced (evaluated) object to its tObject, so cross-object mattes can find
+   * the matte object's already-built layer passes at draw time. Rebuilt every sync. */
+  blender::Map<const Object *, tObject *> object_to_tgp;
   /* Used to record whether the `tobjects` list is sorted. Do not sort drawings again in separate
    * pass rendering to avoid generating infinite lists. */
   bool is_sorted;

@@ -19,8 +19,8 @@
 #include "DNA_armature_types.h"
 #include "DNA_array_utils.hh"
 #include "DNA_curve_types.h"
-#include "DNA_grease_pencil_types.h"
 #include "DNA_defaults.h"
+#include "DNA_grease_pencil_types.h"
 #include "DNA_key_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_material_types.h"
@@ -44,15 +44,16 @@
 #include "BKE_armature.hh"
 #include "BKE_context.hh"
 #include "BLI_array.hh"
+#include "BLI_convexhull_2d.hh"
 #include "BLI_math_matrix.h"
 #include "BLI_math_matrix.hh"
 #include "BLI_math_rotation.h"
 #include "BLI_math_vector.hh"
 
 #include "BKE_attribute.hh"
+#include "BKE_collection.hh"
 #include "BKE_curve.hh"
 
-#include "MOD_grease_pencil_curve.hh"
 #include "BKE_curves.h"
 #include "BKE_curves.hh"
 #include "BKE_displist.h"
@@ -87,6 +88,8 @@
 #include "BKE_scene.hh"
 #include "BKE_softbody.h"
 #include "BKE_volume.hh"
+#include "MOD_grease_pencil_contour.hh"
+#include "MOD_grease_pencil_curve.hh"
 
 #include "BLT_translation.hh"
 
@@ -1431,11 +1434,11 @@ void modifier_register_use_selected_objects_prop(wmOperatorType *ot)
 /* Defined with the Grease Pencil Curve setup operator below; used here to auto-build the deform
  * curve the moment the modifier is added through the Add Modifier menu. */
 static bool greasepencil_curve_create_and_assign(bContext *C,
-                                                  Main *bmain,
-                                                  Scene *scene,
-                                                  Object *ob,
-                                                  GreasePencilCurveModifierData *cmd,
-                                                  ReportList *reports);
+                                                 Main *bmain,
+                                                 Scene *scene,
+                                                 Object *ob,
+                                                 GreasePencilCurveModifierData *cmd,
+                                                 ReportList *reports);
 static bool greasepencil_has_any_point(const Object *ob);
 
 static wmOperatorStatus modifier_add_exec(bContext *C, wmOperator *op)
@@ -1459,7 +1462,12 @@ static wmOperatorStatus modifier_add_exec(bContext *C, wmOperator *op)
         greasepencil_has_any_point(ob))
     {
       greasepencil_curve_create_and_assign(
-          C, bmain, scene, ob, reinterpret_cast<GreasePencilCurveModifierData *>(new_md), op->reports);
+          C,
+          bmain,
+          scene,
+          ob,
+          reinterpret_cast<GreasePencilCurveModifierData *>(new_md),
+          op->reports);
     }
     WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER | NA_ADDED, ob);
   }
@@ -3526,11 +3534,8 @@ static bool greasepencil_curve_bind_poll(bContext *C)
 /* Core of the bind: store (or clear, when `unbind`) the per-point rest-pose binding of `ob`'s
  * drawings against `curve_ob`. Shared by the manual Bind button and the one-click setup operator
  * below. Returns false (and reports) on failure. */
-static bool greasepencil_curve_bind_drawings(Depsgraph *depsgraph,
-                                             Object *ob,
-                                             Object *curve_ob,
-                                             const bool unbind,
-                                             ReportList *reports)
+static bool greasepencil_curve_bind_drawings(
+    Depsgraph *depsgraph, Object *ob, Object *curve_ob, const bool unbind, ReportList *reports)
 {
   GreasePencil &grease_pencil = *static_cast<GreasePencil *>(ob->data);
 
@@ -3540,7 +3545,8 @@ static bool greasepencil_curve_bind_drawings(Depsgraph *depsgraph,
         continue;
       }
       bke::greasepencil::Drawing &drawing = reinterpret_cast<GreasePencilDrawing *>(base)->wrap();
-      bke::MutableAttributeAccessor attributes = drawing.strokes_for_write().attributes_for_write();
+      bke::MutableAttributeAccessor attributes =
+          drawing.strokes_for_write().attributes_for_write();
       attributes.remove(greasepencil_curve::ATTR_U);
       attributes.remove(greasepencil_curve::ATTR_OFFSET);
     }
@@ -3592,12 +3598,10 @@ static bool greasepencil_curve_bind_drawings(Depsgraph *depsgraph,
     bke::MutableAttributeAccessor attributes = curves.attributes_for_write();
     attributes.remove(greasepencil_curve::ATTR_U);
     attributes.remove(greasepencil_curve::ATTR_OFFSET);
-    bke::SpanAttributeWriter<float> w_u =
-        attributes.lookup_or_add_for_write_only_span<float>(greasepencil_curve::ATTR_U,
-                                                            bke::AttrDomain::Point);
-    bke::SpanAttributeWriter<float3> w_off =
-        attributes.lookup_or_add_for_write_only_span<float3>(greasepencil_curve::ATTR_OFFSET,
-                                                             bke::AttrDomain::Point);
+    bke::SpanAttributeWriter<float> w_u = attributes.lookup_or_add_for_write_only_span<float>(
+        greasepencil_curve::ATTR_U, bke::AttrDomain::Point);
+    bke::SpanAttributeWriter<float3> w_off = attributes.lookup_or_add_for_write_only_span<float3>(
+        greasepencil_curve::ATTR_OFFSET, bke::AttrDomain::Point);
     for (const int64_t i : positions.index_range()) {
       const float3 q = math::transform_point(gp_to_curve, positions[i]);
       int best = 0;
@@ -3641,7 +3645,7 @@ static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op
     cmd->object->parent = ob;
     cmd->object->partype = PAROBJECT;
     const blender::float4x4 parentinv = blender::math::invert(ob->object_to_world());
-    copy_m4_m4(cmd->object->parentinv, reinterpret_cast<const float(*)[4]>(parentinv.ptr()));
+    copy_m4_m4(cmd->object->parentinv, reinterpret_cast<const float (*)[4]>(parentinv.ptr()));
     DEG_relations_tag_update(bmain);
     DEG_id_tag_update(&cmd->object->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
   }
@@ -3803,11 +3807,11 @@ static bool greasepencil_has_any_point(const Object *ob)
  * auto-setup performed when the modifier is added through the Add Modifier menu. Returns false
  * (and may report) when the curve could not be built, e.g. the drawing has no points yet. */
 static bool greasepencil_curve_create_and_assign(bContext *C,
-                                                  Main *bmain,
-                                                  Scene *scene,
-                                                  Object *ob,
-                                                  GreasePencilCurveModifierData *cmd,
-                                                  ReportList *reports)
+                                                 Main *bmain,
+                                                 Scene *scene,
+                                                 Object *ob,
+                                                 GreasePencilCurveModifierData *cmd,
+                                                 ReportList *reports)
 {
   Object *curve_ob = greasepencil_curve_create_for_drawing(C, ob, reports);
   if (curve_ob == nullptr) {
@@ -3829,10 +3833,10 @@ static bool greasepencil_curve_create_and_assign(bContext *C,
     WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
   }
 
-  /* Intentionally left *unbound*: the artist positions and shapes the curve over the drawing first,
-   * then presses "Bind to Rest Pose". Until bound the modifier is a pass-through, so the drawing is
-   * not influenced while the curve is being placed. Register the new object and its modifier
-   * relation so the curve shows up and can be edited right away. */
+  /* Intentionally left *unbound*: the artist positions and shapes the curve over the drawing
+   * first, then presses "Bind to Rest Pose". Until bound the modifier is a pass-through, so the
+   * drawing is not influenced while the curve is being placed. Register the new object and its
+   * modifier relation so the curve shows up and can be edited right away. */
   DEG_relations_tag_update(bmain);
   DEG_id_tag_update(&curve_ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
   DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
@@ -3900,6 +3904,444 @@ void OBJECT_OT_greasepencil_curve_setup(wmOperatorType *ot)
   ot->exec = greasepencil_curve_setup_exec;
 
   /* flags */
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
+}
+
+/** \} */
+
+/* ------------------------------------------------------------------- */
+/** \name Grease Pencil Contour (Envelope) Bind Operator
+ * \{ */
+
+static bool greasepencil_contour_bind_poll(bContext *C)
+{
+  return edit_modifier_poll_generic(C, &RNA_GreasePencilContourModifier, 0, true, false);
+}
+
+/* Store (or clear, when `unbind`) the rest contour of the Contour modifier's cage, so editing the
+ * cage afterwards deforms the art from this snapshot. Returns false (and reports) on failure. */
+static bool greasepencil_contour_bind_modifier(Depsgraph *depsgraph,
+                                               GreasePencilContourModifierData *cmd,
+                                               const bool unbind,
+                                               ReportList *reports)
+{
+  MEM_SAFE_FREE(cmd->bind_co);
+  cmd->bind_verts_num = 0;
+  cmd->flag &= ~MOD_GREASE_PENCIL_CONTOUR_BOUND;
+  if (unbind) {
+    return true;
+  }
+  if (cmd->object == nullptr) {
+    BKE_report(reports, RPT_ERROR, "Assign a cage object before binding");
+    return false;
+  }
+  const Object *cage_eval = DEG_get_evaluated(depsgraph, cmd->object);
+  blender::Vector<blender::float3> contour;
+  if (cage_eval == nullptr ||
+      !blender::modifier::greasepencil::contour_sample_cage(*cage_eval, true, contour))
+  {
+    BKE_report(reports,
+               RPT_ERROR,
+               "Cage has no usable contour (need a mesh ring or a cyclic Bezier spline)");
+    return false;
+  }
+  cmd->bind_co = MEM_malloc_arrayN<float[3]>(size_t(contour.size()), __func__);
+  for (const int i : contour.index_range()) {
+    copy_v3_v3(cmd->bind_co[i], contour[i]);
+  }
+  cmd->bind_verts_num = contour.size();
+  cmd->flag |= MOD_GREASE_PENCIL_CONTOUR_BOUND;
+  return true;
+}
+
+static wmOperatorStatus greasepencil_contour_bind_exec(bContext *C, wmOperator *op)
+{
+  Object *ob = context_active_object(C);
+  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+  GreasePencilContourModifierData *cmd = (GreasePencilContourModifierData *)
+      edit_modifier_property_get(op, ob, eModifierType_GreasePencilContour);
+
+  if (cmd == nullptr || ob->type != OB_GREASE_PENCIL) {
+    return OPERATOR_CANCELLED;
+  }
+  const bool unbind = RNA_boolean_get(op->ptr, "unbind");
+  if (!greasepencil_contour_bind_modifier(depsgraph, cmd, unbind, op->reports)) {
+    return OPERATOR_CANCELLED;
+  }
+
+  DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_contour_bind_invoke(bContext *C,
+                                                         wmOperator *op,
+                                                         const wmEvent * /*event*/)
+{
+  if (edit_modifier_invoke_properties(C, op)) {
+    return greasepencil_contour_bind_exec(C, op);
+  }
+  return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_greasepencil_contour_bind(wmOperatorType *ot)
+{
+  ot->name = "Contour Bind";
+  ot->description =
+      "Capture the cage's current contour as the rest pose, so editing the cage (e.g. a Bezier "
+      "envelope) deforms the drawing from there";
+  ot->idname = "OBJECT_OT_greasepencil_contour_bind";
+
+  ot->poll = greasepencil_contour_bind_poll;
+  ot->invoke = greasepencil_contour_bind_invoke;
+  ot->exec = greasepencil_contour_bind_exec;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
+  RNA_def_boolean(ot->srna, "unbind", false, "Unbind", "Remove the rest binding instead");
+}
+
+/** \} */
+
+/* ------------------------------------------------------------------- */
+/** \name Grease Pencil Envelope Setup Operator
+ *
+ * One click for 2D animators: traces a cyclic Bezier curve around the drawing's silhouette,
+ * assigns it to the Contour modifier and binds it. The artist then reshapes the Bezier (anchors +
+ * handles) directly and the art deforms like a Toon Boom envelope.
+ * \{ */
+
+/* Build a cyclic Bezier curve hugging the convex silhouette of `ob`'s drawing, lying in the
+ * drawing plane, parented to the drawing with an identity local transform. Returns the new curve
+ * object (active/selected) or null on failure. */
+static Object *greasepencil_envelope_create_for_drawing(bContext *C,
+                                                        Object *ob,
+                                                        ReportList *reports)
+{
+  using namespace blender;
+  const GreasePencil &grease_pencil = *static_cast<const GreasePencil *>(ob->data);
+
+  Vector<float3> pts;
+  float3 bb_min(std::numeric_limits<float>::max());
+  float3 bb_max(std::numeric_limits<float>::lowest());
+  for (const GreasePencilDrawingBase *base : grease_pencil.drawings()) {
+    if (base->type != GP_DRAWING) {
+      continue;
+    }
+    const bke::greasepencil::Drawing &drawing =
+        reinterpret_cast<const GreasePencilDrawing *>(base)->wrap();
+    for (const float3 &p : drawing.strokes().positions()) {
+      pts.append(p);
+      bb_min = math::min(bb_min, p);
+      bb_max = math::max(bb_max, p);
+    }
+  }
+  if (pts.size() < 3) {
+    BKE_report(reports, RPT_ERROR, "Grease Pencil has no points to fit an envelope to");
+    return nullptr;
+  }
+
+  /* Working plane = the two largest-extent axes (the drawing is flat along the third). */
+  const float3 ext = bb_max - bb_min;
+  int an = 0;
+  if (ext[1] < ext[an]) {
+    an = 1;
+  }
+  if (ext[2] < ext[an]) {
+    an = 2;
+  }
+  const int au = (an + 1) % 3;
+  const int av = (an + 2) % 3;
+  const float normal_co = (bb_min[an] + bb_max[an]) * 0.5f;
+
+  Vector<float2> pts2(pts.size());
+  for (const int i : pts.index_range()) {
+    pts2[i] = float2(pts[i][au], pts[i][av]);
+  }
+  Array<int> hull(pts2.size());
+  const int hull_num = BLI_convexhull_2d(pts2.as_span(), hull.data());
+  if (hull_num < 3) {
+    BKE_report(reports, RPT_ERROR, "Could not build a silhouette from the drawing");
+    return nullptr;
+  }
+
+  /* Keep the envelope editable: cap to a handful of anchors, evenly spaced around the hull. */
+  const int max_anchors = 6;
+  const int anchors_num = std::min(hull_num, max_anchors);
+  float2 centroid(0.0f, 0.0f);
+  for (const int k : IndexRange(hull_num)) {
+    centroid += pts2[hull[k]];
+  }
+  centroid /= float(hull_num);
+  const float margin = 1.08f; /* push the contour slightly outside the art so it sits inside */
+
+  Object *curve_ob = add_type(C, OB_CURVES_LEGACY, "Envelope", ob->loc, ob->rot, false, 0);
+  curve_ob->parent = ob;
+  curve_ob->partype = PAROBJECT;
+  zero_v3(curve_ob->loc);
+  zero_v3(curve_ob->rot);
+  unit_qt(curve_ob->quat);
+  copy_v3_fl(curve_ob->scale, 1.0f);
+  unit_m4(curve_ob->parentinv);
+  curve_ob->rotmode = ob->rotmode;
+
+  Curve *cu = static_cast<Curve *>(curve_ob->data);
+  cu->flag |= CU_3D;
+  /* Thin bevel so the envelope reads as a drawn Bezier line (like a native curve), not an
+   * invisible path. The Contour samples `deformed_nurbs`, which is built before the bevel's mesh
+   * conversion, so this does not affect the deformation. */
+  cu->bevel_radius = 0.008f;
+
+  Nurb *nu = MEM_callocN<Nurb>(__func__);
+  nu->type = CU_BEZIER;
+  nu->resolu = 12;
+  nu->pntsu = anchors_num;
+  nu->pntsv = 1;
+  nu->flagu = CU_NURB_CYCLIC;
+  nu->bezt = MEM_calloc_arrayN<BezTriple>(anchors_num, __func__);
+  for (const int k : IndexRange(anchors_num)) {
+    const int hk = hull[(k * hull_num) / anchors_num];
+    const float2 a = centroid + (pts2[hk] - centroid) * margin;
+    BezTriple *bezt = &nu->bezt[k];
+    for (int h = 0; h < 3; h++) {
+      bezt->vec[h][au] = a.x;
+      bezt->vec[h][av] = a.y;
+      bezt->vec[h][an] = normal_co;
+    }
+    bezt->h1 = bezt->h2 = HD_AUTO;
+    bezt->f1 = bezt->f2 = bezt->f3 = SELECT;
+    bezt->radius = 1.0f;
+    bezt->weight = 1.0f;
+  }
+  BLI_addtail(&cu->nurb, nu);
+  BKE_nurb_handles_calc(nu);
+  /* Freeze the auto-computed handles as FREE so the per-handle controls can bend the tangents
+   * without the handle solver pulling them back. */
+  for (const int k : blender::IndexRange(anchors_num)) {
+    nu->bezt[k].h1 = nu->bezt[k].h2 = HD_FREE;
+  }
+
+  return curve_ob;
+}
+
+/* Create one control Empty parented to `parent`, sitting on the cage point `cage_vec`
+ * (curve-local), plus a Hook on `curve_ob` binding the single control point `index` to it. The
+ * curve and the whole control chain are identity-parented to the drawing, so the hook's
+ * `parentinv` is just T(-cage_vec) and the empty's local loc is its offset from its parent.
+ * Returns the empty. */
+static Object *envelope_add_hook(Main *bmain,
+                                 Scene *scene,
+                                 ViewLayer *view_layer,
+                                 Object *curve_ob,
+                                 Object *parent,
+                                 const blender::float3 &local_loc,
+                                 const blender::float3 &cage_vec,
+                                 const int index,
+                                 const int drawtype,
+                                 const float size,
+                                 const char *name,
+                                 const blender::float3 &color)
+{
+  Object *emp = BKE_object_add(bmain, scene, view_layer, OB_EMPTY, name);
+  emp->empty_drawtype = drawtype;
+  emp->empty_drawsize = size;
+  emp->color[0] = color.x;
+  emp->color[1] = color.y;
+  emp->color[2] = color.z;
+  emp->color[3] = 1.0f;
+  emp->parent = parent;
+  emp->partype = PAROBJECT;
+  copy_v3_v3(emp->loc, local_loc);
+  zero_v3(emp->rot);
+  unit_qt(emp->quat);
+  copy_v3_fl(emp->scale, 1.0f);
+  unit_m4(emp->parentinv);
+  emp->rotmode = parent->rotmode;
+  /* Visual polish: draw the controls on top of the drawing and only allow translation, so the rig
+   * reads as 2D handles and can't be accidentally rotated/scaled. */
+  emp->dtx |= OB_DRAW_IN_FRONT;
+  emp->protectflag = OB_LOCK_ROT | OB_LOCK_ROTW | OB_LOCK_ROT4D | OB_LOCK_SCALE;
+
+  HookModifierData *hmd = (HookModifierData *)BKE_modifier_new(eModifierType_Hook);
+  BLI_addtail(&curve_ob->modifiers, hmd);
+  BKE_modifier_unique_name(&curve_ob->modifiers, (ModifierData *)hmd);
+  BKE_modifiers_persistent_uid_init(*curve_ob, hmd->modifier);
+  hmd->object = emp;
+  hmd->force = 1.0f;
+  hmd->falloff = 0.0f; /* rigid: only this control point follows the empty */
+  copy_v3_v3(hmd->cent, cage_vec);
+  int *indexar = MEM_malloc_arrayN<int>(1, __func__);
+  indexar[0] = index;
+  hmd->indexar = indexar;
+  hmd->indexar_num = 1;
+  /* parentinv = T(-cage_vec): the drawing transform cancels for the identity-parented chain. */
+  unit_m4(hmd->parentinv);
+  hmd->parentinv[3][0] = -cage_vec.x;
+  hmd->parentinv[3][1] = -cage_vec.y;
+  hmd->parentinv[3][2] = -cage_vec.z;
+
+  DEG_id_tag_update(&emp->id, ID_RECALC_TRANSFORM);
+  return emp;
+}
+
+/* Add full Bezier controls per anchor so the envelope is shaped in OBJECT MODE like a real Bezier:
+ * an anchor empty (the knot) plus two tangent-handle empties parented to it. Grabbing the anchor
+ * moves the whole point (the handles ride along); grabbing a handle bends the tangent. Each
+ * control drives one spline point through a Hook (a pre-tessellation spline deformer that reaches
+ * the Contour cage via `deformed_nurbs`). */
+static void greasepencil_envelope_add_controls(
+    Main *bmain, Scene *scene, ViewLayer *view_layer, Object *gp_ob, Object *curve_ob)
+{
+  using namespace blender;
+  const Curve *cu = static_cast<const Curve *>(curve_ob->data);
+  const Nurb *nu = static_cast<const Nurb *>(cu->nurb.first);
+  if (nu == nullptr || nu->bezt == nullptr) {
+    return;
+  }
+
+  /* Gather the cage and its controls under one collection so the artist can fold or hide the whole
+   * rig in the outliner without touching the drawing. */
+  Collection *coll = BKE_collection_add(bmain, scene->master_collection, "Envelope");
+  BKE_collection_object_move(bmain, scene, coll, nullptr, curve_ob);
+
+  const int n = nu->pntsu;
+  for (const int i : IndexRange(n)) {
+    const float3 hl(nu->bezt[i].vec[0]);
+    const float3 knot(nu->bezt[i].vec[1]);
+    const float3 hr(nu->bezt[i].vec[2]);
+
+    /* Anchor = warm dot (like a control point); handles = cool dots (like handle lines). Small
+     * sizes so they read as native Bezier points, not big gizmos. */
+    const float3 anchor_color(1.0f, 0.55f, 0.1f);
+    const float3 handle_color(0.25f, 0.7f, 1.0f);
+
+    /* Anchor (knot): parented to the drawing, hooks control point 3i+1 (f2). */
+    Object *anchor = envelope_add_hook(bmain,
+                                       scene,
+                                       view_layer,
+                                       curve_ob,
+                                       gp_ob,
+                                       knot,
+                                       knot,
+                                       i * 3 + 1,
+                                       OB_EMPTY_SPHERE,
+                                       0.035f,
+                                       "Env Anchor",
+                                       anchor_color);
+    /* Tangent handles: parented to the anchor (ride along), hook 3i (f1) and 3i+2 (f3). */
+    Object *eh_l = envelope_add_hook(bmain,
+                                     scene,
+                                     view_layer,
+                                     curve_ob,
+                                     anchor,
+                                     hl - knot,
+                                     hl,
+                                     i * 3,
+                                     OB_CUBE,
+                                     0.022f,
+                                     "Env Handle",
+                                     handle_color);
+    Object *eh_r = envelope_add_hook(bmain,
+                                     scene,
+                                     view_layer,
+                                     curve_ob,
+                                     anchor,
+                                     hr - knot,
+                                     hr,
+                                     i * 3 + 2,
+                                     OB_CUBE,
+                                     0.022f,
+                                     "Env Handle",
+                                     handle_color);
+    BKE_collection_object_move(bmain, scene, coll, nullptr, anchor);
+    BKE_collection_object_move(bmain, scene, coll, nullptr, eh_l);
+    BKE_collection_object_move(bmain, scene, coll, nullptr, eh_r);
+  }
+}
+
+static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator *op)
+{
+  Main *bmain = CTX_data_main(C);
+  Scene *scene = CTX_data_scene(C);
+  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+  Object *ob = context_active_object(C);
+
+  if (ob == nullptr || ob->type != OB_GREASE_PENCIL) {
+    return OPERATOR_CANCELLED;
+  }
+
+  GreasePencilContourModifierData *cmd = (GreasePencilContourModifierData *)
+      edit_modifier_property_get(op, ob, eModifierType_GreasePencilContour);
+  if (cmd == nullptr) {
+    cmd = (GreasePencilContourModifierData *)modifier_add(
+        op->reports, bmain, scene, ob, nullptr, eModifierType_GreasePencilContour);
+    if (cmd == nullptr) {
+      return OPERATOR_CANCELLED;
+    }
+  }
+  if (cmd->object != nullptr) {
+    BKE_report(op->reports, RPT_ERROR, "The modifier already has a cage assigned");
+    return OPERATOR_CANCELLED;
+  }
+
+  ViewLayer *view_layer = CTX_data_view_layer(C);
+
+  Object *curve_ob = greasepencil_envelope_create_for_drawing(C, ob, op->reports);
+  if (curve_ob == nullptr) {
+    return OPERATOR_CANCELLED;
+  }
+  cmd->object = curve_ob;
+
+  /* Bind to the freshly built silhouette (its original geometry == the rest), so the envelope
+   * starts as a no-op and reshaping it immediately deforms the art. */
+  greasepencil_contour_bind_modifier(depsgraph, cmd, false, op->reports);
+
+  /* Object-mode controls: one Empty + Hook per anchor, so the artist grabs the empties to deform
+   * without entering Edit Mode. */
+  greasepencil_envelope_add_controls(bmain, scene, view_layer, ob, curve_ob);
+
+  /* add_type()/BKE_object_add made a new object active; re-activate the Grease Pencil so its
+   * modifier panel stays in view. */
+  BKE_view_layer_synced_ensure(scene, view_layer);
+  if (Base *gp_base = BKE_view_layer_base_find(view_layer, ob)) {
+    base_activate(C, gp_base);
+    WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+  }
+
+  DEG_relations_tag_update(bmain);
+  DEG_id_tag_update(&curve_ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
+  DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+  WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, curve_ob);
+  BKE_report(op->reports,
+             RPT_INFO,
+             "Created a Bezier envelope - reshape it (Edit Mode) to deform the drawing");
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_envelope_setup_invoke(bContext *C,
+                                                           wmOperator *op,
+                                                           const wmEvent * /*event*/)
+{
+  if (edit_modifier_invoke_properties(C, op)) {
+    return greasepencil_envelope_setup_exec(C, op);
+  }
+  return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_greasepencil_envelope_setup(wmOperatorType *ot)
+{
+  ot->name = "Add Envelope";
+  ot->description =
+      "Trace a Bezier curve around the drawing's silhouette, assign it to this Contour modifier "
+      "and bind it, ready to reshape as an envelope";
+  ot->idname = "OBJECT_OT_greasepencil_envelope_setup";
+
+  ot->poll = greasepencil_contour_bind_poll;
+  ot->invoke = greasepencil_envelope_setup_invoke;
+  ot->exec = greasepencil_envelope_setup_exec;
+
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
   edit_modifier_properties(ot);
 }
