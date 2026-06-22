@@ -13,6 +13,7 @@
 #include "BLI_bitmap.h"
 #include "BLI_map.hh"
 #include "BLI_memblock.h"
+#include "BLI_set.hh"
 #include "BLI_vector.hh"
 
 #include "DNA_shader_fx_types.h"
@@ -96,6 +97,11 @@ struct tLayer {
   struct tLayer *next;
   /** Geometry pass (draw all strokes). */
   std::unique_ptr<PassSimple> geom_ps;
+  /** Nuclear (auto-patch fidelity): fill-only mirror of #geom_ps. Same setup/binds, but only the
+   * FILL (colour-art) drawcalls. Submitted instead of #geom_ps when this layer is used as a
+   * cross-object matte, so the seam patch follows the colour border (Harmony style), not the
+   * stroke. */
+  std::unique_ptr<PassSimple> fill_ps;
   /** Blend pass to composite onto the target buffer (blends modes). NULL if not needed. */
   std::unique_ptr<PassSimple> blend_ps;
   /** Layer id of the mask. */
@@ -228,6 +234,12 @@ struct Instance final : public DrawEngine {
   /* Nuclear: map from each synced (evaluated) object to its tObject, so cross-object mattes can find
    * the matte object's already-built layer passes at draw time. Rebuilt every sync. */
   blender::Map<const Object *, tObject *> object_to_tgp;
+  /* Nuclear (Auto-Patch Mod B, half 2): original-DNA pointers of every object referenced as a
+   * cross-object matte during this sync (collected in #apply_mask_list). After the regular sync,
+   * any matte missing from #object_to_tgp (because it is hidden / not iterated by the draw loop)
+   * is synced in a deferred "cache only" pass so its layer passes exist at draw time without the
+   * matte itself being drawn. Rebuilt every sync. */
+  blender::Set<const Object *> referenced_mattes;
   /* Used to record whether the `tobjects` list is sorted. Do not sort drawings again in separate
    * pass rendering to avoid generating infinite lists. */
   bool is_sorted;
@@ -354,7 +366,14 @@ struct Instance final : public DrawEngine {
   static float2 antialiasing_sample_get(int sample_index, int sample_count);
 
  private:
-  tObject *object_sync_do(Object *ob, ResourceHandleRange res_handle);
+  /* Nuclear (Auto-Patch Mod B): when `cache_only` is true the object is built into #object_to_tgp
+   * and its layer passes are created, but it is NOT appended to the draw lists (`tobjects` /
+   * `tobjects_infront`). Used by the deferred matte pass so a hidden matte can still cut. */
+  tObject *object_sync_do(Object *ob, ResourceHandleRange res_handle, bool cache_only = false);
+
+  /* Nuclear (Auto-Patch Mod B, half 2): deferred pass that caches referenced mattes that were not
+   * synced normally (hidden occluders). Must run after all regular object_sync calls. */
+  void sync_referenced_mattes();
 
   /* Check if the passed in layer is used by any other layer as a mask (in the viewlayer). */
   bool is_used_as_layer_mask_in_viewlayer(const GreasePencil &grease_pencil,
@@ -426,7 +445,8 @@ struct GpencilBatchCache *gpencil_batch_cache_get(struct Object *ob, int cfra);
 tObject *gpencil_object_cache_add(Instance *inst,
                                   Object *ob,
                                   bool is_stroke_order_3d,
-                                  Bounds<float3> bounds);
+                                  Bounds<float3> bounds,
+                                  bool cache_only = false);
 void gpencil_object_cache_sort(Instance *inst);
 
 tLayer *grease_pencil_layer_cache_get(tObject *tgp_ob, int layer_id, bool skip_onion);

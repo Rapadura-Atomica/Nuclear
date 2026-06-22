@@ -117,9 +117,17 @@ void main()
   float2 uvs = gl_FragCoord.xy / fb_size;
   /* Manual depth test */
   float scene_depth = texture(gp_scene_depth_tx, uvs).r;
-  if (gl_FragCoord.z > scene_depth) {
-    gpu_discard_fragment();
-    return;
+  /* Nuclear: Auto-Patch. When this pass is rendered as a cross-object matte (the fill-only pass, with
+   * gp_in_mask_pass=1) it is a silhouette drawn into an isolated mask buffer, not real scene geometry.
+   * It must NOT be clipped by the scene depth: otherwise a VISIBLE occluder (whose own geometry is in
+   * the scene depth) clips its own matte in the overlap region, leaving the mask empty there and the
+   * patched stroke uncut. Skipping the scene depth test here is what makes the cut work when both the
+   * patched part and the occluder are visible (not only when the occluder is hidden). */
+  if (gp_in_mask_pass == 0) {
+    if (gl_FragCoord.z > scene_depth) {
+      gpu_discard_fragment();
+      return;
+    }
   }
 
   /* FIXME(fclem): Grrr. This is bad for performance but it's the easiest way to not get

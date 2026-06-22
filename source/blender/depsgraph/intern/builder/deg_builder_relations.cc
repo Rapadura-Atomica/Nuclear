@@ -2882,6 +2882,45 @@ void DepsgraphRelationBuilder::build_object_data_geometry_datablock(ID *obdata)
           add_relation(transform_key, geometry_key, "Grease Pencil Layer Object Parent");
         }
       }
+
+      /* Nuclear (Auto-Patch Mod B, half 1): cross-object cutter mattes. A layer/group mask whose
+       * `object` points at another Grease Pencil object uses that object's drawing as a matte at
+       * draw time. Model the dependency exactly like `bevobj`/`taperobj` above so the matte object
+       * is force-evaluated (geometry + transform) and its result is ready before this object's
+       * geometry is evaluated -- even when the matte is hidden in the viewport (it is never reached
+       * by the regular draw iterator, the engine fetches its cached layers explicitly).
+       *
+       * Self-patch (Mod C: the mask object is the very object that owns this datablock) needs no
+       * relation -- the active object is already evaluated/synced. We cannot see the owning Object*
+       * here (only the obdata), and several objects may share one GP datablock, so the guard is by
+       * datablock identity: skip if the matte object's own data IS this datablock. Limitation: if a
+       * DIFFERENT object happens to share this same GP datablock and is used as a matte, that
+       * (legitimate cross-object) relation is also skipped; this is an accepted edge case for shared
+       * GP data and avoids a self-referential relation. */
+      auto build_matte_relation = [&](const GreasePencilLayerMask *mask) {
+        if (mask->object == nullptr) {
+          return;
+        }
+        /* Skip self-patch / shared-datablock self reference (see note above). */
+        if (mask->object->data == obdata) {
+          return;
+        }
+        ComponentKey matte_geom_key(&mask->object->id, NodeType::GEOMETRY);
+        add_relation(matte_geom_key, geometry_key, "GP Auto-Patch Matte Geometry");
+        ComponentKey matte_tfm_key(&mask->object->id, NodeType::TRANSFORM);
+        add_relation(matte_tfm_key, geometry_key, "GP Auto-Patch Matte Transform");
+        build_object(mask->object);
+      };
+      for (const bke::greasepencil::Layer *layer : grease_pencil.layers()) {
+        LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &layer->masks) {
+          build_matte_relation(mask);
+        }
+      }
+      for (const bke::greasepencil::LayerGroup *group : grease_pencil.layer_groups()) {
+        LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &group->masks) {
+          build_matte_relation(mask);
+        }
+      }
       break;
     }
     default:
