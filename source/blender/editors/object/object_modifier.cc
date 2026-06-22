@@ -4066,7 +4066,7 @@ static Object *greasepencil_envelope_create_for_drawing(bContext *C,
   }
 
   /* Keep the envelope editable: cap to a handful of anchors, evenly spaced around the hull. */
-  const int max_anchors = 16;
+  const int max_anchors = 8;
   const int anchors_num = std::min(hull_num, max_anchors);
   float2 centroid(0.0f, 0.0f);
   for (const int k : IndexRange(hull_num)) {
@@ -4115,6 +4115,61 @@ static Object *greasepencil_envelope_create_for_drawing(bContext *C,
   return curve_ob;
 }
 
+/* Add one Empty + Hook per Bezier anchor so the envelope is shaped in OBJECT MODE: grabbing an
+ * empty moves its anchor (knot + both handles) of the cage, which the Contour modifier turns into
+ * a deformation of the drawing. Hooks deform the spline's control points (pre-tessellation), so
+ * they reach the Contour cage through `deformed_nurbs`. Both the curve and the empties are
+ * identity- parented to the drawing, so each hook's `parentinv` reduces to a translation by minus
+ * the anchor and the whole rig travels with the drawing object. */
+static void greasepencil_envelope_add_controls(
+    Main *bmain, Scene *scene, ViewLayer *view_layer, Object *gp_ob, Object *curve_ob)
+{
+  using namespace blender;
+  const Curve *cu = static_cast<const Curve *>(curve_ob->data);
+  const Nurb *nu = static_cast<const Nurb *>(cu->nurb.first);
+  if (nu == nullptr || nu->bezt == nullptr) {
+    return;
+  }
+  const int n = nu->pntsu;
+  for (const int i : IndexRange(n)) {
+    const float3 knot(nu->bezt[i].vec[1]);
+
+    Object *emp = BKE_object_add(bmain, scene, view_layer, OB_EMPTY, "Envelope Ctrl");
+    emp->empty_drawtype = OB_EMPTY_SPHERE;
+    emp->empty_drawsize = 0.12f;
+    emp->parent = gp_ob;
+    emp->partype = PAROBJECT;
+    copy_v3_v3(emp->loc, knot);
+    zero_v3(emp->rot);
+    unit_qt(emp->quat);
+    copy_v3_fl(emp->scale, 1.0f);
+    unit_m4(emp->parentinv);
+    emp->rotmode = gp_ob->rotmode;
+
+    HookModifierData *hmd = (HookModifierData *)BKE_modifier_new(eModifierType_Hook);
+    BLI_addtail(&curve_ob->modifiers, hmd);
+    BKE_modifier_unique_name(&curve_ob->modifiers, (ModifierData *)hmd);
+    BKE_modifiers_persistent_uid_init(*curve_ob, hmd->modifier);
+    hmd->object = emp;
+    hmd->force = 1.0f;
+    hmd->falloff = 0.0f; /* rigid: only this anchor's points follow the empty */
+    copy_v3_v3(hmd->cent, knot);
+    int *indexar = MEM_malloc_arrayN<int>(3, __func__);
+    indexar[0] = i * 3;     /* handle-left  (f1) */
+    indexar[1] = i * 3 + 1; /* knot         (f2) */
+    indexar[2] = i * 3 + 2; /* handle-right (f3) */
+    hmd->indexar = indexar;
+    hmd->indexar_num = 3;
+    /* parentinv = T(-knot) (the drawing transform cancels for identity-parented curve & empty). */
+    unit_m4(hmd->parentinv);
+    hmd->parentinv[3][0] = -knot.x;
+    hmd->parentinv[3][1] = -knot.y;
+    hmd->parentinv[3][2] = -knot.z;
+
+    DEG_id_tag_update(&emp->id, ID_RECALC_TRANSFORM);
+  }
+}
+
 static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator *op)
 {
   Main *bmain = CTX_data_main(C);
@@ -4140,6 +4195,8 @@ static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator
     return OPERATOR_CANCELLED;
   }
 
+  ViewLayer *view_layer = CTX_data_view_layer(C);
+
   Object *curve_ob = greasepencil_envelope_create_for_drawing(C, ob, op->reports);
   if (curve_ob == nullptr) {
     return OPERATOR_CANCELLED;
@@ -4150,10 +4207,12 @@ static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator
    * starts as a no-op and reshaping it immediately deforms the art. */
   greasepencil_contour_bind_modifier(depsgraph, cmd, false, op->reports);
 
-  /* add_type() made the new curve active; re-activate the Grease Pencil so its modifier panel
-   * stays in view. The curve remains selected so the artist can click it and reshape right away.
-   */
-  ViewLayer *view_layer = CTX_data_view_layer(C);
+  /* Object-mode controls: one Empty + Hook per anchor, so the artist grabs the empties to deform
+   * without entering Edit Mode. */
+  greasepencil_envelope_add_controls(bmain, scene, view_layer, ob, curve_ob);
+
+  /* add_type()/BKE_object_add made a new object active; re-activate the Grease Pencil so its
+   * modifier panel stays in view. */
   BKE_view_layer_synced_ensure(scene, view_layer);
   if (Base *gp_base = BKE_view_layer_base_find(view_layer, ob)) {
     base_activate(C, gp_base);
