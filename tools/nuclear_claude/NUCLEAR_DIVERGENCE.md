@@ -42,6 +42,7 @@ revisão se as APIs do core que eles consomem mudarem.
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
 - `scripts/startup/nuclear_squash_gizmo.py` — gizmos de squash & stretch (anchor/tip) no viewport
+- `scripts/startup/nuclear_cell_library.py` — Drawing Substitution (Fase 1): banco de cells fora-de-range + slider/atalhos (ver `CellLibraryFeature.md`)
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
 
 ### Application Template Nuclear (a "costura" de UI — P0/P1/P2)
@@ -131,6 +132,7 @@ Feita **inteiramente dentro de arquivos do fork que já existem** + um startup n
 - `tools/nuclear_claude/CLAUDE.md` — contexto canônico do projeto (sincronizado entre máquinas)
 - `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md` — este registro
 - `tools/nuclear_claude/NUCLEAR_UI_LAYOUT.md` — spec do P2 (layout-alvo do mockup)
+- `tools/nuclear_claude/CellLibraryFeature.md` — plano da Drawing Substitution + biblioteca de cells (estilo Toon Boom)
 - `tools/nuclear_claude/readme.txt` — notas para devs humanos
 
 > **Diretriz:** novas features Nuclear devem nascer aqui (arquivos `*_pegrig.*`,
