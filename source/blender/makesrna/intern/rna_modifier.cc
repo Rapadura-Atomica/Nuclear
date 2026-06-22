@@ -1119,8 +1119,28 @@ RNA_MOD_OBJECT_SET(Shrinkwrap, target, OB_MESH);
 RNA_MOD_OBJECT_SET(Shrinkwrap, auxTarget, OB_MESH);
 RNA_MOD_OBJECT_SET(SurfaceDeform, target, OB_MESH);
 RNA_MOD_OBJECT_SET(GreasePencilMirror, object, OB_EMPTY);
-RNA_MOD_OBJECT_SET(GreasePencilContour, object, OB_MESH);
 RNA_MOD_OBJECT_SET(GreasePencilTint, object, OB_EMPTY);
+
+/* The Contour cage accepts either a mesh (vertex ring) or a legacy Bezier curve (tessellated
+ * contour), so it needs a custom setter instead of the single-type RNA_MOD_OBJECT_SET. */
+static void rna_GreasePencilContourModifier_object_set(PointerRNA *ptr,
+                                                       PointerRNA value,
+                                                       ReportList * /*reports*/)
+{
+  GreasePencilContourModifierData *tmd = (GreasePencilContourModifierData *)ptr->data;
+  Object *ob = (Object *)value.data;
+  Object *self = (Object *)ptr->owner_id;
+
+  if (self && ob == self) {
+    return;
+  }
+  if (ob == nullptr || ob->type == OB_MESH || ob->type == OB_CURVES_LEGACY) {
+    if (ob != nullptr) {
+      id_lib_extern((ID *)ob);
+    }
+    tmd->object = ob;
+  }
+}
 RNA_MOD_OBJECT_SET(GreasePencilLattice, object, OB_LATTICE);
 RNA_MOD_OBJECT_SET(GreasePencilCurve, object, OB_CURVES_LEGACY);
 RNA_MOD_OBJECT_SET(GreasePencilWeightProximity, object, OB_EMPTY);
@@ -9911,11 +9931,8 @@ static void rna_def_modifier_grease_pencil_curve(BlenderRNA *brna)
 
   prop = RNA_def_property(srna, "object", PROP_POINTER, PROP_NONE);
   RNA_def_property_ui_text(prop, "Object", "Curve object to deform with");
-  RNA_def_property_pointer_funcs(prop,
-                                 nullptr,
-                                 "rna_GreasePencilCurveModifier_object_set",
-                                 nullptr,
-                                 "rna_Curve_object_poll");
+  RNA_def_property_pointer_funcs(
+      prop, nullptr, "rna_GreasePencilCurveModifier_object_set", nullptr, "rna_Curve_object_poll");
   RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
   RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
 
@@ -10201,8 +10218,10 @@ static void rna_def_modifier_grease_pencil_contour(BlenderRNA *brna)
   RNA_define_lib_overridable(true);
 
   prop = RNA_def_property(srna, "object", PROP_POINTER, PROP_NONE);
-  RNA_def_property_ui_text(
-      prop, "Cage Object", "Mesh object whose vertices form the deforming contour");
+  RNA_def_property_ui_text(prop,
+                           "Cage Object",
+                           "Mesh (vertex ring) or Bezier curve (cyclic spline) whose contour "
+                           "deforms the strokes");
   RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
   RNA_def_property_pointer_funcs(
       prop, nullptr, "rna_GreasePencilContourModifier_object_set", nullptr, nullptr);

@@ -7,28 +7,37 @@
  *
  * Contour (envelope) deformer for Grease Pencil, Toon Boom style.
  *
- * A "cage" mesh object provides a ring of contour points around the drawing. Each stroke point is
- * bound to the cage with 2D Mean Value Coordinates (Hormann & Floater 2006): a normalized,
- * partition-of-unity weighting against every cage vertex. Moving the cage (e.g. via an armature on
- * the cage mesh) deforms the art as `p' = sum_i w_i * v'_i`.
+ * A "cage" object provides a ring of contour points around the drawing. The cage can be either a
+ * MESH (its vertices, in index order, are the contour) or a legacy BEZIER CURVE (its first cyclic
+ * Bezier spline is tessellated into a closed polygon, so anchors + handles drive the contour like
+ * a Toon Boom envelope). Each stroke point is bound to that polygon with 2D Mean Value Coordinates
+ * (Hormann & Floater 2006): a normalized, partition-of-unity weighting against every cage vertex.
+ * Moving the cage (armature, hooks, drivers on the Bezier handles, ...) deforms the art as
+ * `p' = sum_i w_i * v'_i`.
  *
- * The cage's REST shape is the cage object's original (un-evaluated) mesh; the DEFORMED shape is
- * its evaluated mesh (after the cage's own modifier stack). Because MVC reproduces the rest point
- * exactly when the cage is at rest, no bind data needs to be stored.
+ * The cage's REST shape is the cage object's original (un-evaluated) geometry; the DEFORMED shape
+ * is its evaluated geometry (after the cage's own modifier stack / drivers). Because MVC
+ * reproduces the rest point exactly when the cage is at rest, no bind data needs to be stored. The
+ * rest and deformed contours always have the same point count (same vertex order for a mesh; same
+ * spline topology and resolution for a curve), so they correspond index-for-index.
  *
- * NOTE (v1): weights are recomputed every evaluation (no caching yet), the cage is treated as a
- * polygon (no Bezier tessellation yet), and influence is global MVC (no localized zone of
- * influence). These are the planned follow-ups.
+ * NOTE: weights are recomputed every evaluation (no caching yet) and influence is global MVC (no
+ * localized zone of influence yet). These are the planned follow-ups.
  */
 
+#include <algorithm>
+
 #include "BLI_index_mask.hh"
+#include "BLI_listbase.h"
 #include "BLI_math_matrix.hh"
 #include "BLI_math_vector.hh"
+#include "BLI_vector.hh"
 
 #include "BLT_translation.hh"
 
 #include "BLO_read_write.hh"
 
+#include "DNA_curve_types.h"
 #include "DNA_defaults.h"
 #include "DNA_mesh_types.h"
 #include "DNA_modifier_types.h"
@@ -37,6 +46,7 @@
 #include "RNA_access.hh"
 #include "RNA_prototypes.hh"
 
+#include "BKE_curve.hh"
 #include "BKE_curves.hh"
 #include "BKE_geometry_set.hh"
 #include "BKE_grease_pencil.hh"
@@ -44,6 +54,7 @@
 #include "BKE_mesh.hh"
 #include "BKE_modifier.hh"
 #include "BKE_object.hh"
+#include "BKE_object_types.hh"
 
 #include "DEG_depsgraph_query.hh"
 
@@ -84,7 +95,10 @@ static void free_data(ModifierData *md)
 static bool is_disabled(const Scene * /*scene*/, ModifierData *md, bool /*use_render_params*/)
 {
   auto *cmd = reinterpret_cast<GreasePencilContourModifierData *>(md);
-  return (cmd->object == nullptr) || (cmd->object->type != OB_MESH);
+  if (cmd->object == nullptr) {
+    return true;
+  }
+  return (cmd->object->type != OB_MESH) && (cmd->object->type != OB_CURVES_LEGACY);
 }
 
 static void update_depsgraph(ModifierData *md, const ModifierUpdateDepsgraphContext *ctx)
@@ -171,6 +185,47 @@ static float2 mvc_deform_point(const float2 &p,
   return num / den;
 }
 
+/**
+ * Tessellate the first cyclic Bezier spline of a legacy curve into a closed polygon.
+ *
+ * Each segment (including the wrap-around from the last anchor back to the first) is sampled with
+ * the spline's own preview resolution `resolu`; the end of each segment is left to the next
+ * segment's start, so the result is a non-duplicated ring of `pntsu * resolu` points in
+ * curve-local space. Returns false if no usable cyclic Bezier spline is found.
+ */
+static bool tessellate_bezier_cage(const ListBase &nurbs, Vector<float3> &out)
+{
+  LISTBASE_FOREACH (const Nurb *, nu, &nurbs) {
+    if (nu->type != CU_BEZIER || nu->bezt == nullptr || nu->pntsu < 2) {
+      continue;
+    }
+    if ((nu->flagu & CU_NURB_CYCLIC) == 0) {
+      /* The contour must be a closed loop. */
+      continue;
+    }
+    const int n = nu->pntsu;
+    const int resolu = std::max<int>(nu->resolu, 1);
+    out.reserve(n * resolu);
+    for (const int i : IndexRange(n)) {
+      const BezTriple &b0 = nu->bezt[i];
+      const BezTriple &b1 = nu->bezt[(i + 1) % n];
+      /* Cubic Bezier control points: knot, right handle, next left handle, next knot. */
+      const float3 p0(b0.vec[1]);
+      const float3 p1(b0.vec[2]);
+      const float3 p2(b1.vec[0]);
+      const float3 p3(b1.vec[1]);
+      for (const int s : IndexRange(resolu)) {
+        const float t = float(s) / float(resolu);
+        const float mt = 1.0f - t;
+        out.append(mt * mt * mt * p0 + 3.0f * mt * mt * t * p1 + 3.0f * mt * t * t * p2 +
+                   t * t * t * p3);
+      }
+    }
+    return out.size() >= 3;
+  }
+  return false;
+}
+
 static void deform_drawing(const GreasePencilContourModifierData &cmd,
                            const Object &ob,
                            bke::greasepencil::Drawing &drawing,
@@ -238,24 +293,66 @@ static void modify_geometry_set(ModifierData *md,
     return;
   }
 
-  /* Rest cage = original (un-evaluated) mesh; deformed cage = evaluated mesh. */
+  /* Rest cage = original (un-evaluated) geometry; deformed cage = evaluated geometry. */
   const Object *cage_orig = DEG_get_original(cmd->object);
   Object *cage_eval = DEG_get_evaluated(ctx->depsgraph, cmd->object);
-  if (cage_orig == nullptr || cage_eval == nullptr || cage_orig->type != OB_MESH) {
-    return;
-  }
-  const Mesh *rest_mesh = static_cast<const Mesh *>(cage_orig->data);
-  const Mesh *def_mesh = BKE_modifier_get_evaluated_mesh_from_evaluated_object(cage_eval);
-  if (rest_mesh == nullptr || def_mesh == nullptr) {
-    return;
-  }
-  const int cage_num = rest_mesh->verts_num;
-  if (cage_num < 3 || def_mesh->verts_num != cage_num) {
+  if (cage_orig == nullptr || cage_eval == nullptr) {
     return;
   }
 
-  const Span<float3> rest_pos = rest_mesh->vert_positions();
-  const Span<float3> def_pos = def_mesh->vert_positions();
+  /* Both contours are gathered into these spans (mesh: vertex spans; curve: tessellated rings).
+   * They are guaranteed to correspond index-for-index. */
+  Span<float3> rest_pos;
+  Span<float3> def_pos;
+  Vector<float3> rest_curve;
+  Vector<float3> def_curve;
+
+  if (cage_orig->type == OB_MESH) {
+    const Mesh *rest_mesh = static_cast<const Mesh *>(cage_orig->data);
+    const Mesh *def_mesh = BKE_modifier_get_evaluated_mesh_from_evaluated_object(cage_eval);
+    if (rest_mesh == nullptr || def_mesh == nullptr) {
+      return;
+    }
+    if (rest_mesh->verts_num != def_mesh->verts_num) {
+      return;
+    }
+    rest_pos = rest_mesh->vert_positions();
+    def_pos = def_mesh->vert_positions();
+  }
+  else if (cage_orig->type == OB_CURVES_LEGACY) {
+    /* Rest contour from the original control points; deformed contour from the cage's own deform
+     * stack. Spline deformers (Armature/Hook/Lattice with "Apply on Spline", or Hook/Softbody/
+     * MeshDeform implicitly) write the deformed control points into `deformed_nurbs`; fall back to
+     * the evaluated curve's own nurbs otherwise. NOTE: a driver/keyframe directly on a control
+     * point also moves the *original* datablock (it becomes the rest), so it is a no-op here --
+     * the cage must be deformed by a modifier, exactly like the mesh-cage path. */
+    const Curve *rest_cu = static_cast<const Curve *>(cage_orig->data);
+    const Curve *eval_cu = static_cast<const Curve *>(cage_eval->data);
+    const ListBase *def_nurbs = &eval_cu->nurb;
+    if (cage_eval->runtime != nullptr && cage_eval->runtime->curve_cache != nullptr &&
+        !BLI_listbase_is_empty(&cage_eval->runtime->curve_cache->deformed_nurbs))
+    {
+      def_nurbs = &cage_eval->runtime->curve_cache->deformed_nurbs;
+    }
+    if (!tessellate_bezier_cage(rest_cu->nurb, rest_curve) ||
+        !tessellate_bezier_cage(*def_nurbs, def_curve))
+    {
+      return;
+    }
+    if (rest_curve.size() != def_curve.size()) {
+      return;
+    }
+    rest_pos = rest_curve;
+    def_pos = def_curve;
+  }
+  else {
+    return;
+  }
+
+  const int cage_num = rest_pos.size();
+  if (cage_num < 3) {
+    return;
+  }
 
   /* Working plane = the two cage-local axes of largest extent (normal axis is preserved). */
   float3 mn = rest_pos[0];
@@ -300,7 +397,8 @@ static void modify_geometry_set(ModifierData *md,
       modifier::greasepencil::get_drawings_for_write(grease_pencil, layer_mask, current_frame);
 
   threading::parallel_for_each(drawings, [&](bke::greasepencil::Drawing *drawing) {
-    deform_drawing(*cmd, *ctx->object, *drawing, cage2_rest, cage2_def, au, av, gp_to_cage, cage_to_gp);
+    deform_drawing(
+        *cmd, *ctx->object, *drawing, cage2_rest, cage2_def, au, av, gp_to_cage, cage_to_gp);
   });
 }
 
