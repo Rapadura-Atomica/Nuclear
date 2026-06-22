@@ -3122,7 +3122,8 @@ typedef struct GreasePencilContourModifierData {
   ModifierData modifier;
   GreasePencilModifierInfluenceData influence;
 
-  /** Cage object: a mesh whose vertices form the deforming contour. */
+  /** Cage object: a mesh (vertex ring) or legacy Bezier curve (cyclic spline) forming the contour.
+   */
   struct Object *object;
   /** Overall deformation strength. */
   float strength;
