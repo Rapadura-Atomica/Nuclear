@@ -51,6 +51,7 @@
 #include "BLI_math_vector.hh"
 
 #include "BKE_attribute.hh"
+#include "BKE_collection.hh"
 #include "BKE_curve.hh"
 
 #include "BKE_curves.h"
@@ -4066,7 +4067,7 @@ static Object *greasepencil_envelope_create_for_drawing(bContext *C,
   }
 
   /* Keep the envelope editable: cap to a handful of anchors, evenly spaced around the hull. */
-  const int max_anchors = 8;
+  const int max_anchors = 6;
   const int anchors_num = std::min(hull_num, max_anchors);
   float2 centroid(0.0f, 0.0f);
   for (const int k : IndexRange(hull_num)) {
@@ -4134,9 +4135,10 @@ static Object *envelope_add_hook(Main *bmain,
                                  const blender::float3 &cage_vec,
                                  const int index,
                                  const int drawtype,
-                                 const float size)
+                                 const float size,
+                                 const char *name)
 {
-  Object *emp = BKE_object_add(bmain, scene, view_layer, OB_EMPTY, "Env Ctrl");
+  Object *emp = BKE_object_add(bmain, scene, view_layer, OB_EMPTY, name);
   emp->empty_drawtype = drawtype;
   emp->empty_drawsize = size;
   emp->parent = parent;
@@ -4147,6 +4149,10 @@ static Object *envelope_add_hook(Main *bmain,
   copy_v3_fl(emp->scale, 1.0f);
   unit_m4(emp->parentinv);
   emp->rotmode = parent->rotmode;
+  /* Visual polish: draw the controls on top of the drawing and only allow translation, so the rig
+   * reads as 2D handles and can't be accidentally rotated/scaled. */
+  emp->dtx |= OB_DRAW_IN_FRONT;
+  emp->protectflag = OB_LOCK_ROT | OB_LOCK_ROTW | OB_LOCK_ROT4D | OB_LOCK_SCALE;
 
   HookModifierData *hmd = (HookModifierData *)BKE_modifier_new(eModifierType_Hook);
   BLI_addtail(&curve_ob->modifiers, hmd);
@@ -4184,6 +4190,12 @@ static void greasepencil_envelope_add_controls(
   if (nu == nullptr || nu->bezt == nullptr) {
     return;
   }
+
+  /* Gather the cage and its controls under one collection so the artist can fold or hide the whole
+   * rig in the outliner without touching the drawing. */
+  Collection *coll = BKE_collection_add(bmain, scene->master_collection, "Envelope");
+  BKE_collection_object_move(bmain, scene, coll, nullptr, curve_ob);
+
   const int n = nu->pntsu;
   for (const int i : IndexRange(n)) {
     const float3 hl(nu->bezt[i].vec[0]);
@@ -4191,13 +4203,43 @@ static void greasepencil_envelope_add_controls(
     const float3 hr(nu->bezt[i].vec[2]);
 
     /* Anchor (knot): parented to the drawing, hooks control point 3i+1 (f2). */
-    Object *anchor = envelope_add_hook(
-        bmain, scene, view_layer, curve_ob, gp_ob, knot, knot, i * 3 + 1, OB_EMPTY_SPHERE, 0.10f);
+    Object *anchor = envelope_add_hook(bmain,
+                                       scene,
+                                       view_layer,
+                                       curve_ob,
+                                       gp_ob,
+                                       knot,
+                                       knot,
+                                       i * 3 + 1,
+                                       OB_EMPTY_SPHERE,
+                                       0.09f,
+                                       "Env Anchor");
     /* Tangent handles: parented to the anchor (ride along), hook 3i (f1) and 3i+2 (f3). */
-    envelope_add_hook(
-        bmain, scene, view_layer, curve_ob, anchor, hl - knot, hl, i * 3, OB_CUBE, 0.05f);
-    envelope_add_hook(
-        bmain, scene, view_layer, curve_ob, anchor, hr - knot, hr, i * 3 + 2, OB_CUBE, 0.05f);
+    Object *eh_l = envelope_add_hook(bmain,
+                                     scene,
+                                     view_layer,
+                                     curve_ob,
+                                     anchor,
+                                     hl - knot,
+                                     hl,
+                                     i * 3,
+                                     OB_CUBE,
+                                     0.04f,
+                                     "Env Handle");
+    Object *eh_r = envelope_add_hook(bmain,
+                                     scene,
+                                     view_layer,
+                                     curve_ob,
+                                     anchor,
+                                     hr - knot,
+                                     hr,
+                                     i * 3 + 2,
+                                     OB_CUBE,
+                                     0.04f,
+                                     "Env Handle");
+    BKE_collection_object_move(bmain, scene, coll, nullptr, anchor);
+    BKE_collection_object_move(bmain, scene, coll, nullptr, eh_l);
+    BKE_collection_object_move(bmain, scene, coll, nullptr, eh_r);
   }
 }
 
