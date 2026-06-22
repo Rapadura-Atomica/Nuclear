@@ -1460,10 +1460,10 @@ static wmOperatorStatus grease_pencil_auto_patch_exec(bContext *C, wmOperator *o
 
 static void GREASE_PENCIL_OT_auto_patch(wmOperatorType *ot)
 {
-  ot->name = "Auto-Patch (Toon Boom)";
+  ot->name = "Auto-Patch";
   ot->idname = "GREASE_PENCIL_OT_auto_patch";
   ot->description =
-      "Patch the line-art of the active layer where a matte overlaps it (Toon Boom style seam "
+      "Patch the line-art of the active layer where a matte overlaps it (seam "
       "patch); the fill is kept. The matte is either another Grease Pencil object (occluder) or a "
       "layer/group of this same object (internal seam). With 'Mutual', also patches the occluder "
       "against the active object so both parts' seam lines vanish in the overlap";
