@@ -417,9 +417,16 @@ Atualizado em 2026-06-16.
   recurso novo). **Pendente (externo/manual):** empacotar o `nuclear.zip` novo, regerar o
   `version.json` (regra de ouro nº2), atualizar o espelho do manifesto, fast-forward de
   `origin/auto/integration` + push, e deploy. O espelho `version.json` segue apontando o
-  zip publicado da b2 (build 2) até existir zip novo. Nota: várias seams em arquivos
-  upstream (CMakeLists/MOD_*/DNA_modifier_*/rna_modifier + grease_pencil.cc/gpencil engine)
-  ainda precisam entrar no `NUCLEAR_DIVERGENCE.md`.
+  zip publicado da b2 (build 2) até existir zip novo.
+
+- **Envelope Bézier (modifier Contour evoluído) — operador nativo + Bind + controles em
+  Object Mode (2026-06-22) — NÃO PUBLICADO.** Na `integration/gp-contour-1.1`: cage = curva
+  Bézier (não só mesh) `25e74b1`; operador `OBJECT_OT_greasepencil_envelope_setup` (traça a
+  silhueta convex-hull → Bézier cíclica → bind) + `OBJECT_OT_greasepencil_contour_bind`
+  `0f19a1d`; controles empty+hook em Object Mode `cba41e7`; handles de Bézier completos
+  (âncora + 2 tangentes) `125c961`; Collection/in-front/locks/6-pts `93385c3`; visual estilo
+  Bézier nativa (cor via `ob->color`, tamanho, bevel) `7c2cdb3`. **Todas as seams (do modifier
+  Contour original + envelope + overlay) JÁ registradas no `NUCLEAR_DIVERGENCE.md`.**
 
 - **Conserto flat + fallback home + permissão de execução (2026-06-12) — PUBLICADO.**
   `scripts/startup/nuclear_update.py`: (a) flat install se auto-atualiza no lugar; (b)
