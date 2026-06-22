@@ -120,6 +120,7 @@ set(SRC
   intern/lineart/lineart_shadow.cc
   intern/lineart/lineart_util.cc
 
+  MOD_grease_pencil_contour.hh
   MOD_modifiertypes.hh
   MOD_nodes.hh
   intern/MOD_grease_pencil_util.hh

@@ -35,6 +35,8 @@
 
 #include "BLT_translation.hh"
 
+#include "MEM_guardedalloc.h"
+
 #include "BLO_read_write.hh"
 
 #include "DNA_curve_types.h"
@@ -61,6 +63,7 @@
 #include "UI_interface_layout.hh"
 #include "UI_resources.hh"
 
+#include "MOD_grease_pencil_contour.hh"
 #include "MOD_grease_pencil_util.hh"
 #include "MOD_modifiertypes.hh"
 #include "MOD_ui_common.hh"
@@ -84,12 +87,16 @@ static void copy_data(const ModifierData *md, ModifierData *target, const int fl
 
   BKE_modifier_copydata_generic(md, target, flag);
   modifier::greasepencil::copy_influence_data(&cmd->influence, &tcmd->influence, flag);
+  if (cmd->bind_co != nullptr) {
+    tcmd->bind_co = static_cast<float (*)[3]>(MEM_dupallocN(cmd->bind_co));
+  }
 }
 
 static void free_data(ModifierData *md)
 {
   auto *cmd = reinterpret_cast<GreasePencilContourModifierData *>(md);
   modifier::greasepencil::free_influence_data(&cmd->influence);
+  MEM_SAFE_FREE(cmd->bind_co);
 }
 
 static bool is_disabled(const Scene * /*scene*/, ModifierData *md, bool /*use_render_params*/)
@@ -125,12 +132,16 @@ static void blend_write(BlendWriter *writer, const ID * /*id_owner*/, const Modi
   const auto *cmd = reinterpret_cast<const GreasePencilContourModifierData *>(md);
   BLO_write_struct(writer, GreasePencilContourModifierData, cmd);
   modifier::greasepencil::write_influence_data(writer, &cmd->influence);
+  if (cmd->bind_co != nullptr) {
+    BLO_write_float3_array(writer, cmd->bind_verts_num, (const float *)cmd->bind_co);
+  }
 }
 
 static void blend_read(BlendDataReader *reader, ModifierData *md)
 {
   auto *cmd = reinterpret_cast<GreasePencilContourModifierData *>(md);
   modifier::greasepencil::read_influence_data(reader, &cmd->influence);
+  BLO_read_float3_array(reader, cmd->bind_verts_num, (float **)&cmd->bind_co);
 }
 
 /**
@@ -226,6 +237,44 @@ static bool tessellate_bezier_cage(const ListBase &nurbs, Vector<float3> &out)
   return false;
 }
 
+}  // namespace blender
+
+namespace blender::modifier::greasepencil {
+
+bool contour_sample_cage(const Object &cage, const bool deformed, Vector<float3> &r_contour)
+{
+  r_contour.clear();
+  if (cage.type == OB_MESH) {
+    const Mesh *mesh = deformed ? BKE_modifier_get_evaluated_mesh_from_evaluated_object(
+                                      &const_cast<Object &>(cage)) :
+                                  static_cast<const Mesh *>(cage.data);
+    if (mesh == nullptr) {
+      return false;
+    }
+    const Span<float3> positions = mesh->vert_positions();
+    r_contour.reserve(positions.size());
+    for (const float3 &v : positions) {
+      r_contour.append(v);
+    }
+    return r_contour.size() >= 3;
+  }
+  if (cage.type == OB_CURVES_LEGACY) {
+    const Curve *cu = static_cast<const Curve *>(cage.data);
+    const ListBase *nurbs = &cu->nurb;
+    if (deformed && cage.runtime != nullptr && cage.runtime->curve_cache != nullptr &&
+        !BLI_listbase_is_empty(&cage.runtime->curve_cache->deformed_nurbs))
+    {
+      nurbs = &cage.runtime->curve_cache->deformed_nurbs;
+    }
+    return tessellate_bezier_cage(*nurbs, r_contour);
+  }
+  return false;
+}
+
+}  // namespace blender::modifier::greasepencil
+
+namespace blender {
+
 static void deform_drawing(const GreasePencilContourModifierData &cmd,
                            const Object &ob,
                            bke::greasepencil::Drawing &drawing,
@@ -293,59 +342,37 @@ static void modify_geometry_set(ModifierData *md,
     return;
   }
 
-  /* Rest cage = original (un-evaluated) geometry; deformed cage = evaluated geometry. */
+  /* Deformed cage = evaluated geometry (after the cage's own modifier stack / direct edits). */
   const Object *cage_orig = DEG_get_original(cmd->object);
   Object *cage_eval = DEG_get_evaluated(ctx->depsgraph, cmd->object);
   if (cage_orig == nullptr || cage_eval == nullptr) {
     return;
   }
 
-  /* Both contours are gathered into these spans (mesh: vertex spans; curve: tessellated rings).
-   * They are guaranteed to correspond index-for-index. */
-  Span<float3> rest_pos;
-  Span<float3> def_pos;
-  Vector<float3> rest_curve;
   Vector<float3> def_curve;
-
-  if (cage_orig->type == OB_MESH) {
-    const Mesh *rest_mesh = static_cast<const Mesh *>(cage_orig->data);
-    const Mesh *def_mesh = BKE_modifier_get_evaluated_mesh_from_evaluated_object(cage_eval);
-    if (rest_mesh == nullptr || def_mesh == nullptr) {
-      return;
-    }
-    if (rest_mesh->verts_num != def_mesh->verts_num) {
-      return;
-    }
-    rest_pos = rest_mesh->vert_positions();
-    def_pos = def_mesh->vert_positions();
+  if (!modifier::greasepencil::contour_sample_cage(*cage_eval, true, def_curve)) {
+    return;
   }
-  else if (cage_orig->type == OB_CURVES_LEGACY) {
-    /* Rest contour from the original control points; deformed contour from the cage's own deform
-     * stack. Spline deformers (Armature/Hook/Lattice with "Apply on Spline", or Hook/Softbody/
-     * MeshDeform implicitly) write the deformed control points into `deformed_nurbs`; fall back to
-     * the evaluated curve's own nurbs otherwise. NOTE: a driver/keyframe directly on a control
-     * point also moves the *original* datablock (it becomes the rest), so it is a no-op here --
-     * the cage must be deformed by a modifier, exactly like the mesh-cage path. */
-    const Curve *rest_cu = static_cast<const Curve *>(cage_orig->data);
-    const Curve *eval_cu = static_cast<const Curve *>(cage_eval->data);
-    const ListBase *def_nurbs = &eval_cu->nurb;
-    if (cage_eval->runtime != nullptr && cage_eval->runtime->curve_cache != nullptr &&
-        !BLI_listbase_is_empty(&cage_eval->runtime->curve_cache->deformed_nurbs))
-    {
-      def_nurbs = &cage_eval->runtime->curve_cache->deformed_nurbs;
-    }
-    if (!tessellate_bezier_cage(rest_cu->nurb, rest_curve) ||
-        !tessellate_bezier_cage(*def_nurbs, def_curve))
-    {
-      return;
-    }
-    if (rest_curve.size() != def_curve.size()) {
+  const Span<float3> def_pos = def_curve;
+
+  /* Rest cage: when bound, the contour snapshot stored at bind time (so editing the cage
+   * directly deforms the art); otherwise the cage's live original geometry. The bound path is what
+   * lets a Bezier envelope be reshaped by hand, with no extra rig on the cage. */
+  Vector<float3> rest_curve;
+  Span<float3> rest_pos;
+  const bool bound = (cmd->flag & MOD_GREASE_PENCIL_CONTOUR_BOUND) && cmd->bind_co != nullptr &&
+                     cmd->bind_verts_num >= 3;
+  if (bound) {
+    rest_pos = Span<float3>(reinterpret_cast<const float3 *>(cmd->bind_co), cmd->bind_verts_num);
+  }
+  else {
+    if (!modifier::greasepencil::contour_sample_cage(*cage_orig, false, rest_curve)) {
       return;
     }
     rest_pos = rest_curve;
-    def_pos = def_curve;
   }
-  else {
+
+  if (rest_pos.size() != def_pos.size()) {
     return;
   }
 
@@ -408,11 +435,29 @@ static void panel_draw(const bContext *C, Panel *panel)
 
   PointerRNA ob_ptr;
   PointerRNA *ptr = modifier_panel_get_property_pointers(panel, &ob_ptr);
+  const auto *cmd = static_cast<const GreasePencilContourModifierData *>(ptr->data);
 
   layout->use_property_split_set(true);
 
   layout->prop(ptr, "object", UI_ITEM_NONE, IFACE_("Cage"), ICON_NONE);
   layout->prop(ptr, "strength", UI_ITEM_R_SLIDER, std::nullopt, ICON_NONE);
+
+  if (cmd->object == nullptr) {
+    /* No cage yet: one click traces a Bezier envelope around the drawing, assigns it and binds, so
+     * the artist can immediately reshape the contour to deform the art. */
+    layout->op("OBJECT_OT_greasepencil_envelope_setup", IFACE_("Create Envelope"), ICON_NONE);
+  }
+  else {
+    /* Bind / Unbind the rest contour: once bound, editing the cage points deforms from the bound
+     * rest pose (so a hand-shaped Bezier envelope works without any rig on the cage). */
+    uiLayout *bind_row = &layout->row(true);
+    PointerRNA bind_ptr = bind_row->op(
+        "OBJECT_OT_greasepencil_contour_bind", IFACE_("Bind"), ICON_NONE);
+    RNA_boolean_set(&bind_ptr, "unbind", false);
+    PointerRNA unbind_ptr = bind_row->op(
+        "OBJECT_OT_greasepencil_contour_bind", IFACE_("Unbind"), ICON_NONE);
+    RNA_boolean_set(&unbind_ptr, "unbind", true);
+  }
 
   if (uiLayout *influence_panel = layout->panel_prop(
           C, ptr, "open_influence_panel", IFACE_("Influence")))

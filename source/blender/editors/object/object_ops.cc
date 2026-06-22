@@ -274,6 +274,8 @@ void operatortypes_object()
   WM_operatortype_append(OBJECT_OT_surfacedeform_bind);
   WM_operatortype_append(OBJECT_OT_greasepencil_curve_bind);
   WM_operatortype_append(OBJECT_OT_greasepencil_curve_setup);
+  WM_operatortype_append(OBJECT_OT_greasepencil_contour_bind);
+  WM_operatortype_append(OBJECT_OT_greasepencil_envelope_setup);
 
   WM_operatortype_append(OBJECT_OT_hide_view_clear);
   WM_operatortype_append(OBJECT_OT_hide_view_set);
