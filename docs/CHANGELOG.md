@@ -41,6 +41,13 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
   ~1600px → colapsavam para 1 pixel (invisíveis, reportado pelo usuário). Fix de dados:
   `width="1600" height="1600"` nos 773 (nanosvg escala o conteúdo ×100). Provado com teste C
   do nanosvg antes do rebuild. Reversível via `git checkout`.
+  - **Iteração V2 (NÃO commitado — working tree, aguardando aprovação do tamanho):** arte
+    trocada por `icones_svgV2` (set atual) e ícones **aumentados por normalização individual**
+    — cada SVG reenquadrado num `viewBox` quadrado centrado no próprio conteúdo (medido via
+    nanosvg, stroke incluído) para preencher ~86% do cell (vs ~67-74% antes), uniforme, sem
+    distorção (viewBox quadrado) nem corte; cap de zoom 1.6× protege ícones minúsculos (45
+    capados), 1 vazio pulado, `ipo_elastic` (transbordava) reenquadrado. Alvo de fill (86%)
+    é parâmetro ajustável (`/tmp/normalize_icons.py`, var `T`). Buildado e renderizando.
   - Arquivos afetados: `release/datafiles/icons_svg/*.svg` (773),
     `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md`.
 - Branding visual (Blender→Nuclear) no título da janela e nos diálogos de baixo nível que
