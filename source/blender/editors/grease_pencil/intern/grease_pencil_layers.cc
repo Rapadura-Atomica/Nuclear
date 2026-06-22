@@ -1315,6 +1315,12 @@ static void GREASE_PENCIL_OT_peg_select_parent(wmOperatorType *ot)
 /** \name Auto-Patch (Toon Boom style seam occlusion)
  * \{ */
 
+/* Nuclear (auto-patch fidelity, divergence #3): where the patch matte comes from. */
+enum {
+  GP_AUTO_PATCH_OCCLUDER = 0, /* The other selected Grease Pencil object (cross-object). */
+  GP_AUTO_PATCH_SELF = 1,     /* A layer/group of this same object (internal seam self-patch). */
+};
+
 static wmOperatorStatus grease_pencil_auto_patch_exec(bContext *C, wmOperator *op)
 {
   using namespace blender::bke::greasepencil;
@@ -1329,40 +1335,123 @@ static wmOperatorStatus grease_pencil_auto_patch_exec(bContext *C, wmOperator *o
   }
   Layer &active_layer = *grease_pencil.get_active_layer();
 
-  /* The occluder = the other selected Grease Pencil object; its silhouette is the matte. */
-  Object *occluder = nullptr;
-  CTX_DATA_BEGIN (C, Object *, ob_iter, selected_objects) {
-    if (ob_iter != object && ob_iter->type == OB_GREASE_PENCIL) {
-      occluder = ob_iter;
-      break;
-    }
+  const int matte_source = RNA_enum_get(op->ptr, "matte_source");
+  char *layer_name_alloc = RNA_string_get_alloc(op->ptr, "layer", nullptr, 0, nullptr);
+  const std::string layer_name = (layer_name_alloc != nullptr) ? layer_name_alloc : "";
+  if (layer_name_alloc != nullptr) {
+    MEM_freeN(layer_name_alloc);
   }
-  CTX_DATA_END;
-  if (occluder == nullptr) {
-    BKE_report(op->reports,
-               RPT_ERROR,
-               "Select two Grease Pencil objects: active = part to patch, other = occluder");
-    return OPERATOR_CANCELLED;
-  }
+  const blender::StringRef layer_name_ref = layer_name;
 
-  /* Don't stack an identical auto-patch from the same occluder. */
-  LISTBASE_FOREACH (GreasePencilLayerMask *, m, &active_layer.masks) {
-    if (m->object == occluder && (m->flag & GP_LAYER_MASK_AUTO_PATCH)) {
-      BKE_report(op->reports, RPT_WARNING, "Auto-Patch from this occluder already exists");
+  /* Resolve the matte object: the same object (self-patch of an internal seam) or the other
+   * selected Grease Pencil object (cross-object occluder). */
+  Object *matte_object = nullptr;
+  if (matte_source == GP_AUTO_PATCH_SELF) {
+    matte_object = object;
+  }
+  else {
+    CTX_DATA_BEGIN (C, Object *, ob_iter, selected_objects) {
+      if (ob_iter != object && ob_iter->type == OB_GREASE_PENCIL) {
+        matte_object = ob_iter;
+        break;
+      }
+    }
+    CTX_DATA_END;
+    if (matte_object == nullptr) {
+      BKE_report(op->reports,
+                 RPT_ERROR,
+                 "Select two Grease Pencil objects: active = part to patch, other = occluder");
       return OPERATOR_CANCELLED;
     }
   }
 
-  /* Empty layer name = use the whole occluder object as the matte. Inverted so the line shows only
-   * where the occluder is NOT, and AUTO_PATCH so only the stroke (not the fill) is cut. */
-  LayerMask *new_mask = MEM_new<LayerMask>(__func__, blender::StringRef(""));
-  new_mask->object = occluder;
+  /* A named matte layer/group must exist in the matte object. Empty = the whole matte object. */
+  if (!layer_name_ref.is_empty()) {
+    const GreasePencil &matte_gp = *static_cast<const GreasePencil *>(matte_object->data);
+    if (matte_gp.find_node_by_name(layer_name_ref) == nullptr) {
+      BKE_report(op->reports, RPT_ERROR, "Matte layer or group not found in the matte object");
+      return OPERATOR_CANCELLED;
+    }
+  }
+
+  /* Don't stack an identical auto-patch (same matte object + same layer filter). */
+  LISTBASE_FOREACH (GreasePencilLayerMask *, m, &active_layer.masks) {
+    const blender::StringRef m_name = m->layer_name ? m->layer_name : "";
+    if (m->object == matte_object && (m->flag & GP_LAYER_MASK_AUTO_PATCH) &&
+        m_name == layer_name_ref)
+    {
+      BKE_report(op->reports, RPT_WARNING, "An identical Auto-Patch already exists");
+      return OPERATOR_CANCELLED;
+    }
+  }
+
+  /* Nuclear (auto-patch fidelity, divergence #2): the patch is subtractive (the matte cuts the
+   * part's line), so the Toon Boom "additive" look only reproduces when the occluder is drawn *on
+   * top* of the patched part. GP objects are drawn sorted by depth along the camera axis, so two
+   * coplanar parts (the common cut-out 2D case, equal Z) have an undefined draw order and the patch
+   * may composite the wrong way. Self-patch is exempt (single object, single depth). Warn
+   * (non-blocking) so the artist can give the occluder a small Z offset or enable "In Front". */
+  if (matte_source != GP_AUTO_PATCH_SELF) {
+    const float dz = matte_object->object_to_world().location().z -
+                     object->object_to_world().location().z;
+    if (dz > -1e-4f && dz < 1e-4f && !(matte_object->dtx & OB_DRAW_IN_FRONT)) {
+      BKE_report(op->reports,
+                 RPT_WARNING,
+                 "Occluder and patched part are at the same depth; draw order is undefined. "
+                 "Enable 'In Front' on the occluder or offset its Z so the patch draws on top");
+    }
+  }
+
+  /* Empty layer name = the whole matte object; a name = that layer/group's fill (Mod A renders only
+   * the matte's fill). Inverted so the line shows only where the matte is NOT, and AUTO_PATCH so
+   * only the stroke (not the fill) is cut. */
+  LayerMask *new_mask = MEM_new<LayerMask>(__func__, layer_name_ref);
+  new_mask->object = matte_object;
   new_mask->flag |= GP_LAYER_MASK_INVERT | GP_LAYER_MASK_AUTO_PATCH;
   BLI_addtail(&active_layer.masks, reinterpret_cast<GreasePencilLayerMask *>(new_mask));
   active_layer.active_mask_index = BLI_listbase_count(&active_layer.masks) - 1;
 
   /* Masks are opt-in (hidden by default). Enable them on this layer. */
   active_layer.base.flag &= ~GP_LAYER_TREE_NODE_HIDE_MASKS;
+
+  /* Nuclear: mutual mode (cross-object only). Also patch the occluder against the active object, so
+   * BOTH parts' seam lines vanish where they overlap (clean bidirectional cutout joint that holds
+   * under animation). The reciprocal matte is the whole active object (its fill silhouette); its
+   * target is the occluder's layer with the same name as the patched layer (e.g. both "Lines"),
+   * falling back to the occluder's active layer. */
+  if (matte_source != GP_AUTO_PATCH_SELF && RNA_boolean_get(op->ptr, "mutual")) {
+    GreasePencil &matte_gp = *static_cast<GreasePencil *>(matte_object->data);
+    Layer *recip_layer = nullptr;
+    if (TreeNode *node = matte_gp.find_node_by_name(active_layer.name())) {
+      if (node->is_layer()) {
+        recip_layer = &node->as_layer();
+      }
+    }
+    if (recip_layer == nullptr && matte_gp.has_active_layer()) {
+      recip_layer = matte_gp.get_active_layer();
+    }
+    if (recip_layer != nullptr) {
+      /* Don't stack an identical reciprocal auto-patch (whole active object as matte). */
+      bool recip_exists = false;
+      LISTBASE_FOREACH (GreasePencilLayerMask *, m, &recip_layer->masks) {
+        const blender::StringRef m_name = m->layer_name ? m->layer_name : "";
+        if (m->object == object && (m->flag & GP_LAYER_MASK_AUTO_PATCH) && m_name.is_empty()) {
+          recip_exists = true;
+          break;
+        }
+      }
+      if (!recip_exists) {
+        LayerMask *recip_mask = MEM_new<LayerMask>(__func__, blender::StringRef());
+        recip_mask->object = object;
+        recip_mask->flag |= GP_LAYER_MASK_INVERT | GP_LAYER_MASK_AUTO_PATCH;
+        BLI_addtail(&recip_layer->masks, reinterpret_cast<GreasePencilLayerMask *>(recip_mask));
+        recip_layer->active_mask_index = BLI_listbase_count(&recip_layer->masks) - 1;
+        recip_layer->base.flag &= ~GP_LAYER_TREE_NODE_HIDE_MASKS;
+        DEG_id_tag_update(&matte_gp.id, ID_RECALC_GEOMETRY);
+        WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_EDITED, &matte_gp);
+      }
+    }
+  }
 
   DEG_id_tag_update(&grease_pencil.id, ID_RECALC_GEOMETRY);
   WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_EDITED, &grease_pencil);
@@ -1371,16 +1460,50 @@ static wmOperatorStatus grease_pencil_auto_patch_exec(bContext *C, wmOperator *o
 
 static void GREASE_PENCIL_OT_auto_patch(wmOperatorType *ot)
 {
-  ot->name = "Auto-Patch (Toon Boom)";
+  ot->name = "Auto-Patch";
   ot->idname = "GREASE_PENCIL_OT_auto_patch";
   ot->description =
-      "Hide the line-art of the active layer where the other selected Grease Pencil object "
-      "overlaps it (Toon Boom style seam patch); the fill is kept";
+      "Patch the line-art of the active layer where a matte overlaps it (seam "
+      "patch); the fill is kept. The matte is either another Grease Pencil object (occluder) or a "
+      "layer/group of this same object (internal seam). With 'Mutual', also patches the occluder "
+      "against the active object so both parts' seam lines vanish in the overlap";
 
   ot->exec = grease_pencil_auto_patch_exec;
   ot->poll = active_grease_pencil_layer_poll;
 
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+  static const EnumPropertyItem matte_source_items[] = {
+      {GP_AUTO_PATCH_OCCLUDER,
+       "OCCLUDER",
+       0,
+       "Occluder Object",
+       "Use the other selected Grease Pencil object as the matte"},
+      {GP_AUTO_PATCH_SELF,
+       "SELF",
+       0,
+       "Same Object",
+       "Use a layer or group of this object as the matte (internal seam patch)"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+  RNA_def_enum(ot->srna,
+               "matte_source",
+               matte_source_items,
+               GP_AUTO_PATCH_OCCLUDER,
+               "Matte Source",
+               "Where the patch matte comes from");
+  RNA_def_string(ot->srna,
+                 "layer",
+                 nullptr,
+                 0,
+                 "Matte Layer",
+                 "Name of the layer or group used as the matte (empty = whole object)");
+  RNA_def_boolean(ot->srna,
+                  "mutual",
+                  false,
+                  "Mutual (Both Parts)",
+                  "Also patch the occluder against the active object, so both parts' seam lines are "
+                  "cut where they overlap (bidirectional clean joint). Cross-object (occluder) only");
 }
 
 /** \} */

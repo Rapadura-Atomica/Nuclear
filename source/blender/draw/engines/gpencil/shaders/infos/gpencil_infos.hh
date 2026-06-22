@@ -71,6 +71,10 @@ PUSH_CONSTANT(float, gp_layer_opacity)
 PUSH_CONSTANT(float, gp_stroke_index_offset)
 /* Nuclear: Auto-Patch. When 1, this drawcall (the fill/colour-art) ignores the layer mask. */
 PUSH_CONSTANT(int, gp_mask_bypass)
+/* Nuclear: Auto-Patch. When 1, this pass is being rendered as a cross-object matte (silhouette) into
+ * the isolated mask buffer, so it skips the scene depth test (a visible occluder must not clip its own
+ * matte in the overlap region). 0 for normal scene drawing. */
+PUSH_CONSTANT(int, gp_in_mask_pass)
 FRAGMENT_OUT(0, float4, frag_color)
 FRAGMENT_OUT(1, float4, revealColor)
 VERTEX_OUT(gpencil_geometry_iface)
@@ -97,6 +101,10 @@ SAMPLER(1, sampler2D, reveal_buf)
 SAMPLER(2, sampler2D, mask_buf)
 PUSH_CONSTANT(int, blend_mode)
 PUSH_CONSTANT(float, blend_opacity)
+/* Nuclear: Auto-Patch. When set, the layer-blend step skips the matte mask so the fill (already
+ * kept by gp_mask_bypass in the geometry pass) is not cut a second time here; the stroke was
+ * already removed from color_buf by the geometry pass's mask discard. */
+PUSH_CONSTANT(int, blend_auto_patch)
 /* Reminder: This is considered SRC color in blend equations.
  * Same operation on all buffers. */
 FRAGMENT_OUT(0, float4, frag_color)

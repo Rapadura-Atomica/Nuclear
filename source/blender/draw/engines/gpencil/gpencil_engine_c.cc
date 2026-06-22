@@ -78,6 +78,8 @@ void Instance::init()
   BLI_memblock_clear(this->gp_maskbit_pool, nullptr);
   /* Nuclear: the per-sync object->tObject index is rebuilt as objects are cached. */
   this->object_to_tgp.clear();
+  /* Nuclear (Auto-Patch Mod B, half 2): referenced-matte set is rebuilt every sync too. */
+  this->referenced_mattes.clear();
 
   this->view_layer = draw_ctx->view_layer;
   this->scene = draw_ctx->scene;
@@ -366,7 +368,9 @@ bool Instance::use_layer_in_render(const GreasePencil &grease_pencil,
   return true;
 }
 
-tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
+tObject *Instance::object_sync_do(Object *ob,
+                                  ResourceHandleRange res_handle,
+                                  const bool cache_only)
 {
   using namespace ed::greasepencil;
   using namespace bke::greasepencil;
@@ -374,14 +378,17 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
   const bool is_vertex_mode = (ob->mode & OB_MODE_VERTEX_PAINT) != 0;
   const Bounds<float3> bounds = grease_pencil.bounds_min_max_eval().value_or(Bounds(float3(0)));
 
-  const bool do_onion = !this->is_render && this->do_onion &&
+  /* Nuclear (Auto-Patch Mod B, half 2): a matte cached by the deferred pass is never drawn, so
+   * onion/multi-frame ghosts (which only matter for the matte's own display) are pointless and
+   * would needlessly add passes. Force them off in cache-only mode. */
+  const bool do_onion = !cache_only && !this->is_render && this->do_onion &&
                         (this->do_onion_only_active_object ? this->obact == ob : true);
-  const bool do_multi_frame = (((this->scene->toolsettings->gpencil_flags &
-                                 GP_USE_MULTI_FRAME_EDITING) != 0) &&
-                               (ob->mode != OB_MODE_OBJECT));
+  const bool do_multi_frame = !cache_only && (((this->scene->toolsettings->gpencil_flags &
+                                                GP_USE_MULTI_FRAME_EDITING) != 0) &&
+                                              (ob->mode != OB_MODE_OBJECT));
   const bool use_stroke_order_3d = this->force_stroke_order_3d ||
                                    ((grease_pencil.flag & GREASE_PENCIL_STROKE_ORDER_3D) != 0);
-  tObject *tgp_ob = gpencil_object_cache_add(this, ob, use_stroke_order_3d, bounds);
+  tObject *tgp_ob = gpencil_object_cache_add(this, ob, use_stroke_order_3d, bounds, cache_only);
 
   int mat_ofs = 0;
   MaterialPool *matpool = gpencil_material_pool_create(this, ob, &mat_ofs, is_vertex_mode);
@@ -485,6 +492,10 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
         this, ob, layer, info.onion_id, is_layer_used_as_mask, tgp_ob);
     PassSimple &pass = *tgp_layer->geom_ps;
     last_pass = &pass;
+    /* Nuclear: fill-only mirror used as a cross-object matte. We mirror the same binds here and
+     * the fill drawcalls below as direct draws (not via drawcall_add, which batches over `pass`).
+     */
+    PassSimple &fill_pass = *tgp_layer->fill_ps;
 
     const bool use_lights = this->use_lighting &&
                             ((layer.base.flag & GP_LAYER_TREE_NODE_USE_LIGHTS) != 0) &&
@@ -506,6 +517,23 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
     pass.push_constant("viewport_size", float2(draw_ctx->viewport_size_get()));
     /* Nuclear: Auto-Patch defaults off; toggled per fill/stroke drawcall below for patched layers. */
     pass.push_constant("gp_mask_bypass", 0);
+    /* Nuclear: this is the normal scene pass (not a matte), so the scene depth test applies. */
+    pass.push_constant("gp_in_mask_pass", 0);
+
+    /* Nuclear: mirror the same initial binds on the fill-only matte pass. gp_mask_bypass is
+     * irrelevant in the mask buffer, kept at 0. */
+    fill_pass.bind_ubo("gp_lights", lights_ubo);
+    fill_pass.bind_ubo("gp_materials", ubo_mat);
+    fill_pass.bind_texture("gp_fill_tx", tex_fill);
+    fill_pass.bind_texture("gp_stroke_tx", tex_stroke);
+    fill_pass.push_constant("gp_material_offset", mat_ofs);
+    fill_pass.push_constant("gp_stroke_index_offset", 0.0f);
+    fill_pass.push_constant("viewport_size", float2(draw_ctx->viewport_size_get()));
+    fill_pass.push_constant("gp_mask_bypass", 0);
+    /* Nuclear: this pass is submitted only as a cross-object matte; skip the scene depth test so a
+     * VISIBLE occluder does not clip its own matte in the overlap (auto-patch cut now works with both
+     * the patched part and the occluder visible, not only when the occluder is hidden). */
+    fill_pass.push_constant("gp_in_mask_pass", 1);
 
     const VArray<int> stroke_materials = *attributes.lookup_or_default<int>(
         "material_index", bke::AttrDomain::Curve, 0);
@@ -565,14 +593,19 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
 
         if (new_ubo_mat != ubo_mat) {
           pass.bind_ubo("gp_materials", new_ubo_mat);
+          /* Nuclear: mirror the rebind on the fill-only matte pass (no flush; it doesn't batch).
+           */
+          fill_pass.bind_ubo("gp_materials", new_ubo_mat);
           ubo_mat = new_ubo_mat;
         }
         if (new_tex_fill) {
           pass.bind_texture("gp_fill_tx", new_tex_fill);
+          fill_pass.bind_texture("gp_fill_tx", new_tex_fill);
           tex_fill = new_tex_fill;
         }
         if (new_tex_stroke) {
           pass.bind_texture("gp_stroke_tx", new_tex_stroke);
+          fill_pass.bind_texture("gp_stroke_tx", new_tex_stroke);
           tex_stroke = new_tex_stroke;
         }
       }
@@ -585,6 +618,9 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
         gpu::VertBuf *color_tx = DRW_cache_grease_pencil_color_buffer_get(this->scene, ob);
         pass.bind_texture("gp_pos_tx", position_tx);
         pass.bind_texture("gp_col_tx", color_tx);
+        /* Nuclear: mirror the geometry buffer binds on the fill-only matte pass. */
+        fill_pass.bind_texture("gp_pos_tx", position_tx);
+        fill_pass.bind_texture("gp_col_tx", color_tx);
       }
 
       if (show_fill) {
@@ -596,6 +632,11 @@ tObject *Instance::object_sync_do(Object *ob, ResourceHandleRange res_handle)
           pass.push_constant("gp_mask_bypass", 1);
         }
         drawcall_add(pass, geom, v_first, v_count);
+        /* Nuclear: direct (non-batched) draw of the fill into the fill-only matte pass. We can't
+         * use drawcall_add/flush here because they batch over `pass` via shared
+         * iter_geom/vfirst/vcount; a direct draw with the same args (matching drawcall_flush)
+         * keeps fill_pass independent. */
+        fill_pass.draw(geom, 1, v_count, v_first, res_handle);
       }
 
       t_offset += num_triangles_per_stroke[pos];
@@ -643,8 +684,64 @@ void Instance::object_sync(ObjectRef &ob_ref, Manager &manager)
   }
 }
 
+void Instance::sync_referenced_mattes()
+{
+  /* Nuclear (Auto-Patch Mod B, half 2): some objects referenced as cross-object mattes are hidden
+   * occluders (eye-icon off, excluded from the view layer, or simply not reached by the draw
+   * iterator). They are force-evaluated by the depsgraph relation added in
+   * `build_object_data_geometry_datablock` (half 1), but the draw loop never hands them to the
+   * engine, so they are absent from #object_to_tgp and `draw_mask` would resolve them to an empty
+   * silhouette. Here we cache them explicitly WITHOUT adding them to the draw lists.
+   *
+   * Single level only: `object_sync_do` of a matte may itself reference further mattes, but we
+   * must not recurse here (a cycle A<->B would never terminate). We snapshot the current set and
+   * process each entry once; any second-order mattes those entries pull in are not chased. The
+   * non-recursive guarantee comes from NOT calling sync_referenced_mattes() again. */
+  if (this->referenced_mattes.is_empty()) {
+    return;
+  }
+
+  Depsgraph *depsgraph = this->draw_ctx->depsgraph;
+  Manager *manager = DRW_manager_get();
+
+  /* Snapshot to a stable list: object_sync_do() below appends to #referenced_mattes via
+   * apply_mask_list(), and we must not iterate a container that is being mutated, nor process
+   * those newly-added (second-order) entries (see note above). */
+  Vector<const Object *> worklist;
+  for (const Object *matte_orig : this->referenced_mattes) {
+    worklist.append(matte_orig);
+  }
+
+  for (const Object *matte_orig : worklist) {
+    /* Already cached (the matte was visible and synced normally, or keyed by orig_id): skip. */
+    if (this->object_to_tgp.contains(matte_orig)) {
+      continue;
+    }
+    /* The stored pointer is the original-DNA object; resolve its evaluated counterpart. */
+    Object *eval_ob = DEG_get_evaluated(depsgraph, const_cast<Object *>(matte_orig));
+    if (eval_ob == nullptr || eval_ob->type != OB_GREASE_PENCIL || eval_ob->data == nullptr) {
+      continue;
+    }
+    /* The evaluated object may also already be cached under its own (evaluated) key. */
+    if (this->object_to_tgp.contains(eval_ob)) {
+      continue;
+    }
+
+    /* Synthetic ObjectRef for an object outside the regular draw iterator. `unique_handle` fills
+     * in the matrix/bounds/info resource buffers from the (evaluated) object, exactly as the
+     * normal path does, then returns a valid handle for the cache-only passes. */
+    ObjectRef ob_ref(eval_ob);
+    ResourceHandleRange res_handle = manager->unique_handle(ob_ref);
+
+    object_sync_do(eval_ob, res_handle, /*cache_only=*/true);
+  }
+}
+
 void Instance::end_sync()
 {
+  /* Nuclear (Auto-Patch Mod B, half 2): cache hidden mattes before the draw pass resolves them. */
+  sync_referenced_mattes();
+
   /* Upload UBO data. */
   BLI_memblock_iter iter;
   BLI_memblock_iternew(this->gp_material_pool, &iter);
@@ -833,7 +930,11 @@ void Instance::draw_mask(View &view, tObject *ob, tLayer *layer)
           continue;
         }
       }
-      manager->submit(*ml->geom_ps, view);
+      /* Nuclear: submit the fill-only pass so the matte (and thus the seam patch) follows the
+       * colour border (Harmony style), not the stroke. Fallback to the full silhouette if the
+       * fill-only pass was somehow not built. */
+      PassSimple *matte_ps = ml->fill_ps ? ml->fill_ps.get() : ml->geom_ps.get();
+      manager->submit(*matte_ps, view);
     }
   }
 
