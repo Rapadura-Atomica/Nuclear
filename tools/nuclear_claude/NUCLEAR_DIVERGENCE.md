@@ -31,6 +31,10 @@ revisão se as APIs do core que eles consomem mudarem.
 - `source/blender/modifiers/MOD_grease_pencil_curve.hh`
 - `source/blender/modifiers/intern/MOD_grease_pencil_curve.cc`
 
+### Modifier Grease Pencil "Contour" / Envelope (deform MVC + cage Bézier, estilo Toon Boom)
+- `source/blender/modifiers/MOD_grease_pencil_contour.hh` — `contour_sample_cage()` compartilhada (modifier + operadores)
+- `source/blender/modifiers/intern/MOD_grease_pencil_contour.cc` — modifier Contour (MVC, cage mesh ou Bézier, bind)
+
 ### Add-ons / scripts de startup
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
@@ -87,6 +91,22 @@ cada rebase. Quando possível, migrar a lógica para arquivo novo + uma "costura
 | `source/blender/makesrna/intern/rna_constraint.cc` | RNA do Follow Peg constraint |
 | `source/blender/makesrna/intern/makesrna.cc` | registro de `rna_pegrig` |
 | `source/blender/makesrna/intern/rna_main.cc` | `pegrigs` na Main |
+
+### Modifier Grease Pencil "Contour" / Envelope (registro do modifier + operadores + overlay)
+| Arquivo | O que foi adicionado |
+|---|---|
+| `source/blender/makesdna/DNA_modifier_types.h` | `eModifierType_GreasePencilContour` (=32→**88**); struct `GreasePencilContourModifierData` (object/strength/flag + **bind_co/bind_verts_num**); enum `GreasePencilContourFlag` (CONFORMAL, **BOUND**) |
+| `source/blender/makesdna/DNA_modifier_defaults.h` | `_DNA_DEFAULT_GreasePencilContourModifierData` |
+| `source/blender/makesdna/intern/dna_defaults.c` | 2 decls (`SDNA_DEFAULT_DECL_STRUCT` + entrada na lista) |
+| `source/blender/modifiers/MOD_modifiertypes.hh` | `extern ModifierTypeInfo modifierType_GreasePencilContour` |
+| `source/blender/modifiers/intern/MOD_util.cc` | `INIT_TYPE(GreasePencilContour)` |
+| `source/blender/modifiers/CMakeLists.txt` | `intern/MOD_grease_pencil_contour.cc` + `MOD_grease_pencil_contour.hh` na lista SRC |
+| `source/blender/makesrna/intern/rna_modifier.cc` | item de enum; **setter custom** `rna_GreasePencilContourModifier_object_set` (aceita `OB_MESH` **ou** `OB_CURVES_LEGACY`); `rna_def_modifier_grease_pencil_contour` + chamada |
+| `source/blender/blenkernel/intern/grease_pencil.cc` | `case` do Contour em `influence_data_from_modifier` |
+| `source/blender/editors/object/object_modifier.cc` | operadores `OBJECT_OT_greasepencil_contour_bind` + `OBJECT_OT_greasepencil_envelope_setup` (silhueta convex-hull → Bézier cíclica → bind → controles empty+hook em Object Mode) |
+| `source/blender/editors/object/object_intern.hh` | decls dos 2 operadores |
+| `source/blender/editors/object/object_ops.cc` | `WM_operatortype_append` dos 2 operadores |
+| `source/blender/draw/engines/overlay/overlay_empty.hh` | `Empties::object_sync`: empties desenham com `ob->color` custom (≠ branco, não-selecionado) em vez do cinza do tema — para tingir os controles do envelope (anchor laranja / handle ciano) |
 
 ### Tool / UI Python
 | Arquivo | O que foi adicionado |
