@@ -40,6 +40,7 @@ set(SRC
   intern/MOD_grease_pencil_array.cc
   intern/MOD_grease_pencil_build.cc
   intern/MOD_grease_pencil_color.cc
+  intern/MOD_grease_pencil_contour.cc
   intern/MOD_grease_pencil_dash.cc
   intern/MOD_grease_pencil_envelope.cc
   intern/MOD_grease_pencil_curve.cc
@@ -120,6 +121,7 @@ set(SRC
   intern/lineart/lineart_shadow.cc
   intern/lineart/lineart_util.cc
 
+  MOD_grease_pencil_contour.hh
   MOD_modifiertypes.hh
   MOD_nodes.hh
   intern/MOD_grease_pencil_util.hh

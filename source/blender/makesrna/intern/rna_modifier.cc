@@ -356,6 +356,11 @@ const EnumPropertyItem rna_enum_object_modifier_type_items[] = {
      ICON_HOOK,
      "Hook",
      "Deform stroke points using objects"},
+    {eModifierType_GreasePencilContour,
+     "GREASE_PENCIL_CONTOUR",
+     ICON_MOD_MESHDEFORM,
+     "Contour Deform",
+     "Deform strokes with a contour cage (envelope) using mean value coordinates"},
     {eModifierType_GreasePencilNoise,
      "GREASE_PENCIL_NOISE",
      ICON_MOD_NOISE,
@@ -1120,6 +1125,27 @@ RNA_MOD_OBJECT_SET(Shrinkwrap, auxTarget, OB_MESH);
 RNA_MOD_OBJECT_SET(SurfaceDeform, target, OB_MESH);
 RNA_MOD_OBJECT_SET(GreasePencilMirror, object, OB_EMPTY);
 RNA_MOD_OBJECT_SET(GreasePencilTint, object, OB_EMPTY);
+
+/* The Contour cage accepts either a mesh (vertex ring) or a legacy Bezier curve (tessellated
+ * contour), so it needs a custom setter instead of the single-type RNA_MOD_OBJECT_SET. */
+static void rna_GreasePencilContourModifier_object_set(PointerRNA *ptr,
+                                                       PointerRNA value,
+                                                       ReportList * /*reports*/)
+{
+  GreasePencilContourModifierData *tmd = (GreasePencilContourModifierData *)ptr->data;
+  Object *ob = (Object *)value.data;
+  Object *self = (Object *)ptr->owner_id;
+
+  if (self && ob == self) {
+    return;
+  }
+  if (ob == nullptr || ob->type == OB_MESH || ob->type == OB_CURVES_LEGACY) {
+    if (ob != nullptr) {
+      id_lib_extern((ID *)ob);
+    }
+    tmd->object = ob;
+  }
+}
 RNA_MOD_OBJECT_SET(GreasePencilLattice, object, OB_LATTICE);
 RNA_MOD_OBJECT_SET(GreasePencilCurve, object, OB_CURVES_LEGACY);
 RNA_MOD_OBJECT_SET(GreasePencilMask, object, OB_GREASE_PENCIL);
@@ -2134,6 +2160,7 @@ RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilWeightAngle);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilArray);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilWeightProximity);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilHook);
+RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilContour);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilSimplify);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilEnvelope);
 RNA_MOD_GREASE_PENCIL_MATERIAL_FILTER_SET(GreasePencilOutline);
@@ -2153,6 +2180,7 @@ RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilMask);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilWeightAngle);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilWeightProximity);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilHook);
+RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilContour);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilArmature);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilSimplify);
 RNA_MOD_GREASE_PENCIL_VERTEX_GROUP_SET(GreasePencilEnvelope);
@@ -9911,11 +9939,8 @@ static void rna_def_modifier_grease_pencil_curve(BlenderRNA *brna)
 
   prop = RNA_def_property(srna, "object", PROP_POINTER, PROP_NONE);
   RNA_def_property_ui_text(prop, "Object", "Curve object to deform with");
-  RNA_def_property_pointer_funcs(prop,
-                                 nullptr,
-                                 "rna_GreasePencilCurveModifier_object_set",
-                                 nullptr,
-                                 "rna_Curve_object_poll");
+  RNA_def_property_pointer_funcs(
+      prop, nullptr, "rna_GreasePencilCurveModifier_object_set", nullptr, "rna_Curve_object_poll");
   RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
   RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
 
@@ -10214,6 +10239,48 @@ static void rna_def_modifier_grease_pencil_multiply(BlenderRNA *brna)
   prop = RNA_def_property(srna, "fading_center", PROP_FLOAT, PROP_FACTOR);
   RNA_def_property_range(prop, 0, 1);
   RNA_def_property_ui_text(prop, "Center", "Fade center");
+  RNA_def_property_update(prop, 0, "rna_Modifier_update");
+
+  RNA_define_lib_overridable(false);
+}
+
+static void rna_def_modifier_grease_pencil_contour(BlenderRNA *brna)
+{
+  StructRNA *srna;
+  PropertyRNA *prop;
+
+  srna = RNA_def_struct(brna, "GreasePencilContourModifier", "Modifier");
+  RNA_def_struct_ui_text(srna,
+                         "Contour Deform Modifier",
+                         "Deform stroke points with a contour cage (envelope) using mean value "
+                         "coordinates");
+  RNA_def_struct_sdna(srna, "GreasePencilContourModifierData");
+  RNA_def_struct_ui_icon(srna, ICON_MOD_MESHDEFORM);
+
+  rna_def_modifier_grease_pencil_layer_filter(srna);
+  rna_def_modifier_grease_pencil_material_filter(
+      srna, "rna_GreasePencilContourModifier_material_filter_set");
+  rna_def_modifier_grease_pencil_vertex_group(
+      srna, "rna_GreasePencilContourModifier_vertex_group_name_set");
+
+  rna_def_modifier_panel_open_prop(srna, "open_influence_panel", 0);
+
+  RNA_define_lib_overridable(true);
+
+  prop = RNA_def_property(srna, "object", PROP_POINTER, PROP_NONE);
+  RNA_def_property_ui_text(prop,
+                           "Cage Object",
+                           "Mesh (vertex ring) or Bezier curve (cyclic spline) whose contour "
+                           "deforms the strokes");
+  RNA_def_property_flag(prop, PROP_EDITABLE | PROP_ID_SELF_CHECK);
+  RNA_def_property_pointer_funcs(
+      prop, nullptr, "rna_GreasePencilContourModifier_object_set", nullptr, nullptr);
+  RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
+
+  prop = RNA_def_property(srna, "strength", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "strength");
+  RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_ui_text(prop, "Strength", "Strength of the contour deformation");
   RNA_def_property_update(prop, 0, "rna_Modifier_update");
 
   RNA_define_lib_overridable(false);
@@ -11499,6 +11566,7 @@ void RNA_def_modifier(BlenderRNA *brna)
   rna_def_modifier_grease_pencil_array(brna);
   rna_def_modifier_grease_pencil_weight_proximity(brna);
   rna_def_modifier_grease_pencil_hook(brna);
+  rna_def_modifier_grease_pencil_contour(brna);
   rna_def_modifier_grease_pencil_lineart(brna);
   rna_def_modifier_grease_pencil_armature(brna);
   rna_def_modifier_grease_pencil_time_segment(brna);

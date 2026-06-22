@@ -1311,6 +1311,80 @@ static void GREASE_PENCIL_OT_peg_select_parent(wmOperatorType *ot)
 
 /** \} */
 
+/* -------------------------------------------------------------------- */
+/** \name Auto-Patch (Toon Boom style seam occlusion)
+ * \{ */
+
+static wmOperatorStatus grease_pencil_auto_patch_exec(bContext *C, wmOperator *op)
+{
+  using namespace blender::bke::greasepencil;
+  Object *object = CTX_data_active_object(C);
+  if (object == nullptr || object->type != OB_GREASE_PENCIL) {
+    return OPERATOR_CANCELLED;
+  }
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(object->data);
+  if (!grease_pencil.has_active_layer()) {
+    BKE_report(op->reports, RPT_ERROR, "No active layer to patch");
+    return OPERATOR_CANCELLED;
+  }
+  Layer &active_layer = *grease_pencil.get_active_layer();
+
+  /* The occluder = the other selected Grease Pencil object; its silhouette is the matte. */
+  Object *occluder = nullptr;
+  CTX_DATA_BEGIN (C, Object *, ob_iter, selected_objects) {
+    if (ob_iter != object && ob_iter->type == OB_GREASE_PENCIL) {
+      occluder = ob_iter;
+      break;
+    }
+  }
+  CTX_DATA_END;
+  if (occluder == nullptr) {
+    BKE_report(op->reports,
+               RPT_ERROR,
+               "Select two Grease Pencil objects: active = part to patch, other = occluder");
+    return OPERATOR_CANCELLED;
+  }
+
+  /* Don't stack an identical auto-patch from the same occluder. */
+  LISTBASE_FOREACH (GreasePencilLayerMask *, m, &active_layer.masks) {
+    if (m->object == occluder && (m->flag & GP_LAYER_MASK_AUTO_PATCH)) {
+      BKE_report(op->reports, RPT_WARNING, "Auto-Patch from this occluder already exists");
+      return OPERATOR_CANCELLED;
+    }
+  }
+
+  /* Empty layer name = use the whole occluder object as the matte. Inverted so the line shows only
+   * where the occluder is NOT, and AUTO_PATCH so only the stroke (not the fill) is cut. */
+  LayerMask *new_mask = MEM_new<LayerMask>(__func__, blender::StringRef(""));
+  new_mask->object = occluder;
+  new_mask->flag |= GP_LAYER_MASK_INVERT | GP_LAYER_MASK_AUTO_PATCH;
+  BLI_addtail(&active_layer.masks, reinterpret_cast<GreasePencilLayerMask *>(new_mask));
+  active_layer.active_mask_index = BLI_listbase_count(&active_layer.masks) - 1;
+
+  /* Masks are opt-in (hidden by default). Enable them on this layer. */
+  active_layer.base.flag &= ~GP_LAYER_TREE_NODE_HIDE_MASKS;
+
+  DEG_id_tag_update(&grease_pencil.id, ID_RECALC_GEOMETRY);
+  WM_event_add_notifier(C, NC_GPENCIL | ND_DATA | NA_EDITED, &grease_pencil);
+  return OPERATOR_FINISHED;
+}
+
+static void GREASE_PENCIL_OT_auto_patch(wmOperatorType *ot)
+{
+  ot->name = "Auto-Patch (Toon Boom)";
+  ot->idname = "GREASE_PENCIL_OT_auto_patch";
+  ot->description =
+      "Hide the line-art of the active layer where the other selected Grease Pencil object "
+      "overlaps it (Toon Boom style seam patch); the fill is kept";
+
+  ot->exec = grease_pencil_auto_patch_exec;
+  ot->poll = active_grease_pencil_layer_poll;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/** \} */
+
 }  // namespace blender::ed::greasepencil
 
 void ED_operatortypes_grease_pencil_layers()
@@ -1333,6 +1407,7 @@ void ED_operatortypes_grease_pencil_layers()
   WM_operatortype_append(GREASE_PENCIL_OT_layer_mask_add);
   WM_operatortype_append(GREASE_PENCIL_OT_layer_mask_remove);
   WM_operatortype_append(GREASE_PENCIL_OT_layer_mask_reorder);
+  WM_operatortype_append(GREASE_PENCIL_OT_auto_patch);
   WM_operatortype_append(GREASE_PENCIL_OT_layer_group_color_tag);
   WM_operatortype_append(GREASE_PENCIL_OT_layer_duplicate_object);
 
