@@ -518,40 +518,108 @@ def _can_apply(layout):
     return True
 
 
+def _apply_log_path(layout):
+    """Caminho do log de apply em disco: <base>/nuclear_update.log."""
+    try:
+        return os.path.join(layout["base"], "nuclear_update.log")
+    except Exception:
+        return None
+
+
+def _apply_log(log_path, msg):
+    """Grava `msg` no log de apply, com timestamp, sem exceção."""
+    if not log_path:
+        return
+    import datetime
+    try:
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write("[%s] %s\n" % (datetime.datetime.now().isoformat(timespec="seconds"), msg))
+    except Exception:
+        pass
+
+
+def _check_free_space(path, needed_bytes):
+    """Levanta RuntimeError se não houver espaço livre suficiente em `path`."""
+    try:
+        stat = shutil.disk_usage(path)
+        # Fator de segurança 1.5x: o zip fica no disco enquanto é extraído.
+        if stat.free < needed_bytes * 1.5:
+            free_mb = stat.free // (1024 * 1024)
+            need_mb = int(needed_bytes * 1.5) // (1024 * 1024)
+            raise RuntimeError(
+                "espaço insuficiente em disco: %d MB livres, ~%d MB necessários "
+                "(download + extração). Libere espaço e tente novamente." % (free_mb, need_mb)
+            )
+    except RuntimeError:
+        raise
+    except Exception:
+        pass  # se não conseguiu checar, deixa prosseguir
+
+
 def _run_apply(manifest, layout):
     """Full download -> verify -> extract -> swap -> prune. Sets the _apply_* globals."""
     global _apply_state, _apply_progress, _apply_message, _apply_target
     work = None
+    log_path = _apply_log_path(layout)
+    _apply_log(log_path, "=== apply iniciado: %s build %s ===" % (
+        manifest.get("version_string", "?"), manifest.get("build", "?")))
     try:
         os.makedirs(layout["versions"], exist_ok=True)
-        # Work inside versions/ so the final move is a same-filesystem rename.
+
+        # Checar espaço antes de começar: o zip pesa ~size bytes e a extração pode
+        # chegar a ~1.8 GB no temp. Partição quase cheia é a causa mais comum de
+        # apply silencioso (OSError durante extractall engolido pelo except genérico).
+        size_hint = int(manifest.get("size", 0))
+        if size_hint:
+            _apply_log(log_path, "checando espaco livre em %s (zip estimado %d MB)" % (
+                layout["versions"], size_hint // (1024 * 1024)))
+            _check_free_space(layout["versions"], size_hint)
+
+        # Work inside versions/ so the final move is a same-filesystem rename,
+        # avoiding shutil.move cross-device copy (que pode falhar ou ser lento).
         work = tempfile.mkdtemp(prefix=".update-", dir=layout["versions"])
+        _apply_log(log_path, "work dir: %s" % work)
         zip_path = os.path.join(work, "nuclear.zip")
 
         _apply_state = "downloading"
         _apply_progress = 0.0
+        _apply_log(log_path, "iniciando download: %s" % manifest.get("url", "?"))
 
         def on_dl(p):
             global _apply_progress
             _apply_progress = p
         _download(manifest["url"], zip_path, on_dl)
+        _apply_log(log_path, "download concluido: %d bytes" % os.path.getsize(zip_path))
 
         expected = (manifest.get("sha256") or "").lower().strip()
         if expected:
             _apply_state = "verifying"
             _apply_progress = 0.0
+            _apply_log(log_path, "verificando sha256 (esperado: %s)" % expected)
             got = _sha256_file(zip_path, lambda p: _set_progress(p),
                                size_hint=manifest.get("size", 0))
+            _apply_log(log_path, "sha256 obtido:   %s" % got)
             if got.lower() != expected:
                 raise RuntimeError("checksum não confere - download corrompido")
+            _apply_log(log_path, "checksum OK")
 
         _apply_state = "extracting"
         extract_dir = os.path.join(work, "x")
         os.makedirs(extract_dir, exist_ok=True)
+        _apply_log(log_path, "extraindo para: %s" % extract_dir)
         _extract_zip(zip_path, extract_dir)
+        _apply_log(log_path, "extracao concluida")
+
+        # Libera o zip do disco antes do move para não agravar pressão de espaço.
+        try:
+            os.remove(zip_path)
+        except Exception:
+            pass
 
         _apply_state = "applying"
+        _apply_log(log_path, "aplicando: _apply_extracted")
         dest = _apply_extracted(extract_dir, layout, manifest)
+        _apply_log(log_path, "versao instalada em: %s" % dest)
         _apply_target = dest
         _refresh_desktop(layout)
         # Keep the new build and the still-running one (locked on Windows).
@@ -559,12 +627,19 @@ def _run_apply(manifest, layout):
 
         _apply_state = "done"
         _apply_message = "Atualização instalada. Reinicie o Nuclear para usá-la."
+        _apply_log(log_path, "apply CONCLUIDO com sucesso")
     except Exception as ex:
+        import traceback
         _apply_state = "error"
         _apply_message = str(ex)
+        _apply_log(log_path, "ERRO no apply: %s" % str(ex))
+        _apply_log(log_path, traceback.format_exc())
     finally:
         if work and os.path.isdir(work):
-            shutil.rmtree(work, ignore_errors=True)
+            try:
+                shutil.rmtree(work)
+            except Exception as ex:
+                _apply_log(log_path, "aviso: nao removeu work dir %s: %s" % (work, ex))
 
 
 def _set_progress(p):
