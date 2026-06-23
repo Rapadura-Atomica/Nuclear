@@ -5,6 +5,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Integração Auto-Patch + Envelope na mainline `Nuclear` (2026-06-23).** Juntadas numa única
+  branch (`integration/autopatch-envelope`, depois trazida para `Nuclear`) as duas features GP
+  refinadas que viviam em branches separadas — o **Auto-Patch** engine-based (`feat/gp-masks`,
+  com Mod A/B/C/D, modo `mutual` e o depth-fix `gp_in_mask_pass`) e o **Envelope/Contour** modifier
+  (`integration/gp-contour-1.1`, com operador nativo de envelope + cage Bézier) — coexistindo com o
+  **Cutter Modifier** que a mainline já tinha. Build limpo + smoke test headless: os 3 sistemas
+  registram (`GREASE_PENCIL_MASK`, `GREASE_PENCIL_CONTOUR`, operador `grease_pencil.auto_patch`).
+  Conflito de slot de modifier resolvido: **Contour realocado de eType 88 → 89** (88 fica com o
+  Cutter/Mask, já na mainline). Não publicado (sem bump de `NUCLEAR_BUILD` — fica para o release).
+  (ver [ADR](decisions/2026-06-23-merge-autopatch-envelope-nuclear.md))
+  - Arquivos de conflito resolvidos: `gpencil_engine_c.cc`, `gpencil_cache_utils.cc`,
+    `gpencil_engine_private.hh`, `shaders/infos/gpencil_infos.hh`, `grease_pencil_layers.cc`,
+    `DNA_modifier_types.h`, `nuclear_peg_graph.py`, `BKE_blender_version.h`, `NUCLEAR_DIVERGENCE.md`,
+    `docs/CHANGELOG.md`, `doc/guides/nuclear_auto_patch_harmony_fidelity.md`.
+- **Changed:** botão/operador do Auto-Patch renomeado de "Auto-Patch (Toon Boom)" para **"Auto-Patch"**
+  (label + tooltip), em `source/blender/editors/grease_pencil/intern/grease_pencil_layers.cc`.
 - Auto-patch nativo (GP) — fidelidade ao Toon Boom Harmony: matte só do fill (A), paridade com
   occluder oculto via relação de depsgraph + segundo passe no engine (B), self-patch / matte de
   layer arbitrário (C) e aviso de ordem de desenho coplanar (D). Implementado e compilando na

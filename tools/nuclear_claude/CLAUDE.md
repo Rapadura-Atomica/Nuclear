@@ -433,7 +433,18 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-06-16.
+Atualizado em 2026-06-23.
+
+- **Junção Auto-Patch + Envelope na mainline `Nuclear` (2026-06-23) — NÃO PUBLICADO.** As duas
+  features GP refinadas (Auto-Patch engine-based de `feat/gp-masks` + Envelope/Contour modifier
+  de `integration/gp-contour-1.1`) foram juntadas na branch `integration/autopatch-envelope`
+  (criada a partir de `Nuclear`) por merge sequencial B→A, e o resultado trazido para a branch
+  **`Nuclear`**. Coexistem agora 3 sistemas: **Cutter** (`MOD_grease_pencil_mask.cc`, eType 88),
+  **Auto-Patch** (engine) e **Contour/Envelope** (`MOD_grease_pencil_contour.cc`, **eType 88→89**
+  — realocado para não colidir com o Cutter). Botão do Auto-Patch renomeado p/ "Auto-Patch" (sem
+  "Toon Boom"). Build limpo (ninja RC 0) + smoke test headless: os 3 registram. **Pendente:** bump
+  de `NUCLEAR_BUILD` + empacotar/publicar (agente `nuclear-release`); validação **visual** das
+  máscaras 2D em processo fresco. Ver ADR `docs/decisions/2026-06-23-merge-autopatch-envelope-nuclear.md`.
 
 - **Consolidação 1.0 → 1.1 + modifier Contour/masks GP (2026-06-16) — BUMP LOCAL, NÃO
   PUBLICADO.** O trabalho GP novo (modifier `GreasePencilContour` eType 88 — deformer
