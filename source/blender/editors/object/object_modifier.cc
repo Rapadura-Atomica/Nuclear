@@ -23,6 +23,7 @@
 #include "DNA_grease_pencil_types.h"
 #include "DNA_key_types.h"
 #include "DNA_lattice_types.h"
+#include "DNA_layer_types.h"
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
@@ -4148,6 +4149,24 @@ static Object *greasepencil_envelope_create_for_drawing(bContext *C,
   return curve_ob;
 }
 
+/* Hide/show an object in the view layer via its base (the "eye" toggle). Keeps the object evaluated
+ * — so a hidden cage curve still deforms — it only stops drawing/selecting it. */
+static void envelope_base_set_hidden(Scene *scene, ViewLayer *view_layer, Object *ob, const bool hide)
+{
+  BKE_view_layer_synced_ensure(scene, view_layer);
+  Base *base = BKE_view_layer_base_find(view_layer, ob);
+  if (base == nullptr) {
+    return;
+  }
+  if (hide) {
+    base->flag |= BASE_HIDDEN;
+  }
+  else {
+    base->flag &= ~BASE_HIDDEN;
+  }
+  BKE_view_layer_need_resync_tag(view_layer);
+}
+
 /* Create one control Empty parented to `parent`, sitting on the cage point `cage_vec`
  * (curve-local), plus a Hook on `curve_ob` binding the single control point `index` to it. The
  * curve and the whole control chain are identity-parented to the drawing, so the hook's
@@ -4448,6 +4467,10 @@ static wmOperatorStatus greasepencil_spine_controllers_exec(bContext *C, wmOpera
    * the artist bends the spine by grabbing the controls without entering Edit Mode. */
   greasepencil_envelope_add_controls(bmain, scene, view_layer, ob, curve_ob);
 
+  /* The cage curve itself comes hidden: the artist drives it through the controllers, so the raw
+   * Bezier line should not clutter the drawing (it still deforms while hidden). */
+  envelope_base_set_hidden(scene, view_layer, curve_ob, true);
+
   BKE_view_layer_synced_ensure(scene, view_layer);
   if (Base *gp_base = BKE_view_layer_base_find(view_layer, ob)) {
     base_activate(C, gp_base);
@@ -4455,6 +4478,7 @@ static wmOperatorStatus greasepencil_spine_controllers_exec(bContext *C, wmOpera
   }
 
   DEG_relations_tag_update(bmain);
+  DEG_id_tag_update(&scene->id, ID_RECALC_BASE_FLAGS);
   DEG_id_tag_update(&curve_ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
   DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
   WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
@@ -4486,6 +4510,83 @@ void OBJECT_OT_greasepencil_spine_controllers(wmOperatorType *ot)
   ot->poll = greasepencil_contour_bind_poll;
   ot->invoke = greasepencil_spine_controllers_invoke;
   ot->exec = greasepencil_spine_controllers_exec;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
+}
+
+/* Toggle the visibility of the Contour cage's Object-Mode controllers (the anchor/handle empties).
+ * They are found via the cage curve's Hook modifiers, so the toggle works for both the envelope and
+ * the spine rig. The cage curve stays hidden; only the controllers show/hide. */
+static wmOperatorStatus greasepencil_contour_toggle_controls_exec(bContext *C, wmOperator *op)
+{
+  Scene *scene = CTX_data_scene(C);
+  ViewLayer *view_layer = CTX_data_view_layer(C);
+  Object *ob = context_active_object(C);
+  GreasePencilContourModifierData *cmd = (GreasePencilContourModifierData *)
+      edit_modifier_property_get(op, ob, eModifierType_GreasePencilContour);
+  if (cmd == nullptr || cmd->object == nullptr) {
+    return OPERATOR_CANCELLED;
+  }
+  Object *curve_ob = cmd->object;
+
+  BKE_view_layer_synced_ensure(scene, view_layer);
+
+  /* Decide the new state from the first controller's current visibility. */
+  bool any = false;
+  bool currently_hidden = false;
+  LISTBASE_FOREACH (ModifierData *, md, &curve_ob->modifiers) {
+    if (md->type != eModifierType_Hook) {
+      continue;
+    }
+    const HookModifierData *hmd = (const HookModifierData *)md;
+    if (hmd->object == nullptr) {
+      continue;
+    }
+    const Base *base = BKE_view_layer_base_find(view_layer, hmd->object);
+    currently_hidden = base != nullptr && (base->flag & BASE_HIDDEN) != 0;
+    any = true;
+    break;
+  }
+  if (!any) {
+    BKE_report(op->reports, RPT_ERROR, "This guide has no Object-Mode controllers");
+    return OPERATOR_CANCELLED;
+  }
+
+  const bool hide = !currently_hidden;
+  LISTBASE_FOREACH (ModifierData *, md, &curve_ob->modifiers) {
+    if (md->type != eModifierType_Hook) {
+      continue;
+    }
+    const HookModifierData *hmd = (const HookModifierData *)md;
+    if (hmd->object != nullptr) {
+      envelope_base_set_hidden(scene, view_layer, hmd->object, hide);
+    }
+  }
+  DEG_id_tag_update(&scene->id, ID_RECALC_BASE_FLAGS);
+  WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_contour_toggle_controls_invoke(bContext *C,
+                                                                    wmOperator *op,
+                                                                    const wmEvent * /*event*/)
+{
+  if (edit_modifier_invoke_properties(C, op)) {
+    return greasepencil_contour_toggle_controls_exec(C, op);
+  }
+  return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_greasepencil_contour_toggle_controls(wmOperatorType *ot)
+{
+  ot->name = "Toggle Controllers";
+  ot->description = "Show or hide the Object-Mode controllers of this Contour guide";
+  ot->idname = "OBJECT_OT_greasepencil_contour_toggle_controls";
+
+  ot->poll = greasepencil_contour_bind_poll;
+  ot->invoke = greasepencil_contour_toggle_controls_invoke;
+  ot->exec = greasepencil_contour_toggle_controls_exec;
 
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
   edit_modifier_properties(ot);
@@ -4532,6 +4633,10 @@ static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator
    * without entering Edit Mode. */
   greasepencil_envelope_add_controls(bmain, scene, view_layer, ob, curve_ob);
 
+  /* The cage curve itself comes hidden: the artist drives it through the controllers, so the raw
+   * Bezier line should not clutter the drawing (it still deforms while hidden). */
+  envelope_base_set_hidden(scene, view_layer, curve_ob, true);
+
   /* add_type()/BKE_object_add made a new object active; re-activate the Grease Pencil so its
    * modifier panel stays in view. */
   BKE_view_layer_synced_ensure(scene, view_layer);
@@ -4541,13 +4646,14 @@ static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator
   }
 
   DEG_relations_tag_update(bmain);
+  DEG_id_tag_update(&scene->id, ID_RECALC_BASE_FLAGS);
   DEG_id_tag_update(&curve_ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
   DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
   WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
   WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, curve_ob);
   BKE_report(op->reports,
              RPT_INFO,
-             "Created a Bezier envelope - reshape it (Edit Mode) to deform the drawing");
+             "Created a Bezier envelope - grab the controllers to deform the drawing");
   return OPERATOR_FINISHED;
 }
 

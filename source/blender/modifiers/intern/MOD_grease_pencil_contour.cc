@@ -671,6 +671,10 @@ static void panel_draw(const bContext *C, Panel *panel)
     PointerRNA unbind_ptr = bind_row->op(
         "OBJECT_OT_greasepencil_contour_bind", IFACE_("Unbind"), ICON_NONE);
     RNA_boolean_set(&unbind_ptr, "unbind", true);
+    /* One-click show/hide of the Object-Mode controllers (the cage curve itself stays hidden). */
+    layout->op("OBJECT_OT_greasepencil_contour_toggle_controls",
+               IFACE_("Show/Hide Controllers"),
+               ICON_HIDE_OFF);
   }
 
   if (uiLayout *influence_panel = layout->panel_prop(
