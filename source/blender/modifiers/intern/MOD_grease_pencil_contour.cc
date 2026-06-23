@@ -202,6 +202,74 @@ static float2 mvc_deform_point(const float2 &p,
 }
 
 /**
+ * 2D affine Moving Least Squares deform of a single point (Schaefer et al. 2006).
+ *
+ * The handles are the guide line's points: `rest` are their bind-time positions, `def_` their
+ * current ones. The point `v` is warped so it follows the handles smoothly — this works for an OPEN,
+ * scattered set of handles (a line), unlike the closed-contour MVC above. `w` is a caller-provided
+ * scratch buffer of size `rest.size()`. Falls back to a pure translation when the handles are
+ * (near-)collinear, so a single line of points still deforms sensibly.
+ */
+static float2 mls_deform_point(const float2 &v,
+                               const Span<float2> rest,
+                               const Span<float2> def_,
+                               MutableSpan<float> w)
+{
+  const int n = rest.size();
+  const float eps = 1e-9f;
+
+  float wsum = 0.0f;
+  float2 pstar(0.0f, 0.0f);
+  float2 qstar(0.0f, 0.0f);
+  for (const int i : IndexRange(n)) {
+    const float2 d = rest[i] - v;
+    const float d2 = math::dot(d, d);
+    if (d2 < eps) {
+      /* Query point coincides with a handle: reproduce it exactly. */
+      return def_[i];
+    }
+    const float wi = 1.0f / d2;
+    w[i] = wi;
+    wsum += wi;
+    pstar += rest[i] * wi;
+    qstar += def_[i] * wi;
+  }
+  if (wsum < eps) {
+    return v;
+  }
+  pstar /= wsum;
+  qstar /= wsum;
+
+  /* A = sum w * phat^T phat (symmetric 2x2); B = sum w * phat^T qhat (2x2). */
+  float a00 = 0.0f, a01 = 0.0f, a11 = 0.0f;
+  float b00 = 0.0f, b01 = 0.0f, b10 = 0.0f, b11 = 0.0f;
+  for (const int i : IndexRange(n)) {
+    const float2 ph = rest[i] - pstar;
+    const float2 qh = def_[i] - qstar;
+    const float wi = w[i];
+    a00 += wi * ph.x * ph.x;
+    a01 += wi * ph.x * ph.y;
+    a11 += wi * ph.y * ph.y;
+    b00 += wi * ph.x * qh.x;
+    b01 += wi * ph.x * qh.y;
+    b10 += wi * ph.y * qh.x;
+    b11 += wi * ph.y * qh.y;
+  }
+  const float det = a00 * a11 - a01 * a01;
+  const float2 vh = v - pstar;
+  if (math::abs(det) < eps) {
+    /* Collinear / degenerate handle cloud: translation by the weighted handle motion. */
+    return vh + qstar;
+  }
+  /* u = vh * A^-1 (A symmetric). */
+  const float i00 = a11 / det, i01 = -a01 / det, i11 = a00 / det;
+  const float u0 = vh.x * i00 + vh.y * i01;
+  const float u1 = vh.x * i01 + vh.y * i11;
+  /* result = u * B + qstar. */
+  return float2(u0 * b00 + u1 * b10 + qstar.x, u0 * b01 + u1 * b11 + qstar.y);
+}
+
+/**
  * Tessellate the first cyclic Bezier spline of a legacy curve into a closed polygon.
  *
  * Each segment (including the wrap-around from the last anchor back to the first) is sampled with
@@ -298,18 +366,21 @@ bool contour_sample_gp_layer(const GreasePencil &gp,
   if (curves.curves_num() == 0) {
     return false;
   }
-  /* The cage is the layer's FIRST stroke, in Grease Pencil object-local space. Sample the EVALUATED
-   * curve (tessellated), not the control points, so a Bezier cage follows its handles: reshaping the
-   * stroke with Bezier handles changes the contour and therefore the deform. For a poly stroke the
-   * evaluated points equal the control points, so this also covers ordinary strokes. */
+  /* Use EVERY point of EVERY stroke of the layer as a deform handle, in Grease Pencil object-local
+   * space. The layer's line-art is the guide: its points are the control handles and the rest of the
+   * drawing follows them (Moving Least Squares). Sample the EVALUATED curve (tessellated) so a Bezier
+   * line also contributes its smooth shape; for a poly stroke the evaluated points equal the control
+   * points. Order is stable (stroke order, point order), so rest and deformed handles correspond
+   * index-for-index. */
   const OffsetIndices<int> eval_by_curve = curves.evaluated_points_by_curve();
   const Span<float3> eval_positions = curves.evaluated_positions();
-  const IndexRange first = eval_by_curve[0];
-  r_contour.reserve(first.size());
-  for (const int p : first) {
-    r_contour.append(eval_positions[p]);
+  r_contour.reserve(eval_positions.size());
+  for (const int curve : curves.curves_range()) {
+    for (const int p : eval_by_curve[curve]) {
+      r_contour.append(eval_positions[p]);
+    }
   }
-  return r_contour.size() >= 3;
+  return r_contour.size() >= 1;
 }
 
 }  // namespace blender::modifier::greasepencil
@@ -324,7 +395,8 @@ static void deform_drawing(const GreasePencilContourModifierData &cmd,
                            const int au,
                            const int av,
                            const float4x4 &gp_to_cage,
-                           const float4x4 &cage_to_gp)
+                           const float4x4 &cage_to_gp,
+                           const bool use_mls)
 {
   modifier::greasepencil::ensure_no_bezier_curves(drawing);
   bke::CurvesGeometry &curves = drawing.strokes_for_write();
@@ -348,9 +420,11 @@ static void deform_drawing(const GreasePencilContourModifierData &cmd,
   MutableSpan<float3> positions = curves.positions_for_write();
 
   strokes.foreach_index(blender::GrainSize(64), [&](const int stroke) {
-    Array<float2> s(cage_num);
-    Array<float> r(cage_num);
-    Array<float> tanhalf(cage_num);
+    /* Scratch buffers reused across the stroke's points. MVC needs s/r/tanhalf; MLS needs w. */
+    Array<float2> s(use_mls ? 0 : cage_num);
+    Array<float> r(use_mls ? 0 : cage_num);
+    Array<float> tanhalf(use_mls ? 0 : cage_num);
+    Array<float> w(use_mls ? cage_num : 0);
 
     for (const int point : points_by_curve[stroke]) {
       const float weight = input_weights[point];
@@ -359,7 +433,10 @@ static void deform_drawing(const GreasePencilContourModifierData &cmd,
       }
       const float3 p_cage = math::transform_point(gp_to_cage, positions[point]);
       const float2 p2(p_cage[au], p_cage[av]);
-      const float2 t2 = mvc_deform_point(p2, cage2_rest, cage2_def, s, r, tanhalf);
+      /* MLS (line-guided): the cage is the guide line's points used as handles. MVC (envelope): the
+       * cage is a closed contour. */
+      const float2 t2 = use_mls ? mls_deform_point(p2, cage2_rest, cage2_def, w) :
+                                  mvc_deform_point(p2, cage2_rest, cage2_def, s, r, tanhalf);
 
       float3 target_cage = p_cage;
       target_cage[au] = t2.x;
@@ -469,7 +546,8 @@ static void modify_geometry_set(ModifierData *md,
   }
 
   const int cage_num = rest_pos.size();
-  if (cage_num < 3) {
+  /* MVC needs a closed contour (>=3); MLS (line-guided) works with any handle count. */
+  if (cage_num < (use_layer_cage ? 1 : 3)) {
     return;
   }
 
@@ -515,8 +593,16 @@ static void modify_geometry_set(ModifierData *md,
       modifier::greasepencil::get_drawings_for_write(grease_pencil, layer_mask, current_frame);
 
   threading::parallel_for_each(drawings, [&](bke::greasepencil::Drawing *drawing) {
-    deform_drawing(
-        *cmd, *ctx->object, *drawing, cage2_rest, cage2_def, au, av, gp_to_cage, cage_to_gp);
+    deform_drawing(*cmd,
+                   *ctx->object,
+                   *drawing,
+                   cage2_rest,
+                   cage2_def,
+                   au,
+                   av,
+                   gp_to_cage,
+                   cage_to_gp,
+                   use_layer_cage);
   });
 }
 
@@ -532,12 +618,12 @@ static void panel_draw(const bContext *C, Panel *panel)
 
   const bool use_layer_cage = cmd->cage_layer[0] != '\0';
 
-  /* Nuclear: primary cage source = a layer of THIS Grease Pencil object (its first stroke is the
-   * contour). Pick the layer here; it acts as a hidden deform guide. */
+  /* Nuclear: primary guide = a layer of THIS Grease Pencil object. Its line-art points become the
+   * deform handles; editing that line deforms the rest of the drawing (Moving Least Squares). */
   PointerRNA gp_ob_ptr = RNA_pointer_create_discrete(ptr->owner_id, &RNA_Object, ptr->owner_id);
   PointerRNA gp_data_ptr = RNA_pointer_get(&gp_ob_ptr, "data");
   layout->prop_search(
-      ptr, "cage_layer", &gp_data_ptr, "layers", IFACE_("Cage Layer"), ICON_OUTLINER_DATA_GP_LAYER);
+      ptr, "cage_layer", &gp_data_ptr, "layers", IFACE_("Guide Line"), ICON_OUTLINER_DATA_GP_LAYER);
 
   /* Fall back to an external cage object (mesh / Bezier curve) only when no cage layer is set. */
   if (!use_layer_cage) {
@@ -546,8 +632,8 @@ static void panel_draw(const bContext *C, Panel *panel)
   layout->prop(ptr, "strength", UI_ITEM_R_SLIDER, std::nullopt, ICON_NONE);
 
   if (use_layer_cage) {
-    /* Layer-cage requires a Bind: capture the cage layer's stroke as the rest pose, then edit the
-     * stroke to deform the rest of the drawing. */
+    /* Guide-line mode requires a Bind: capture the guide line's points as the rest handles, then
+     * edit that line to deform the rest of the drawing. */
     const bool bound = (cmd->flag & MOD_GREASE_PENCIL_CONTOUR_BOUND) != 0;
     uiLayout *bind_row = &layout->row(true);
     PointerRNA bind_ptr = bind_row->op(
@@ -557,7 +643,7 @@ static void panel_draw(const bContext *C, Panel *panel)
         "OBJECT_OT_greasepencil_contour_bind", IFACE_("Unbind"), ICON_NONE);
     RNA_boolean_set(&unbind_ptr, "unbind", true);
     if (!bound) {
-      layout->label(IFACE_("Bind the cage layer to start deforming"), ICON_INFO);
+      layout->label(IFACE_("Bind the guide line, then edit it to deform"), ICON_INFO);
     }
   }
   else if (cmd->object == nullptr) {

@@ -10286,10 +10286,11 @@ static void rna_def_modifier_grease_pencil_contour(BlenderRNA *brna)
   prop = RNA_def_property(srna, "cage_layer", PROP_STRING, PROP_NONE);
   RNA_def_property_string_sdna(prop, nullptr, "cage_layer");
   RNA_def_property_ui_text(prop,
-                           "Cage Layer",
-                           "Use the first stroke of this layer (of this Grease Pencil object) as "
-                           "the deform cage instead of an external cage object. Bind, then edit the "
-                           "stroke to deform the rest of the drawing");
+                           "Guide Line",
+                           "Use the line-art of this layer (of this Grease Pencil object) as the "
+                           "deform guide: its points are handles and the rest of the drawing follows "
+                           "them. Bind, then edit the line to deform. Leave empty to use an external "
+                           "cage object instead");
   RNA_def_property_update(prop, 0, "rna_Modifier_dependency_update");
 
   RNA_define_lib_overridable(false);

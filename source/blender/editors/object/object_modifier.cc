@@ -3950,7 +3950,7 @@ static bool greasepencil_contour_bind_modifier(Depsgraph *depsgraph,
     {
       BKE_report(reports,
                  RPT_ERROR,
-                 "Cage layer has no usable stroke (need a layer whose first stroke has 3+ points)");
+                 "Guide line layer has no usable stroke (it needs at least one drawn stroke)");
       return false;
     }
   }
