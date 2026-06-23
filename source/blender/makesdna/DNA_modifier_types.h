@@ -3171,6 +3171,12 @@ typedef enum GreasePencilContourFlag {
   MOD_GREASE_PENCIL_CONTOUR_CONFORMAL = (1 << 0),
   /** The rest contour is bound (stored in #bind_co); use it instead of the live cage rest. */
   MOD_GREASE_PENCIL_CONTOUR_BOUND = (1 << 1),
+  /**
+   * Nuclear: treat the cage as a LINE guide (open spine / scattered handles) and deform with Moving
+   * Least Squares instead of closed-contour MVC. Set by the "Create Spine Controllers" operator;
+   * the layer-cage path always uses MLS regardless of this flag.
+   */
+  MOD_GREASE_PENCIL_CONTOUR_LINE_GUIDE = (1 << 2),
 } GreasePencilContourFlag;
 
 /* This enum is for modifier internal state only. */

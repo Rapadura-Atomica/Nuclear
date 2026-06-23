@@ -4283,6 +4283,214 @@ static void greasepencil_envelope_add_controls(
   }
 }
 
+/* Build an OPEN Bezier curve running along the spine (centerline) of `ob`'s longest stroke,
+ * resampled to a handful of evenly-spaced anchors, lying in the drawing plane and identity-parented
+ * to the drawing. The art follows this line (MLS), so grabbing its controls bends the drawing along
+ * the stroke. Returns the new curve object or null on failure. */
+static Object *greasepencil_spine_create_for_drawing(bContext *C, Object *ob, ReportList *reports)
+{
+  using namespace blender;
+  const GreasePencil &grease_pencil = *static_cast<const GreasePencil *>(ob->data);
+
+  /* Pick the longest stroke across all drawings as the spine. */
+  Vector<float3> spine;
+  float best_len = -1.0f;
+  float3 bb_min(std::numeric_limits<float>::max());
+  float3 bb_max(std::numeric_limits<float>::lowest());
+  for (const GreasePencilDrawingBase *base : grease_pencil.drawings()) {
+    if (base->type != GP_DRAWING) {
+      continue;
+    }
+    const bke::greasepencil::Drawing &drawing =
+        reinterpret_cast<const GreasePencilDrawing *>(base)->wrap();
+    const bke::CurvesGeometry &curves = drawing.strokes();
+    const OffsetIndices<int> by_curve = curves.points_by_curve();
+    const Span<float3> positions = curves.positions();
+    for (const float3 &p : positions) {
+      bb_min = math::min(bb_min, p);
+      bb_max = math::max(bb_max, p);
+    }
+    for (const int curve : curves.curves_range()) {
+      const IndexRange pts = by_curve[curve];
+      if (pts.size() < 2) {
+        continue;
+      }
+      float len = 0.0f;
+      for (const int i : pts.drop_front(1)) {
+        len += math::distance(positions[i], positions[i - 1]);
+      }
+      if (len > best_len) {
+        best_len = len;
+        spine.clear();
+        for (const int i : pts) {
+          spine.append(positions[i]);
+        }
+      }
+    }
+  }
+  if (spine.size() < 2 || best_len <= 0.0f) {
+    BKE_report(reports, RPT_ERROR, "Grease Pencil has no line to fit a spine to");
+    return nullptr;
+  }
+
+  /* Working plane = the two largest-extent axes (the drawing is flat along the third). */
+  const float3 ext = bb_max - bb_min;
+  int an = 0;
+  if (ext[1] < ext[an]) {
+    an = 1;
+  }
+  if (ext[2] < ext[an]) {
+    an = 2;
+  }
+  const float normal_co = (bb_min[an] + bb_max[an]) * 0.5f;
+
+  /* Resample the spine to evenly-spaced anchors by arc length. */
+  const int max_anchors = 5;
+  const int anchors_num = std::min<int>(max_anchors, std::max<int>(2, spine.size()));
+  Array<float> cum(spine.size());
+  cum[0] = 0.0f;
+  for (const int i : IndexRange(spine.size()).drop_front(1)) {
+    cum[i] = cum[i - 1] + math::distance(spine[i], spine[i - 1]);
+  }
+  const float total = cum[spine.size() - 1];
+  Vector<float3> anchors;
+  for (const int k : IndexRange(anchors_num)) {
+    const float target = total * float(k) / float(anchors_num - 1);
+    int seg = 1;
+    while (seg < spine.size() - 1 && cum[seg] < target) {
+      seg++;
+    }
+    const float seg_len = cum[seg] - cum[seg - 1];
+    const float t = seg_len > 1e-6f ? (target - cum[seg - 1]) / seg_len : 0.0f;
+    anchors.append(math::interpolate(spine[seg - 1], spine[seg], t));
+  }
+
+  Object *curve_ob = add_type(C, OB_CURVES_LEGACY, "Spine", ob->loc, ob->rot, false, 0);
+  curve_ob->parent = ob;
+  curve_ob->partype = PAROBJECT;
+  zero_v3(curve_ob->loc);
+  zero_v3(curve_ob->rot);
+  unit_qt(curve_ob->quat);
+  copy_v3_fl(curve_ob->scale, 1.0f);
+  unit_m4(curve_ob->parentinv);
+  curve_ob->rotmode = ob->rotmode;
+
+  Curve *cu = static_cast<Curve *>(curve_ob->data);
+  cu->flag |= CU_3D;
+  cu->bevel_radius = 0.008f;
+
+  Nurb *nu = MEM_callocN<Nurb>(__func__);
+  nu->type = CU_BEZIER;
+  nu->resolu = 12;
+  nu->pntsu = anchors_num;
+  nu->pntsv = 1;
+  nu->flagu = 0; /* OPEN spine, not cyclic. */
+  nu->bezt = MEM_calloc_arrayN<BezTriple>(anchors_num, __func__);
+  for (const int k : IndexRange(anchors_num)) {
+    float3 a = anchors[k];
+    a[an] = normal_co;
+    BezTriple *bezt = &nu->bezt[k];
+    for (int h = 0; h < 3; h++) {
+      copy_v3_v3(bezt->vec[h], a);
+    }
+    bezt->h1 = bezt->h2 = HD_AUTO;
+    bezt->f1 = bezt->f2 = bezt->f3 = SELECT;
+    bezt->radius = 1.0f;
+    bezt->weight = 1.0f;
+  }
+  BLI_addtail(&cu->nurb, nu);
+  BKE_nurb_handles_calc(nu);
+  for (const int k : blender::IndexRange(anchors_num)) {
+    nu->bezt[k].h1 = nu->bezt[k].h2 = HD_FREE;
+  }
+  return curve_ob;
+}
+
+static wmOperatorStatus greasepencil_spine_controllers_exec(bContext *C, wmOperator *op)
+{
+  Main *bmain = CTX_data_main(C);
+  Scene *scene = CTX_data_scene(C);
+  Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
+  Object *ob = context_active_object(C);
+
+  if (ob == nullptr || ob->type != OB_GREASE_PENCIL) {
+    return OPERATOR_CANCELLED;
+  }
+
+  GreasePencilContourModifierData *cmd = (GreasePencilContourModifierData *)
+      edit_modifier_property_get(op, ob, eModifierType_GreasePencilContour);
+  if (cmd == nullptr) {
+    cmd = (GreasePencilContourModifierData *)modifier_add(
+        op->reports, bmain, scene, ob, nullptr, eModifierType_GreasePencilContour);
+    if (cmd == nullptr) {
+      return OPERATOR_CANCELLED;
+    }
+  }
+  if (cmd->object != nullptr || cmd->cage_layer[0] != '\0') {
+    BKE_report(op->reports, RPT_ERROR, "The modifier already has a guide assigned");
+    return OPERATOR_CANCELLED;
+  }
+
+  ViewLayer *view_layer = CTX_data_view_layer(C);
+
+  Object *curve_ob = greasepencil_spine_create_for_drawing(C, ob, op->reports);
+  if (curve_ob == nullptr) {
+    return OPERATOR_CANCELLED;
+  }
+  cmd->object = curve_ob;
+  /* Deform along the line (Moving Least Squares), not as a closed contour. */
+  cmd->flag |= MOD_GREASE_PENCIL_CONTOUR_LINE_GUIDE;
+
+  /* Bind to the freshly built spine (rest == its current shape), so it starts as a no-op. */
+  greasepencil_contour_bind_modifier(depsgraph, ob, cmd, false, op->reports);
+
+  /* Object-mode controls: anchor + 2 tangent empties per anchor (reused from the envelope rig), so
+   * the artist bends the spine by grabbing the controls without entering Edit Mode. */
+  greasepencil_envelope_add_controls(bmain, scene, view_layer, ob, curve_ob);
+
+  BKE_view_layer_synced_ensure(scene, view_layer);
+  if (Base *gp_base = BKE_view_layer_base_find(view_layer, ob)) {
+    base_activate(C, gp_base);
+    WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
+  }
+
+  DEG_relations_tag_update(bmain);
+  DEG_id_tag_update(&curve_ob->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
+  DEG_id_tag_update(&ob->id, ID_RECALC_GEOMETRY);
+  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, ob);
+  WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, curve_ob);
+  BKE_report(op->reports,
+             RPT_INFO,
+             "Created spine controllers - grab the empties to bend the drawing along the line");
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_spine_controllers_invoke(bContext *C,
+                                                              wmOperator *op,
+                                                              const wmEvent * /*event*/)
+{
+  if (edit_modifier_invoke_properties(C, op)) {
+    return greasepencil_spine_controllers_exec(C, op);
+  }
+  return OPERATOR_CANCELLED;
+}
+
+void OBJECT_OT_greasepencil_spine_controllers(wmOperatorType *ot)
+{
+  ot->name = "Create Spine Controllers";
+  ot->description =
+      "Trace a Bezier curve along the centerline of the drawing's longest line, add Object-Mode "
+      "controllers, and bind it so bending the line deforms the drawing";
+  ot->idname = "OBJECT_OT_greasepencil_spine_controllers";
+
+  ot->poll = greasepencil_contour_bind_poll;
+  ot->invoke = greasepencil_spine_controllers_invoke;
+  ot->exec = greasepencil_spine_controllers_exec;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
+}
+
 static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator *op)
 {
   Main *bmain = CTX_data_main(C);
