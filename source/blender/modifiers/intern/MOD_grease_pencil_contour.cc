@@ -283,14 +283,14 @@ static bool tessellate_bezier_cage(const ListBase &nurbs, Vector<float3> &out)
     if (nu->type != CU_BEZIER || nu->bezt == nullptr || nu->pntsu < 2) {
       continue;
     }
-    if ((nu->flagu & CU_NURB_CYCLIC) == 0) {
-      /* The contour must be a closed loop. */
-      continue;
-    }
     const int n = nu->pntsu;
+    const bool cyclic = (nu->flagu & CU_NURB_CYCLIC) != 0;
     const int resolu = std::max<int>(nu->resolu, 1);
-    out.reserve(n * resolu);
-    for (const int i : IndexRange(n)) {
+    /* Closed loop (envelope/contour) wraps every anchor; an open spine (line guide) tessellates each
+     * segment and appends the final anchor so the whole line is sampled. */
+    const int segs = cyclic ? n : (n - 1);
+    out.reserve(segs * resolu + 1);
+    for (const int i : IndexRange(segs)) {
       const BezTriple &b0 = nu->bezt[i];
       const BezTriple &b1 = nu->bezt[(i + 1) % n];
       /* Cubic Bezier control points: knot, right handle, next left handle, next knot. */
@@ -305,7 +305,10 @@ static bool tessellate_bezier_cage(const ListBase &nurbs, Vector<float3> &out)
                    t * t * t * p3);
       }
     }
-    return out.size() >= 3;
+    if (!cyclic) {
+      out.append(float3(nu->bezt[n - 1].vec[1]));
+    }
+    return out.size() >= 2;
   }
   return false;
 }
@@ -466,6 +469,10 @@ static void modify_geometry_set(ModifierData *md,
   if (!use_layer_cage && cmd->object == nullptr) {
     return;
   }
+  /* MLS (line-guided) when the cage is a layer of this object, or an external curve flagged as a
+   * spine/line guide; otherwise closed-contour MVC (the silhouette envelope). */
+  const bool use_mls = use_layer_cage ||
+                       (cmd->flag & MOD_GREASE_PENCIL_CONTOUR_LINE_GUIDE) != 0;
 
   GreasePencil &grease_pencil = *geometry_set->get_grease_pencil_for_write();
   const int current_frame = grease_pencil.runtime->eval_frame;
@@ -547,7 +554,7 @@ static void modify_geometry_set(ModifierData *md,
 
   const int cage_num = rest_pos.size();
   /* MVC needs a closed contour (>=3); MLS (line-guided) works with any handle count. */
-  if (cage_num < (use_layer_cage ? 1 : 3)) {
+  if (cage_num < (use_mls ? 1 : 3)) {
     return;
   }
 
@@ -602,7 +609,7 @@ static void modify_geometry_set(ModifierData *md,
                    av,
                    gp_to_cage,
                    cage_to_gp,
-                   use_layer_cage);
+                   use_mls);
   });
 }
 
@@ -647,8 +654,11 @@ static void panel_draw(const bContext *C, Panel *panel)
     }
   }
   else if (cmd->object == nullptr) {
-    /* No cage yet: one click traces a Bezier envelope around the drawing, assigns it and binds, so
-     * the artist can immediately reshape the contour to deform the art. */
+    /* No guide yet. Two one-click rigs, both with Object-Mode controllers:
+     * - Spine: a Bezier along the line's centerline; bending it bends the drawing along the line.
+     * - Envelope: a closed Bezier around the silhouette; reshaping it squashes/stretches the form. */
+    layout->op(
+        "OBJECT_OT_greasepencil_spine_controllers", IFACE_("Create Spine Controllers"), ICON_NONE);
     layout->op("OBJECT_OT_greasepencil_envelope_setup", IFACE_("Create Envelope"), ICON_NONE);
   }
   else {
