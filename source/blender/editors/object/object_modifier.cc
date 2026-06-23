@@ -3922,6 +3922,7 @@ static bool greasepencil_contour_bind_poll(bContext *C)
 /* Store (or clear, when `unbind`) the rest contour of the Contour modifier's cage, so editing the
  * cage afterwards deforms the art from this snapshot. Returns false (and reports) on failure. */
 static bool greasepencil_contour_bind_modifier(Depsgraph *depsgraph,
+                                               Object *ob,
                                                GreasePencilContourModifierData *cmd,
                                                const bool unbind,
                                                ReportList *reports)
@@ -3932,19 +3933,41 @@ static bool greasepencil_contour_bind_modifier(Depsgraph *depsgraph,
   if (unbind) {
     return true;
   }
-  if (cmd->object == nullptr) {
-    BKE_report(reports, RPT_ERROR, "Assign a cage object before binding");
-    return false;
-  }
-  const Object *cage_eval = DEG_get_evaluated(depsgraph, cmd->object);
   blender::Vector<blender::float3> contour;
-  if (cage_eval == nullptr ||
-      !blender::modifier::greasepencil::contour_sample_cage(*cage_eval, true, contour))
-  {
-    BKE_report(reports,
-               RPT_ERROR,
-               "Cage has no usable contour (need a mesh ring or a cyclic Bezier spline)");
-    return false;
+  if (cmd->cage_layer[0] != '\0') {
+    /* Nuclear: layer-cage. Capture the cage layer's first stroke (of this Grease Pencil object) as
+     * the rest contour, so editing that stroke afterwards deforms the rest of the drawing. */
+    const Object *ob_eval = DEG_get_evaluated(depsgraph, ob);
+    const GreasePencil *gp_eval = (ob_eval != nullptr && ob_eval->type == OB_GREASE_PENCIL) ?
+                                      static_cast<const GreasePencil *>(ob_eval->data) :
+                                      nullptr;
+    const int frame = (gp_eval != nullptr && gp_eval->runtime != nullptr) ?
+                          gp_eval->runtime->eval_frame :
+                          0;
+    if (gp_eval == nullptr ||
+        !blender::modifier::greasepencil::contour_sample_gp_layer(
+            *gp_eval, cmd->cage_layer, frame, contour))
+    {
+      BKE_report(reports,
+                 RPT_ERROR,
+                 "Cage layer has no usable stroke (need a layer whose first stroke has 3+ points)");
+      return false;
+    }
+  }
+  else {
+    if (cmd->object == nullptr) {
+      BKE_report(reports, RPT_ERROR, "Assign a cage object or a cage layer before binding");
+      return false;
+    }
+    const Object *cage_eval = DEG_get_evaluated(depsgraph, cmd->object);
+    if (cage_eval == nullptr ||
+        !blender::modifier::greasepencil::contour_sample_cage(*cage_eval, true, contour))
+    {
+      BKE_report(reports,
+                 RPT_ERROR,
+                 "Cage has no usable contour (need a mesh ring or a cyclic Bezier spline)");
+      return false;
+    }
   }
   cmd->bind_co = MEM_malloc_arrayN<float[3]>(size_t(contour.size()), __func__);
   for (const int i : contour.index_range()) {
@@ -3966,7 +3989,7 @@ static wmOperatorStatus greasepencil_contour_bind_exec(bContext *C, wmOperator *
     return OPERATOR_CANCELLED;
   }
   const bool unbind = RNA_boolean_get(op->ptr, "unbind");
-  if (!greasepencil_contour_bind_modifier(depsgraph, cmd, unbind, op->reports)) {
+  if (!greasepencil_contour_bind_modifier(depsgraph, ob, cmd, unbind, op->reports)) {
     return OPERATOR_CANCELLED;
   }
 
@@ -4295,7 +4318,7 @@ static wmOperatorStatus greasepencil_envelope_setup_exec(bContext *C, wmOperator
 
   /* Bind to the freshly built silhouette (its original geometry == the rest), so the envelope
    * starts as a no-op and reshaping it immediately deforms the art. */
-  greasepencil_contour_bind_modifier(depsgraph, cmd, false, op->reports);
+  greasepencil_contour_bind_modifier(depsgraph, ob, cmd, false, op->reports);
 
   /* Object-mode controls: one Empty + Hook per anchor, so the artist grabs the empties to deform
    * without entering Edit Mode. */
