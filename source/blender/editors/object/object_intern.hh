@@ -237,6 +237,7 @@ void OBJECT_OT_greasepencil_curve_setup(wmOperatorType *ot);
 void OBJECT_OT_greasepencil_contour_bind(wmOperatorType *ot);
 void OBJECT_OT_greasepencil_envelope_setup(wmOperatorType *ot);
 void OBJECT_OT_greasepencil_spine_controllers(wmOperatorType *ot);
+void OBJECT_OT_greasepencil_contour_toggle_controls(wmOperatorType *ot);
 void OBJECT_OT_geometry_nodes_input_attribute_toggle(wmOperatorType *ot);
 void OBJECT_OT_geometry_node_tree_copy_assign(wmOperatorType *ot);
 void OBJECT_OT_grease_pencil_dash_modifier_segment_add(wmOperatorType *ot);
