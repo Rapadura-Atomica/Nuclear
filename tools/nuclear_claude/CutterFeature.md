@@ -136,12 +136,44 @@ Teste via BlenderMCP TCP `127.0.0.1:9876` (nunca `script.reload()` na sessão de
   visível. O bug de profundidade (#2) foi diagnosticado e resolvido com o Z-flatten. Fase 2
   (Peg Graph) pendente.
 
+## 7b. Fase 3 — MIGRAÇÃO para máscara NATIVA cross-object + multi-matte + invert (2026-06-23)
+A abordagem de **injeção** (Fase 1, modifier `MOD_grease_pencil_mask.cc`) foi **superada** pelo
+suporte **nativo a matte cross-object** que entrou no draw engine com a fusão Auto-Patch+Envelope:
+- `GreasePencilLayerMask` ganhou os campos `object` + `layer_name` (DNA) → uma máscara pode apontar
+  para a layer/grupo de **outro** objeto. `draw_mask` (`gpencil_engine_c.cc`) rasteriza **todos** os
+  mattes de uma layer (`tLayer::mattes`) no **mesmo** buffer de máscara → **união automática** de N
+  silhuetas. RNA exposta: `layer.mask_layers.new(name="", object=matte, invert=)` / `.remove()`
+  (coleção é **`mask_layers`**, prop do nome é **`.name`** com sdna `layer_name`; `.invert`,
+  `.use_auto_patch`).
+- O **Peg Graph** (`scripts/startup/nuclear_peg_graph.py`) foi reescrito p/ falar **máscara nativa**
+  (não mais o modifier): socket **"Cutter" multi-input** (`inputs.new(..., use_multi_input=True)`),
+  N links `Matte→Cutter` = N máscaras nativas = união. **Python puro, ZERO C/DNA** (o C já estava no
+  source). Helpers: `_set_object_cutters` (reconcilia as máscaras nativas com os links; só mexe em
+  máscaras cross-object cujo matte é drawing-node do grafo e **não** Auto-Patch — preserva
+  Auto-Patch/Contour/manuais), `_managed_cutter_mattes`, `_object_cutter_invert`,
+  `_migrate_legacy_cutter` (converte modifier legado → nativo no `rebuild`, carregando `mod.invert`).
+- **Invert** exposto: toggle **"Invert Cutter" por Drawing node** (`cutter_invert` BoolProperty com
+  update callback), polaridade **uniforme** a todos os mattes do nó — misturar polaridades numa
+  união é frágil no mask pass (flip de buffer dependente de ordem). Fonte da verdade = `mask.invert`;
+  `rebuild` restaura o toggle, `_graph_signature` codifica `@0/@1`.
+- O modifier de injeção **continua registrado** só p/ carregar e migrar arquivos antigos (limpá-lo é
+  tarefa separada). Os gotchas de injeção (profundidade #2, material #1) deixam de se aplicar ao
+  caminho nativo.
+- **Validação:** headless **22/22** (união, unlink seletivo, invert round-trip, preservação de
+  Auto-Patch, migração legada) no binário rebuildado 2026-06-23 17:00. **PENDENTE:** validação visual
+  GPU em processo fresco; commit.
+- **Limites conhecidos:** a máscara cobre **todas** as leaf layers do objeto com a silhueta do matte
+  **inteiro**; granularidade por-layer (via `layer_name`) é evolução futura. "Por baixo/por cima" é
+  **ordem de desenho**, não Cutter.
+
 ## 8. Evolução futura
-- Auto-setup do material de fill no slot remapeado (hoje depende do slot 0 da pupila ter fill).
+- Granularidade por-layer/grupo no matte (usar `layer_name` em vez de objeto inteiro).
+- `invert` por-matte (hoje é por-nó/uniforme) — exigiria UI por-link, que o node tree não dá de graça.
+- Auto-setup do material de fill no slot remapeado (relevante só p/ o caminho legado de injeção).
 - `feather`/suavização da borda do matte (o alpha nativo já dá borda do traço; um falloff
   explícito seria extra).
-- Múltiplos mattes por objeto (já suportado: cada modifier injeta sua própria layer única).
-- Integração no Peg Graph (Fase 2).
+- Remover/aposentar o modifier de injeção `MOD_grease_pencil_mask.cc` quando todos os arquivos
+  estiverem migrados.
 
 Relaciona-se com `NUCLEAR_DIVERGENCE.md`, `CLAUDE.md` (regra de isolar divergência) e o
 sistema de pegs (`SquashFeature.md`, PegRig).

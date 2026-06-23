@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 2,
-  "version": "1.1.0",
+  "build": 5,
+  "version": "1.3.1",
   "stage": "Beta",
-  "version_string": "Nuclear 1.1.0 (Beta)",
+  "version_string": "Nuclear 1.3.1 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "1ea84a9b6ef8b2d2b3ada5f78d45af8ba3354fbc57f78e052180ccc618c6e576",
-  "size": 663042848,
+  "sha256": "52b94ed0251c72bf86f3afceb78768ea7ddeba88090a1e699308c5b136b0cd51",
+  "size": 647768664,
   "min_build": 0,
-  "notes_url": "https://github.com/Rapadura-Atomica/Nuclear",
-  "notes": "Atualização automática embutida (notifica e instala novas versões sozinho), inclusive em instalações descompactadas direto da pasta + correções."
+  "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
+  "notes": "Nuclear 1.3.1 reúne os quatro pilares 2D do fork: Squash & Stretch, Cutter (máscara cross-object), Auto-Patch (recorte com modo mútuo) e Envelope/Contour — agora com Spine Controllers (rig Bézier ao longo da linha), modo Guide Line, stroke de layer como cage e toggle Show/Hide Controllers. Inclui também Cell Library (substituição de desenhos), nova Timeline, melhorias nos Pegs (realce/sync/hierarquia) e a nova identidade visual Nuclear, além de correções no auto-update (SSL, flat-install, bit de execução)."
 }
