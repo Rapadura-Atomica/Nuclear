@@ -298,13 +298,16 @@ bool contour_sample_gp_layer(const GreasePencil &gp,
   if (curves.curves_num() == 0) {
     return false;
   }
-  /* The cage is the layer's FIRST stroke, in Grease Pencil object-local space. */
-  const OffsetIndices<int> points_by_curve = curves.points_by_curve();
-  const Span<float3> positions = curves.positions();
-  const IndexRange first = points_by_curve[0];
+  /* The cage is the layer's FIRST stroke, in Grease Pencil object-local space. Sample the EVALUATED
+   * curve (tessellated), not the control points, so a Bezier cage follows its handles: reshaping the
+   * stroke with Bezier handles changes the contour and therefore the deform. For a poly stroke the
+   * evaluated points equal the control points, so this also covers ordinary strokes. */
+  const OffsetIndices<int> eval_by_curve = curves.evaluated_points_by_curve();
+  const Span<float3> eval_positions = curves.evaluated_positions();
+  const IndexRange first = eval_by_curve[0];
   r_contour.reserve(first.size());
   for (const int p : first) {
-    r_contour.append(positions[p]);
+    r_contour.append(eval_positions[p]);
   }
   return r_contour.size() >= 3;
 }
