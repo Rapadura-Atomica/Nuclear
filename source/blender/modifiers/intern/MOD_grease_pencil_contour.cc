@@ -31,6 +31,7 @@
 #include "BLI_listbase.h"
 #include "BLI_math_matrix.hh"
 #include "BLI_math_vector.hh"
+#include "BLI_string_ref.hh"
 #include "BLI_vector.hh"
 
 #include "BLT_translation.hh"
@@ -102,6 +103,10 @@ static void free_data(ModifierData *md)
 static bool is_disabled(const Scene * /*scene*/, ModifierData *md, bool /*use_render_params*/)
 {
   auto *cmd = reinterpret_cast<GreasePencilContourModifierData *>(md);
+  /* Nuclear: layer-cage mode needs no external object; its validity is checked at eval time. */
+  if (cmd->cage_layer[0] != '\0') {
+    return false;
+  }
   if (cmd->object == nullptr) {
     return true;
   }
@@ -271,6 +276,39 @@ bool contour_sample_cage(const Object &cage, const bool deformed, Vector<float3>
   return false;
 }
 
+bool contour_sample_gp_layer(const GreasePencil &gp,
+                             const StringRef layer_name,
+                             const int frame,
+                             Vector<float3> &r_contour)
+{
+  using namespace blender::bke::greasepencil;
+  r_contour.clear();
+  if (layer_name.is_empty()) {
+    return false;
+  }
+  const TreeNode *node = gp.find_node_by_name(layer_name);
+  if (node == nullptr || !node->is_layer()) {
+    return false;
+  }
+  const Drawing *drawing = gp.get_drawing_at(node->as_layer(), frame);
+  if (drawing == nullptr) {
+    return false;
+  }
+  const bke::CurvesGeometry &curves = drawing->strokes();
+  if (curves.curves_num() == 0) {
+    return false;
+  }
+  /* The cage is the layer's FIRST stroke, in Grease Pencil object-local space. */
+  const OffsetIndices<int> points_by_curve = curves.points_by_curve();
+  const Span<float3> positions = curves.positions();
+  const IndexRange first = points_by_curve[0];
+  r_contour.reserve(first.size());
+  for (const int p : first) {
+    r_contour.append(positions[p]);
+  }
+  return r_contour.size() >= 3;
+}
+
 }  // namespace blender::modifier::greasepencil
 
 namespace blender {
@@ -338,38 +376,89 @@ static void modify_geometry_set(ModifierData *md,
 {
   auto *cmd = reinterpret_cast<GreasePencilContourModifierData *>(md);
 
-  if (!geometry_set->has_grease_pencil() || cmd->object == nullptr) {
+  if (!geometry_set->has_grease_pencil()) {
     return;
   }
 
-  /* Deformed cage = evaluated geometry (after the cage's own modifier stack / direct edits). */
-  const Object *cage_orig = DEG_get_original(cmd->object);
-  Object *cage_eval = DEG_get_evaluated(ctx->depsgraph, cmd->object);
-  if (cage_orig == nullptr || cage_eval == nullptr) {
+  /* Nuclear: two cage sources. Layer-cage (cmd->cage_layer set) takes the first stroke of a layer
+   * of THIS object as the contour; otherwise the external cmd->object (mesh / Bezier curve). */
+  const bool use_layer_cage = cmd->cage_layer[0] != '\0';
+  if (!use_layer_cage && cmd->object == nullptr) {
     return;
   }
 
-  Vector<float3> def_curve;
-  if (!modifier::greasepencil::contour_sample_cage(*cage_eval, true, def_curve)) {
-    return;
-  }
-  const Span<float3> def_pos = def_curve;
+  GreasePencil &grease_pencil = *geometry_set->get_grease_pencil_for_write();
+  const int current_frame = grease_pencil.runtime->eval_frame;
 
-  /* Rest cage: when bound, the contour snapshot stored at bind time (so editing the cage
-   * directly deforms the art); otherwise the cage's live original geometry. The bound path is what
-   * lets a Bezier envelope be reshaped by hand, with no extra rig on the cage. */
-  Vector<float3> rest_curve;
-  Span<float3> rest_pos;
   const bool bound = (cmd->flag & MOD_GREASE_PENCIL_CONTOUR_BOUND) && cmd->bind_co != nullptr &&
                      cmd->bind_verts_num >= 3;
-  if (bound) {
-    rest_pos = Span<float3>(reinterpret_cast<const float3 *>(cmd->bind_co), cmd->bind_verts_num);
-  }
-  else {
-    if (!modifier::greasepencil::contour_sample_cage(*cage_orig, false, rest_curve)) {
+
+  Vector<float3> def_curve;
+  Vector<float3> rest_curve;
+  Span<float3> def_pos;
+  Span<float3> rest_pos;
+  float4x4 gp_to_cage;
+  float4x4 cage_to_gp;
+  int cage_layer_index = -1;
+
+  if (use_layer_cage) {
+    /* Deformed cage = the cage layer's first stroke as it currently is (after the artist's edits /
+     * earlier modifiers). Rest = the bind snapshot (binding is required: there is no separate rest
+     * object). Cage and art share the Grease Pencil object, so the MVC space is the GP local space
+     * and no transform is needed. */
+    if (!modifier::greasepencil::contour_sample_gp_layer(
+            grease_pencil, cmd->cage_layer, current_frame, def_curve))
+    {
       return;
     }
-    rest_pos = rest_curve;
+    def_pos = def_curve;
+    if (!bound) {
+      /* No rest snapshot yet: nothing to deform from (the panel prompts the artist to Bind). */
+      return;
+    }
+    rest_pos = Span<float3>(reinterpret_cast<const float3 *>(cmd->bind_co), cmd->bind_verts_num);
+    gp_to_cage = float4x4::identity();
+    cage_to_gp = float4x4::identity();
+
+    const Span<const bke::greasepencil::Layer *> layers = grease_pencil.layers();
+    for (const int i : layers.index_range()) {
+      if (layers[i]->name() == StringRef(cmd->cage_layer)) {
+        cage_layer_index = i;
+        break;
+      }
+    }
+  }
+  else {
+    /* Deformed cage = evaluated geometry (after the cage's own modifier stack / direct edits). */
+    const Object *cage_orig = DEG_get_original(cmd->object);
+    Object *cage_eval = DEG_get_evaluated(ctx->depsgraph, cmd->object);
+    if (cage_orig == nullptr || cage_eval == nullptr) {
+      return;
+    }
+    if (!modifier::greasepencil::contour_sample_cage(*cage_eval, true, def_curve)) {
+      return;
+    }
+    def_pos = def_curve;
+
+    /* Rest cage: when bound, the contour snapshot stored at bind time (so editing the cage directly
+     * deforms the art); otherwise the cage's live original geometry. */
+    if (bound) {
+      rest_pos = Span<float3>(reinterpret_cast<const float3 *>(cmd->bind_co), cmd->bind_verts_num);
+    }
+    else {
+      if (!modifier::greasepencil::contour_sample_cage(*cage_orig, false, rest_curve)) {
+        return;
+      }
+      rest_pos = rest_curve;
+    }
+
+    /* MVC runs in the cage object's local space; map GP points in and out of it. */
+    const float4x4 gp_to_world = ctx->object->object_to_world();
+    const float4x4 world_to_gp = ctx->object->world_to_object();
+    const float4x4 cage_to_world = cage_eval->object_to_world();
+    const float4x4 world_to_cage = cage_eval->world_to_object();
+    gp_to_cage = world_to_cage * gp_to_world;
+    cage_to_gp = world_to_gp * cage_to_world;
   }
 
   if (rest_pos.size() != def_pos.size()) {
@@ -406,20 +495,19 @@ static void modify_geometry_set(ModifierData *md,
     cage2_def[i] = float2(def_pos[i][au], def_pos[i][av]);
   }
 
-  /* MVC runs entirely in the cage object's local space; map GP points in and out of it. */
-  const float4x4 gp_to_world = ctx->object->object_to_world();
-  const float4x4 world_to_gp = ctx->object->world_to_object();
-  const float4x4 cage_to_world = cage_eval->object_to_world();
-  const float4x4 world_to_cage = cage_eval->world_to_object();
-  const float4x4 gp_to_cage = world_to_cage * gp_to_world;
-  const float4x4 cage_to_gp = world_to_gp * cage_to_world;
-
-  GreasePencil &grease_pencil = *geometry_set->get_grease_pencil_for_write();
-  const int current_frame = grease_pencil.runtime->eval_frame;
-
   IndexMaskMemory mask_memory;
-  const IndexMask layer_mask = modifier::greasepencil::get_filtered_layer_mask(
+  IndexMask layer_mask = modifier::greasepencil::get_filtered_layer_mask(
       grease_pencil, cmd->influence, mask_memory);
+  /* The cage layer is a deform guide: never deform it with itself. */
+  if (use_layer_cage && cage_layer_index >= 0) {
+    Vector<int64_t> keep;
+    layer_mask.foreach_index([&](const int64_t i) {
+      if (i != int64_t(cage_layer_index)) {
+        keep.append(i);
+      }
+    });
+    layer_mask = IndexMask::from_indices<int64_t>(keep.as_span(), mask_memory);
+  }
   const Vector<bke::greasepencil::Drawing *> drawings =
       modifier::greasepencil::get_drawings_for_write(grease_pencil, layer_mask, current_frame);
 
@@ -439,10 +527,37 @@ static void panel_draw(const bContext *C, Panel *panel)
 
   layout->use_property_split_set(true);
 
-  layout->prop(ptr, "object", UI_ITEM_NONE, IFACE_("Cage"), ICON_NONE);
+  const bool use_layer_cage = cmd->cage_layer[0] != '\0';
+
+  /* Nuclear: primary cage source = a layer of THIS Grease Pencil object (its first stroke is the
+   * contour). Pick the layer here; it acts as a hidden deform guide. */
+  PointerRNA gp_ob_ptr = RNA_pointer_create_discrete(ptr->owner_id, &RNA_Object, ptr->owner_id);
+  PointerRNA gp_data_ptr = RNA_pointer_get(&gp_ob_ptr, "data");
+  layout->prop_search(
+      ptr, "cage_layer", &gp_data_ptr, "layers", IFACE_("Cage Layer"), ICON_OUTLINER_DATA_GP_LAYER);
+
+  /* Fall back to an external cage object (mesh / Bezier curve) only when no cage layer is set. */
+  if (!use_layer_cage) {
+    layout->prop(ptr, "object", UI_ITEM_NONE, IFACE_("Cage Object"), ICON_NONE);
+  }
   layout->prop(ptr, "strength", UI_ITEM_R_SLIDER, std::nullopt, ICON_NONE);
 
-  if (cmd->object == nullptr) {
+  if (use_layer_cage) {
+    /* Layer-cage requires a Bind: capture the cage layer's stroke as the rest pose, then edit the
+     * stroke to deform the rest of the drawing. */
+    const bool bound = (cmd->flag & MOD_GREASE_PENCIL_CONTOUR_BOUND) != 0;
+    uiLayout *bind_row = &layout->row(true);
+    PointerRNA bind_ptr = bind_row->op(
+        "OBJECT_OT_greasepencil_contour_bind", IFACE_("Bind"), ICON_NONE);
+    RNA_boolean_set(&bind_ptr, "unbind", false);
+    PointerRNA unbind_ptr = bind_row->op(
+        "OBJECT_OT_greasepencil_contour_bind", IFACE_("Unbind"), ICON_NONE);
+    RNA_boolean_set(&unbind_ptr, "unbind", true);
+    if (!bound) {
+      layout->label(IFACE_("Bind the cage layer to start deforming"), ICON_INFO);
+    }
+  }
+  else if (cmd->object == nullptr) {
     /* No cage yet: one click traces a Bezier envelope around the drawing, assigns it and binds, so
      * the artist can immediately reshape the contour to deform the art. */
     layout->op("OBJECT_OT_greasepencil_envelope_setup", IFACE_("Create Envelope"), ICON_NONE);

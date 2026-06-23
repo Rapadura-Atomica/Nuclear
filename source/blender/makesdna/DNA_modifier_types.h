@@ -3158,6 +3158,12 @@ typedef struct GreasePencilContourModifierData {
   /** Number of points in #bind_co. */
   int bind_verts_num;
   char _pad[4];
+  /**
+   * Nuclear: when non-empty, the cage is the first stroke of this layer (a layer of THIS Grease
+   * Pencil object), instead of the external #object curve/mesh. The layer is a hidden deform guide;
+   * binding captures its stroke as the rest contour and editing it deforms the rest of the drawing.
+   */
+  char cage_layer[64];
 } GreasePencilContourModifierData;
 
 typedef enum GreasePencilContourFlag {

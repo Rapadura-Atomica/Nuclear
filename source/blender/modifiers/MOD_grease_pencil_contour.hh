@@ -12,9 +12,12 @@
 #pragma once
 
 #include "BLI_math_vector_types.hh"
+#include "BLI_string_ref.hh"
 #include "BLI_vector.hh"
 
 #include "DNA_object_types.h"
+
+struct GreasePencil;
 
 namespace blender::modifier::greasepencil {
 
@@ -27,5 +30,16 @@ namespace blender::modifier::greasepencil {
  * envelope-setup operators so rest and deformed contours always correspond index-for-index.
  */
 bool contour_sample_cage(const Object &cage, bool deformed, Vector<float3> &r_contour);
+
+/**
+ * Sample the first stroke of `layer_name` (a layer of `gp`) at `frame` into a contour polygon, in
+ * Grease Pencil object-local space. This is the "cage from a layer of this object" source: the
+ * chosen layer is a hidden deform guide; its first stroke is the ring of contour points. Returns
+ * false when the layer/drawing/stroke is missing or has fewer than 3 points.
+ */
+bool contour_sample_gp_layer(const GreasePencil &gp,
+                             StringRef layer_name,
+                             int frame,
+                             Vector<float3> &r_contour);
 
 }  // namespace blender::modifier::greasepencil
