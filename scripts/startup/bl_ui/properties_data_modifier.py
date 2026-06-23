@@ -233,6 +233,7 @@ class OBJECT_MT_modifier_add_deform(ModifierAddMenu, Menu):
             self.operator_modifier_add(layout, 'VOLUME_DISPLACE')
         if ob_type == 'GREASEPENCIL':
             self.operator_modifier_add(layout, 'GREASE_PENCIL_ARMATURE')
+            self.operator_modifier_add(layout, 'GREASE_PENCIL_CONTOUR')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_CURVE')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_HOOK')
             self.operator_modifier_add(layout, 'GREASE_PENCIL_LATTICE')
