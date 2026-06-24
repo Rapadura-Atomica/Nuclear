@@ -194,7 +194,7 @@ Major source areas under `source/blender/`:
 > `version.json`, etc.), **atualize este documento na mesma leva**. O agente
 > `nuclear-release` é obrigado a fazer isso ao final de cada release.
 
-Última atualização: 2026-06-11.
+Última atualização: 2026-06-23.
 
 ---
 
@@ -435,6 +435,14 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-06-23.
 
+- **Nuclear 1.3.2 (Beta) — `NUCLEAR_BUILD = 6` — EMPACOTADO, deploy pendente de aprovação manual (2026-06-23).**
+  Release de robustez do auto-updater: injeção do script corrigido (commit `d63ac650`) no zip do
+  build 5, sem recompilação. Fixes incluídos: log em disco (`nuclear_update.log`), checagem de
+  espaço livre antes do download (`_check_free_space`), traceback capturado em caso de falha no
+  apply. Bump: PATCH 1.3.1→1.3.2, `NUCLEAR_BUILD` 5→6. verify-zip OK (updater + scipy presentes),
+  check-manifest OK. Artefatos prontos localmente no scratchpad da sessão; deploy aguarda `scp`
+  manual pelo usuário (comandos exatos abaixo). `ping.php` / `instalarNuclear.sh` não tocados.
+
 - **Nuclear 1.3.1 (Beta) — `NUCLEAR_BUILD = 5` — PUBLICADO (2026-06-23).** Release a partir da
   branch `Nuclear` (HEAD `ee2a8c7`). Empacota a junção Auto-Patch + Envelope **mais** o Contour
   evoluído (stroke de layer como cage; modo **Guide Line**/MLS; **Spine Controllers** = rig Bézier
@@ -449,16 +457,16 @@ Atualizado em 2026-06-23.
   máquinas na b4 de 19/jun não enxergariam o update). Backup do zip 1.3.0/b4 no servidor:
   `nuclear.zip.bak-pre-1.3.0`. `ping.php` / `instalarNuclear.sh` seguem manuais (não tocados).
 
-- **Junção Auto-Patch + Envelope na mainline `Nuclear` (2026-06-23) — NÃO PUBLICADO.** As duas
-  features GP refinadas (Auto-Patch engine-based de `feat/gp-masks` + Envelope/Contour modifier
-  de `integration/gp-contour-1.1`) foram juntadas na branch `integration/autopatch-envelope`
+- **Junção Auto-Patch + Envelope na mainline `Nuclear` (2026-06-23) — INCLUÍDO NO BUILD 6.**
+  As duas features GP refinadas (Auto-Patch engine-based de `feat/gp-masks` + Envelope/Contour
+  modifier de `integration/gp-contour-1.1`) foram juntadas na branch `integration/autopatch-envelope`
   (criada a partir de `Nuclear`) por merge sequencial B→A, e o resultado trazido para a branch
   **`Nuclear`**. Coexistem agora 3 sistemas: **Cutter** (`MOD_grease_pencil_mask.cc`, eType 88),
   **Auto-Patch** (engine) e **Contour/Envelope** (`MOD_grease_pencil_contour.cc`, **eType 88→89**
   — realocado para não colidir com o Cutter). Botão do Auto-Patch renomeado p/ "Auto-Patch" (sem
-  "Toon Boom"). Build limpo (ninja RC 0) + smoke test headless: os 3 registram. **Pendente:** bump
-  de `NUCLEAR_BUILD` + empacotar/publicar (agente `nuclear-release`); validação **visual** das
-  máscaras 2D em processo fresco. Ver ADR `docs/decisions/2026-06-23-merge-autopatch-envelope-nuclear.md`.
+  "Toon Boom"). Build limpo (ninja RC 0) + smoke test headless: os 3 registram. (Já estava no zip
+  b5; o build 6 herda esse conteúdo via repackage sem rebuild.) Ver ADR
+  `docs/decisions/2026-06-23-merge-autopatch-envelope-nuclear.md`.
 
 - **Consolidação 1.0 → 1.1 + modifier Contour/masks GP (2026-06-16) — BUMP LOCAL, NÃO
   PUBLICADO.** O trabalho GP novo (modifier `GreasePencilContour` eType 88 — deformer
@@ -488,14 +496,17 @@ Atualizado em 2026-06-23.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão publicada:** Nuclear 1.3.1 (Beta) — `NUCLEAR_BUILD = 5` (2026-06-23). Máquinas em
-  qualquer build ≤ 4 (inclusive a 1.3.0/b4 de 19/jun e a 1.1.0/b2) enxergam como update.
-  Histórico: 1.1.0/b2 (2026-06-11, primeiro build real do fluxo) → 1.3.0/b4 (2026-06-19, não
-  registrado no doc à época) → **1.3.1/b5 (atual)**.
-- **nuclear.zip:** 647.768.664 bytes, sha256
-  `52b94ed0251c72bf86f3afceb78768ea7ddeba88090a1e699308c5b136b0cd51`. **Auto-contido por
-  construção:** o build traz o updater (regra nº3) e as deps Python do fork (regra nº4, scipy
-  & cia. em `site-packages`) — verify-zip confirmou ambos antes do publish. Backups no servidor:
+- **Versão em produção:** Nuclear 1.3.1 (Beta) — `NUCLEAR_BUILD = 5` (2026-06-23, último deploy
+  confirmado no servidor). Máquinas em qualquer build ≤ 4 enxergam como update.
+  Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não registrado à época) →
+  1.3.1/b5 (2026-06-23) → **1.3.2/b6 (empacotado, aguardando deploy)**.
+- **nuclear.zip (b6, aguardando deploy):** 655.649.013 bytes, sha256
+  `45dda5389efb1b8b217a8a3db4e89172dbde4fa5fc7f37bd882946b2712119e3`. Repackage do b5 com
+  injeção do updater corrigido (commit `d63ac650`) e `nuclear_version.json` b6. verify-zip OK
+  (updater + scipy). check-manifest OK. **Artefatos locais no scratchpad da sessão de
+  2026-06-23** (temporários — copiar para local permanente antes de fazer deploy).
+- **nuclear.zip (b5, em produção):** 647.768.664 bytes, sha256
+  `52b94ed0251c72bf86f3afceb78768ea7ddeba88090a1e699308c5b136b0cd51`. Backups no servidor:
   `nuclear.zip.bak-pre-1.3.0` (o zip 1.3.0/b4 anterior).
 - **Build dir:** `Nuclear-git/Nuclear/build` (in-tree nesta máquina, out-of-source aponta pro
   repo), compilado via container distrobox **`blender`** (não `blenderdev`). Empacotamento pelo
