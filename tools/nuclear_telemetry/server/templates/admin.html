@@ -1,0 +1,83 @@
+<!-- SPDX-FileCopyrightText: 2026 Blender Authors -->
+<!-- SPDX-FileCopyrightText: 2026 Rapadura Atômica -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nuclear — admin de máquinas</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+           background: #15171c; color: #e6e8eb; margin: 0; padding: 2rem; }
+    h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+    .sub { color: #9aa0a6; margin-bottom: 1.5rem; font-size: .9rem; }
+    .sub a { color: #2ecc71; }
+    table { width: 100%; border-collapse: collapse; background: #1e2128;
+            border-radius: 10px; overflow: hidden; }
+    th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid #2a2e37;
+             vertical-align: middle; }
+    th { color: #9aa0a6; font-weight: 600; font-size: .8rem; text-transform: uppercase;
+         letter-spacing: .03em; }
+    tr:last-child td { border-bottom: none; }
+    .dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%;
+           margin-right: .4rem; vertical-align: middle; }
+    .on  { background: #2ecc71; box-shadow: 0 0 8px #2ecc71aa; }
+    .off { background: #5a606b; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #9aa0a6;
+            font-size: .82rem; }
+    input[type=text] { background: #15171c; color: #e6e8eb; border: 1px solid #2a2e37;
+            border-radius: 6px; padding: .4rem .5rem; width: 11rem; font: inherit; }
+    button { font: inherit; border: 0; border-radius: 6px; padding: .42rem .8rem;
+             cursor: pointer; }
+    .save { background: #2ecc71; color: #0c1a10; font-weight: 600; }
+    .del  { background: transparent; color: #e06b6b; border: 1px solid #5a3030; }
+    .empty { color: #9aa0a6; padding: 2rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Nuclear — admin de máquinas</h1>
+  <div class="sub">
+    Defina <strong>apelido</strong> e <strong>região</strong> para localizar as suas máquinas.
+    Esses rótulos são preservados a cada ping. · <a href="/">ver painel público</a>
+  </div>
+
+  {% if machines %}
+  <!-- Forms ficam fora da tabela; os campos das células os referenciam pelo
+       atributo form= (HTML5). Isso evita o <form> inválido dentro de <tr>. -->
+  {% for m in machines %}
+  <form id="f-{{ loop.index0 }}" method="post">
+    <input type="hidden" name="machine_id" value="{{ m.machine_id }}">
+  </form>
+  {% endfor %}
+  <table>
+    <thead>
+      <tr>
+        <th>Status</th><th>Máquina</th><th>Apelido</th><th>Região</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in machines %}
+      <tr>
+        <td><span class="dot {{ 'on' if m.online else 'off' }}"></span></td>
+        <td>
+          {{ m.hostname or '—' }}
+          <div class="mono">{{ m.machine_id[:12] }} · {{ m.username or '—' }} · v{{ m.version or '—' }}</div>
+        </td>
+        <td><input form="f-{{ loop.index0 }}" type="text" name="alias" value="{{ m.alias or '' }}" placeholder="ex: Estação Anim 01"></td>
+        <td><input form="f-{{ loop.index0 }}" type="text" name="region" value="{{ m.region or '' }}" placeholder="ex: CEARÁ"></td>
+        <td style="white-space:nowrap">
+          <button form="f-{{ loop.index0 }}" class="save" name="action" value="save">Salvar</button>
+          <button form="f-{{ loop.index0 }}" class="del" name="action" value="delete"
+                  onclick="return confirm('Remover esta máquina do painel?')">Remover</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">Nenhuma máquina registrada ainda.</div>
+  {% endif %}
+</body>
+</html>

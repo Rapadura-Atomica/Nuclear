@@ -1,5 +1,6 @@
 <?php
 // SPDX-FileCopyrightText: 2026 Blender Authors
+// SPDX-FileCopyrightText: 2026 Rapadura Atômica
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
 // Nuclear - endpoint que RECEBE os pings de presenca dos clientes Nuclear.
@@ -29,6 +30,12 @@ $DB_PATH = __DIR__ . '/data/telemetry.sqlite';
 // Manifesto de atualizacao. Fica em estacao/version.json, dois niveis acima
 // (nuclear-api/ -> nuclear/ -> docroot -> estacao/).
 $MANIFEST_PATH = __DIR__ . '/../../estacao/version.json';
+
+// Preenchimento automatico de regiao por GeoIP. So roda UMA vez, quando a
+// maquina e vista pela primeira vez (INSERT). O painel de admin sempre tem a
+// palavra final - um valor manual nunca e sobrescrito pelo ping. Coloque false
+// para nao consultar o servico externo.
+$GEOIP_AUTOFILL = true;
 
 // -----------------------------------------------------------------------------
 
@@ -87,6 +94,52 @@ function nuclear_read_manifest($path) {
     return null;
 }
 
+// IP real do cliente (respeitando proxy/CDN como Cloudflare na frente).
+function nuclear_client_ip() {
+    foreach (array('HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR') as $k) {
+        if (!empty($_SERVER[$k])) {
+            // X-Forwarded-For pode vir como "cliente, proxy1, proxy2".
+            $parts = explode(',', $_SERVER[$k]);
+            return trim($parts[0]);
+        }
+    }
+    return '';
+}
+
+// Regiao (estado) a partir do IP. Granularidade de estado e o que e confiavel;
+// cidade pequena erra muito. Falha em silencio (timeout curto) para nunca
+// atrasar nem quebrar o ping.
+function nuclear_geoip_region($ip) {
+    if ($ip === '' || $ip === '127.0.0.1' || $ip === '::1' || strpos($ip, '192.168.') === 0 || strpos($ip, '10.') === 0) {
+        return null;
+    }
+    $url = 'http://ip-api.com/json/' . urlencode($ip) . '?fields=status,regionName&lang=pt-BR';
+    $ctx = stream_context_create(array('http' => array('timeout' => 2)));
+    $resp = @file_get_contents($url, false, $ctx);
+    if ($resp === false) {
+        return null;
+    }
+    $j = json_decode($resp, true);
+    if (is_array($j) && isset($j['status']) && $j['status'] === 'success' && !empty($j['regionName'])) {
+        return $j['regionName'];
+    }
+    return null;
+}
+
+// Migracao idempotente: garante as colunas alias/region em bancos antigos.
+function nuclear_ensure_columns($pdo) {
+    $cols = array();
+    foreach ($pdo->query('PRAGMA table_info(machines)')->fetchAll(PDO::FETCH_ASSOC) as $c) {
+        $cols[] = $c['name'];
+    }
+    if (!in_array('alias', $cols, true)) {
+        $pdo->exec('ALTER TABLE machines ADD COLUMN alias TEXT');
+    }
+    if (!in_array('region', $cols, true)) {
+        $pdo->exec('ALTER TABLE machines ADD COLUMN region TEXT');
+    }
+}
+
 try {
     $pdo = new PDO('sqlite:' . $DB_PATH);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -98,14 +151,26 @@ try {
             version    TEXT,
             last_event TEXT,
             first_seen TEXT,
-            last_seen  TEXT
+            last_seen  TEXT,
+            alias      TEXT,
+            region     TEXT
         )'
     );
+    nuclear_ensure_columns($pdo);
+
+    // Maquina nova? So entao preenchemos a regiao por GeoIP (uma vez na vida).
+    $exists = $pdo->prepare('SELECT 1 FROM machines WHERE machine_id = :id');
+    $exists->execute(array(':id' => $machine_id));
+    $is_new = ($exists->fetchColumn() === false);
+
+    $region = ($is_new && $GEOIP_AUTOFILL) ? nuclear_geoip_region(nuclear_client_ip()) : null;
 
     // UPSERT: insere, ou atualiza se a maquina ja existe (mantendo o first_seen).
+    // alias e region NAO entram no DO UPDATE: rotulos definidos no admin sao a
+    // fonte da verdade e nunca sao sobrescritos por um ping de heartbeat.
     $stmt = $pdo->prepare(
-        'INSERT INTO machines (machine_id, hostname, username, version, last_event, first_seen, last_seen)
-         VALUES (:id, :h, :u, :v, :e, :fs, :ls)
+        'INSERT INTO machines (machine_id, hostname, username, version, last_event, first_seen, last_seen, region)
+         VALUES (:id, :h, :u, :v, :e, :fs, :ls, :rg)
          ON CONFLICT(machine_id) DO UPDATE SET
              hostname   = excluded.hostname,
              username   = excluded.username,
@@ -115,7 +180,7 @@ try {
     );
     $stmt->execute(array(
         ':id' => $machine_id, ':h' => $hostname, ':u' => $username,
-        ':v' => $version, ':e' => $event, ':fs' => $ts, ':ls' => $ts,
+        ':v' => $version, ':e' => $event, ':fs' => $ts, ':ls' => $ts, ':rg' => $region,
     ));
 
     $response = array('ok' => true);
