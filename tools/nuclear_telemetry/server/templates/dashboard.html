@@ -51,7 +51,7 @@
   <table>
     <thead>
       <tr>
-        <th>Status</th><th>Máquina</th><th>Usuário</th><th>Versão</th>
+        <th>Status</th><th>Máquina</th><th>Região</th><th>Usuário</th><th>Versão</th>
         <th>Último evento</th><th>Visto por último</th>
       </tr>
     </thead>
@@ -64,7 +64,11 @@
             {{ 'Online' if m.online else 'Offline' }}
           </span>
         </td>
-        <td>{{ m.hostname or '—' }}<div class="mono">{{ m.machine_id[:12] }}</div></td>
+        <td>
+          <strong>{{ m.alias or m.hostname or '—' }}</strong>
+          <div class="mono">{% if m.alias %}{{ m.hostname }} · {% endif %}{{ m.machine_id[:12] }}</div>
+        </td>
+        <td>{{ m.region or '—' }}</td>
         <td>{{ m.username or '—' }}</td>
         <td>{{ m.version or '—' }}</td>
         <td>{{ m.last_event or '—' }}</td>
