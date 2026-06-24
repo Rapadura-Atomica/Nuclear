@@ -4,6 +4,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **Peg Graph perdia o layout do rigger (2026-06-24).** O arranjo dos nós (posições e frames) se
+  perdia ao dar **Sync**/Add Peg, ao criar **frames** com **F** (`node.join_named`) e — pior — ao
+  **exportar o rig para outro arquivo**. Causas: `rebuild()` recriava a árvore lendo
+  `node.location` (que é **relativo ao frame**, fazendo nós emoldurados saltarem) e **não recriava
+  os frames** destruídos pelo `nodes.clear()`; e o layout vivia só no node tree, que **não viaja
+  com o `PegRig`** num append/link. Fix (Python puro, sem C/DNA): o layout vira um snapshot JSON
+  numa ID-property do rig (`nuclear_peg_graph_layout`) — que acompanha o datablock no export —,
+  passa a usar `location_absolute` em todo lugar, e `rebuild()` recria os frames + parenteamento.
+  Captura no início do `rebuild()` (antes do clear, pulando árvore vazia) e num handler `save_pre`
+  (garante o caso de export). Validado headless: 15/15 asserts. Só
+  `scripts/startup/nuclear_peg_graph.py`. (ver [ADR](decisions/2026-06-24-peg-graph-layout-persistence.md))
+
 ### Added
 - **Integração Auto-Patch + Envelope na mainline `Nuclear` (2026-06-23).** Juntadas numa única
   branch (`integration/autopatch-envelope`, depois trazida para `Nuclear`) as duas features GP

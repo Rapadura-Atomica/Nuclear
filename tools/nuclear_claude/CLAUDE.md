@@ -37,6 +37,10 @@ PegRig (peg-based cut-out rig), Follow Peg constraint, Grease Pencil "Curve" mod
 (arc-length deform), the "Peg Pose" tool, and a Peg Graph node editor.
 
 **Strategic decisions that govern all work here:**
+- **⚠️ IMPORTANT — Commit messages are written in ENGLISH.** Use Conventional-Commit style
+  (`fix(scope): …`, `feat(scope): …`). This is the standing convention for all new commits, even
+  though the in-repo prose docs (CLAUDE.md, ADRs, CHANGELOG) stay PT-BR. Historical commits are
+  mixed; do not rewrite them — apply this from now on.
 - **Upstream sync = rebase per release** (stay on 5.0; move to 5.1/5.2 as concentrated
   merges). `origin` is the fork; `lfs-fallback` is upstream Blender.
 - **3D = hide in the UI only** — never remove 3D/object/depsgraph code (Grease Pencil v3

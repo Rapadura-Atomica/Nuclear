@@ -23,6 +23,7 @@ The "rig" node is a single composite hub (Toon Boom-style): every root peg and e
 drawing hangs from it. It owns no transform.
 """
 
+import json
 import math
 
 import bpy
@@ -31,13 +32,19 @@ import mathutils
 from gpu_extras.batch import batch_for_shader
 from bpy_extras import view3d_utils
 from bpy.types import NodeTree, Node, NodeSocket, Operator, Panel
-from bpy.props import PointerProperty, StringProperty
+from bpy.props import BoolProperty, PointerProperty, StringProperty
 
 _TREE_ID = "NuclearPegTree"
 _RIG_NODE_ID = "NuclearRigNode"
 _PEG_NODE_ID = "NuclearPegNode"
 _DRAWING_NODE_ID = "NuclearDrawingNode"
 _SOCK_ID = "NuclearPegSocket"
+
+# ID-property key under which the rig stores the Peg Graph layout (node positions + frames). Kept on
+# the PegRig so the rigger's arrangement survives a graph rebuild (Sync) and -- because ID-properties
+# are serialized with the datablock and copied on append/link -- travels with the rig into other
+# files, where the node tree itself does not follow.
+_LAYOUT_KEY = "nuclear_peg_graph_layout"
 
 # Reentrancy guard between rebuild() (rig -> graph) and update() (graph -> rig).
 _SYNCING = False
@@ -125,18 +132,38 @@ class NuclearPegNode(_PegGraphNode, Node):
             layout.label(text="Squash", icon='MOD_SIMPLEDEFORM')
 
 
+def _cutter_invert_update(self, _context):
+    """Toggling 'Invert Cutter' on a drawing node writes through to its native masks."""
+    if _SYNCING:
+        return
+    tree = self.id_data
+    if tree is not None:
+        _apply_graph_to_rig(tree)
+
+
 class NuclearDrawingNode(_PegGraphNode, Node):
     bl_idname = _DRAWING_NODE_ID
     bl_label = "Drawing"
     bl_icon = 'OUTLINER_OB_GREASEPENCIL'
 
     object_name: StringProperty(name="Object")
+    # Polarity of this node's Cutter masks: off = keep inside the matte(s), on = keep outside.
+    # Applies uniformly to every matte feeding the Cutter input (a union of same-polarity masks;
+    # mixing polarities in one union is fragile in the GP mask pass, so it is one toggle per node).
+    cutter_invert: BoolProperty(
+        name="Invert Cutter",
+        description="Show this drawing OUTSIDE the matte silhouette(s) instead of inside",
+        default=False,
+        update=_cutter_invert_update,
+    )
 
     def init(self, _context):
         self.inputs.new(_SOCK_ID, "Peg")
         # Second input: a "Cutter" matte. Linking another drawing's Matte output here clips this
-        # drawing to that drawing's silhouette (Toon Boom Cutter) via a Grease Pencil Mask modifier.
-        self.inputs.new(_SOCK_ID, "Cutter")
+        # drawing to that drawing's silhouette (Toon Boom Cutter). Multi-input: several mattes can
+        # feed one Cutter and their silhouettes union (the GP draw engine composites every native
+        # cross-object mask of a layer into one mask buffer).
+        self.inputs.new(_SOCK_ID, "Cutter", use_multi_input=True)
         # Output: lets this drawing act as a matte for another drawing's Cutter input.
         self.outputs.new(_SOCK_ID, "Matte")
         self.use_custom_color = True
@@ -144,6 +171,11 @@ class NuclearDrawingNode(_PegGraphNode, Node):
 
     def draw_label(self):
         return self.object_name or "Drawing"
+
+    def draw_buttons(self, _context, layout):
+        # Only meaningful when a matte feeds the Cutter input.
+        if len(self.inputs) > 1 and self.inputs[1].links:
+            layout.prop(self, "cutter_invert")
 
 
 # -------------------------------------------------------------------------------------------------
@@ -180,11 +212,103 @@ def _followpeg_constraint(ob):
 
 
 def _cutter_modifier(ob):
-    """The object's Grease Pencil Mask (Cutter) modifier, or None."""
+    """The object's legacy Grease Pencil Mask (Cutter) injection modifier, or None.
+
+    Superseded by native cross-object masks; kept only to read and migrate old files.
+    """
     for mod in ob.modifiers:
         if mod.type == 'GREASE_PENCIL_MASK':
             return mod
     return None
+
+
+def _leaf_layers(ob):
+    """The object's Grease Pencil leaf layers (where native masks live), or []."""
+    data = getattr(ob, "data", None)
+    layers = getattr(data, "layers", None)
+    return list(layers) if layers is not None else []
+
+
+def _managed_cutter_mattes(ob, graph_obnames):
+    """Names of matte objects feeding `ob` via native cross-object cutter masks that the Peg Graph
+    owns: the matte is a drawing node in this graph and the mask is not an Auto-Patch mask (those
+    belong to the Auto-Patch / Contour systems and must be left untouched)."""
+    mattes = set()
+    for layer in _leaf_layers(ob):
+        for m in layer.mask_layers:
+            mo = getattr(m, "object", None)
+            if (mo is not None and not getattr(m, "use_auto_patch", False)
+                    and mo.name in graph_obnames and mo.name != ob.name):
+                mattes.add(mo.name)
+    return mattes
+
+
+def _effective_cutter_mattes(ob, graph_obnames):
+    """Cutter mattes that should show in the graph: native masks plus any not-yet-migrated legacy
+    injection-modifier target. Keeps the rebuild signature stable across the migration."""
+    mattes = _managed_cutter_mattes(ob, graph_obnames)
+    leg = _cutter_modifier(ob)
+    if leg is not None and leg.object is not None and leg.object.name in graph_obnames:
+        mattes.add(leg.object.name)
+    mattes.discard(ob.name)
+    return mattes
+
+
+def _object_cutter_invert(ob, graph_obnames):
+    """Polarity of `ob`'s graph-owned cutter masks (uniform by construction); False if none."""
+    for layer in _leaf_layers(ob):
+        for m in layer.mask_layers:
+            mo = getattr(m, "object", None)
+            if (mo is not None and not getattr(m, "use_auto_patch", False)
+                    and mo.name in graph_obnames and mo.name != ob.name):
+                return bool(m.invert)
+    return False
+
+
+def _set_object_cutters(ob, desired_names, graph_obnames, invert=False):
+    """Reconcile `ob`'s native cross-object cutter masks to exactly `desired_names` (matte object
+    names), on every leaf layer, all with polarity `invert`. Only masks the graph owns are
+    added/removed/retuned; foreign cross-object masks (Auto-Patch, manual) are preserved. Multiple
+    mattes union at draw time."""
+    desired = {n for n in desired_names if n != ob.name and n in graph_obnames}
+    for layer in _leaf_layers(ob):
+        seen = set()
+        stale = []
+        for m in layer.mask_layers:
+            mo = getattr(m, "object", None)
+            if (mo is None or getattr(m, "use_auto_patch", False)
+                    or mo.name not in graph_obnames):
+                continue  # not ours
+            if mo.name in desired and mo.name not in seen:
+                seen.add(mo.name)
+                m.invert = invert
+            else:
+                stale.append(m)
+        for m in stale:
+            layer.mask_layers.remove(m)
+        missing = desired - seen
+        if missing:
+            layer.use_masks = True
+            for name in sorted(missing):
+                mo = bpy.data.objects.get(name)
+                if mo is not None:
+                    # Empty layer name = the whole matte object is the silhouette.
+                    layer.mask_layers.new(name="", object=mo, invert=invert)
+
+
+def _migrate_legacy_cutter(ob, graph_obnames):
+    """Lazy upgrade: fold a legacy GREASE_PENCIL_MASK injection modifier into native cross-object
+    masks so the graph speaks a single language, then drop the modifier."""
+    leg = _cutter_modifier(ob)
+    if leg is None:
+        return
+    matte = leg.object
+    invert = bool(getattr(leg, "invert", False))
+    ob.modifiers.remove(leg)
+    if matte is not None and matte.name != ob.name and matte.name in graph_obnames:
+        mattes = _managed_cutter_mattes(ob, graph_obnames)
+        mattes.add(matte.name)
+        _set_object_cutters(ob, mattes, graph_obnames, invert)
 
 
 def _would_cycle(rig, child_index, new_parent_index):
@@ -316,6 +440,133 @@ def _auto_pivot_on_bind(rig, peg_name, ob):
 
 
 # -------------------------------------------------------------------------------------------------
+# Layout persistence (positions + frames)
+#
+# The rigger's node arrangement is the whole point of the Peg Graph, so it must survive a Sync (which
+# rebuilds the tree from scratch) AND travel with the rig into other files. The live node tree is the
+# working copy; the durable copy is a JSON snapshot stored on the PegRig (`_LAYOUT_KEY`). Everything
+# here reads/writes ``location_absolute`` -- a node inside a frame has a parent-RELATIVE ``location``,
+# so using the absolute field is what keeps framed nodes from jumping on rebuild.
+# -------------------------------------------------------------------------------------------------
+
+def _node_layout_key(node):
+    """Stable key identifying a peg/drawing/rig node across rebuilds, or None for other nodes."""
+    if node.bl_idname == _PEG_NODE_ID:
+        return ["peg", node.peg_name]
+    if node.bl_idname == _DRAWING_NODE_ID:
+        return ["draw", node.object_name]
+    if node.bl_idname == _RIG_NODE_ID:
+        return ["rig", ""]
+    return None
+
+
+def _capture_layout(tree):
+    """Snapshot the live node arrangement (positions + frames + parenting) into the rig's layout
+    ID-property, overwriting the previous snapshot. Callers must skip this for an EMPTY tree so a
+    layout just appended with the rig is not clobbered before it has been applied."""
+    rig = tree.rig
+    if rig is None:
+        return
+    pegs, draws = {}, {}
+    rig_loc = None
+    frame_nodes = [n for n in tree.nodes if n.bl_idname == 'NodeFrame']
+    frame_pos = {f.name: i for i, f in enumerate(frame_nodes)}
+    members = [[] for _ in frame_nodes]
+
+    for n in tree.nodes:
+        loc = list(n.location_absolute)
+        if n.bl_idname == _PEG_NODE_ID:
+            pegs[n.peg_name] = loc
+        elif n.bl_idname == _DRAWING_NODE_ID:
+            draws[n.object_name] = loc
+        elif n.bl_idname == _RIG_NODE_ID:
+            rig_loc = loc
+        parent = n.parent
+        if parent is not None and parent.bl_idname == 'NodeFrame':
+            fi = frame_pos.get(parent.name)
+            if fi is not None:
+                key = ["frame", frame_pos[n.name]] if n.bl_idname == 'NodeFrame' \
+                    else _node_layout_key(n)
+                if key is not None:
+                    members[fi].append(key)
+
+    frames = []
+    for i, f in enumerate(frame_nodes):
+        frames.append({
+            "label": f.label,
+            "use_custom_color": f.use_custom_color,
+            "color": list(f.color),
+            "label_size": f.label_size,
+            "shrink": f.shrink,
+            "loc": list(f.location_absolute),
+            "width": f.width,
+            "height": f.height,
+            "members": members[i],
+        })
+
+    rig[_LAYOUT_KEY] = json.dumps({"pegs": pegs, "draws": draws, "rig": rig_loc, "frames": frames})
+
+
+def _read_layout(rig):
+    """Parsed layout snapshot stored on `rig`, or {} when absent/corrupt."""
+    raw = rig.get(_LAYOUT_KEY) if rig is not None else None
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _apply_frames(tree, frames, node_by_key):
+    """Recreate the saved NodeFrames and re-attach their members. nodes.clear() in rebuild() destroys
+    frames and parenting; this restores them. Positions are set via location_absolute AFTER parenting
+    (parenting never moves a node on the canvas), so members stay exactly where `place` put them."""
+    if not frames:
+        return
+    created = []
+    for fdata in frames:
+        fr = tree.nodes.new('NodeFrame')
+        fr.label = fdata.get("label", "")
+        if fdata.get("use_custom_color"):
+            fr.use_custom_color = True
+            col = fdata.get("color")
+            if col:
+                fr.color = col[:3]
+        fr.label_size = int(fdata.get("label_size", 20))
+        fr.shrink = bool(fdata.get("shrink", True))
+        created.append(fr)
+
+    # Re-attach members (including nested frames, referenced by index) once every frame exists.
+    for i, fdata in enumerate(frames):
+        fr = created[i]
+        for mk in fdata.get("members", []):
+            if not mk:
+                continue
+            if mk[0] == "frame":
+                idx = mk[1] if len(mk) > 1 else -1
+                target = created[idx] if isinstance(idx, int) and 0 <= idx < len(created) else None
+            else:
+                target = node_by_key.get((mk[0], mk[1] if len(mk) > 1 else ""))
+            if target is not None:
+                target.parent = fr
+
+    # A shrink frame auto-sizes/positions around its members, so loc/size are best-effort and only
+    # forced for non-shrink frames.
+    for i, fdata in enumerate(frames):
+        fr = created[i]
+        loc = fdata.get("loc")
+        if loc:
+            fr.location_absolute = loc
+        if not fdata.get("shrink", True):
+            if fdata.get("width"):
+                fr.width = fdata["width"]
+            if fdata.get("height"):
+                fr.height = fdata["height"]
+
+
+# -------------------------------------------------------------------------------------------------
 # rig -> graph (generate the node tree from the rig)
 # -------------------------------------------------------------------------------------------------
 
@@ -324,31 +575,39 @@ def rebuild(tree):
     rig = tree.rig
     _SYNCING = True
     try:
-        # Preserve the user's manual node layout: remember existing node positions (by peg name /
-        # object name) so adding or removing a peg only auto-places the NEW nodes.
-        saved_loc = {}
-        for n in tree.nodes:
-            if n.bl_idname == _PEG_NODE_ID:
-                saved_loc[('peg', n.peg_name)] = tuple(n.location)
-            elif n.bl_idname == _DRAWING_NODE_ID:
-                saved_loc[('draw', n.object_name)] = tuple(n.location)
-            elif n.bl_idname == _RIG_NODE_ID:
-                saved_loc[('rig', '')] = tuple(n.location)
+        # Fold the current on-screen arrangement into the rig's durable layout before clearing, so
+        # node moves and frames made since the last capture are preserved. Skip when the tree is
+        # empty (e.g. a fresh graph in a file the rig was just appended into) so we apply the
+        # appended layout instead of overwriting it with nothing.
+        if rig is not None and len(tree.nodes):
+            _capture_layout(tree)
 
         tree.nodes.clear()
         if rig is None:
             return
 
+        # Positions come from the (just-refreshed) durable layout, keyed like the live nodes. This is
+        # also what carries the layout across files: an appended rig brings its layout, no live nodes.
+        layout = _read_layout(rig)
+        positions = {}
+        for _name, _xy in layout.get("pegs", {}).items():
+            positions[('peg', _name)] = _xy
+        for _on, _xy in layout.get("draws", {}).items():
+            positions[('draw', _on)] = _xy
+        _rloc = layout.get("rig")
+        if _rloc:
+            positions[('rig', '')] = _rloc
+
         rows = {}
 
         def place(node, depth, key):
-            loc = saved_loc.get(key)
+            loc = positions.get(key)
             if loc is not None:
-                node.location = loc
+                node.location_absolute = loc
                 return
             row = rows.get(depth, 0)
             rows[depth] = row + 1
-            node.location = (depth * 240.0, -row * 150.0)
+            node.location_absolute = (depth * 240.0, -row * 150.0)
 
         # The composite hub (one per rig); root pegs and loose members connect to it.
         rig_node = tree.nodes.new(_RIG_NODE_ID)
@@ -386,17 +645,31 @@ def rebuild(tree):
                 tree.links.new(rig_node.outputs[0], dn.inputs[0])
 
         # Cutter links: matte drawing's "Matte" output -> masked drawing's "Cutter" input,
-        # reconstructed from each object's Grease Pencil Mask (Cutter) modifier.
+        # reconstructed from each object's native cross-object cutter masks (one link per matte; the
+        # Cutter input is multi-input so several mattes feed it). Legacy injection-modifier cutters
+        # are migrated to native masks on the fly so old files keep working.
+        graph_obnames = set(draw_node_by_obname)
         for ob_name, dn in draw_node_by_obname.items():
             ob = bpy.data.objects.get(ob_name)
             if ob is None:
                 continue
-            mask_mod = _cutter_modifier(ob)
-            if mask_mod is None or mask_mod.object is None:
-                continue
-            src = draw_node_by_obname.get(mask_mod.object.name)
-            if src is not None:
-                tree.links.new(src.outputs[-1], dn.inputs[1])
+            _migrate_legacy_cutter(ob, graph_obnames)
+            mattes = sorted(_managed_cutter_mattes(ob, graph_obnames))
+            for matte_name in mattes:
+                src = draw_node_by_obname.get(matte_name)
+                if src is not None:
+                    tree.links.new(src.outputs[-1], dn.inputs[1])
+            if mattes:
+                dn.cutter_invert = _object_cutter_invert(ob, graph_obnames)
+
+        # Re-attach the rigger's frames (F / Join in New Frame) and node parenting that nodes.clear()
+        # destroyed. Members are matched back to the freshly created nodes by their stable keys.
+        node_by_key = {('rig', ''): rig_node}
+        for _pn in peg_nodes:
+            node_by_key[('peg', _pn.peg_name)] = _pn
+        for _on, _dn in draw_node_by_obname.items():
+            node_by_key[('draw', _on)] = _dn
+        _apply_frames(tree, layout.get("frames", []), node_by_key)
     finally:
         _SYNCING = False
 
@@ -408,10 +681,11 @@ def _graph_signature(tree):
         return ""
     pegs = ";".join(f"{p.name}:{p.parent_index}" for p in rig.pegs)
     bound = ";".join(sorted(f"{ob.name}->{name}" for ob, name in _bound_objects(rig)))
+    graph_obnames = {ob.name for ob, _ in _bound_objects(rig)}
     cutters = ";".join(sorted(
-        f"{ob.name}=>{m.object.name}"
+        f"{ob.name}=>{mn}@{int(_object_cutter_invert(ob, graph_obnames))}"
         for ob, _ in _bound_objects(rig)
-        if (m := _cutter_modifier(ob)) is not None and m.object is not None))
+        for mn in _effective_cutter_mattes(ob, graph_obnames)))
     return pegs + "|" + bound + "|" + cutters
 
 
@@ -434,6 +708,7 @@ def _apply_graph_to_rig(tree):
     _SYNCING = True
     try:
         peg_index_by_name = {p.name: i for i, p in enumerate(rig.pegs)}
+        graph_obnames = {n.object_name for n in tree.nodes if n.bl_idname == _DRAWING_NODE_ID}
 
         for node in tree.nodes:
             if node.bl_idname == _PEG_NODE_ID:
@@ -469,22 +744,16 @@ def _apply_graph_to_rig(tree):
                 elif con is not None:
                     ob.constraints.remove(con)
 
-                # Cutter / mask: the second input fed by another drawing's Matte output adds (or
-                # removes) a Grease Pencil Mask modifier clipping this object to that matte.
-                cutter_src = None
-                if len(node.inputs) > 1 and node.inputs[1].links:
-                    s = node.inputs[1].links[0].from_node
-                    if s is not None and s.bl_idname == _DRAWING_NODE_ID:
-                        cutter_src = s
-                mask_mod = _cutter_modifier(ob)
-                if cutter_src is not None:
-                    matte_ob = bpy.data.objects.get(cutter_src.object_name)
-                    if matte_ob is not None and matte_ob != ob:
-                        if mask_mod is None:
-                            mask_mod = ob.modifiers.new("Cutter", 'GREASE_PENCIL_MASK')
-                        mask_mod.object = matte_ob
-                elif mask_mod is not None:
-                    ob.modifiers.remove(mask_mod)
+                # Cutter / mask: every link into the multi-input "Cutter" socket adds a native
+                # cross-object GP mask clipping this object to that matte's silhouette; multiple
+                # mattes union. Reconciled against the links, so removing a link removes the mask.
+                desired = set()
+                if len(node.inputs) > 1:
+                    for link in node.inputs[1].links:
+                        s = link.from_node
+                        if s is not None and s.bl_idname == _DRAWING_NODE_ID:
+                            desired.add(s.object_name)
+                _set_object_cutters(ob, desired, graph_obnames, node.cutter_invert)
 
         if rig.id_data:
             rig.id_data.update_tag()
@@ -1011,6 +1280,20 @@ def _load_post(*_args):
     _subscribe_active_peg()  # msgbus subscriptions are cleared on file load; re-arm.
 
 
+@bpy.app.handlers.persistent
+def _save_pre(*_args):
+    """Bake every Peg Graph's on-screen layout into its rig before the file is written, so a rig
+    appended/linked from this file into another carries the rigger's arrangement with it (the node
+    tree itself does not travel with the rig)."""
+    try:
+        for ng in bpy.data.node_groups:
+            if ng.bl_idname == _TREE_ID and ng.rig is not None and len(ng.nodes):
+                _capture_layout(ng)
+    except Exception:
+        # Layout persistence must never block a file save.
+        pass
+
+
 # -------------------------------------------------------------------------------------------------
 # Viewport overlay (GPU): draw peg pivots so the rotation centre is visible
 # -------------------------------------------------------------------------------------------------
@@ -1194,11 +1477,12 @@ _NODE_HL_HANDLE = None
 def _node_rect_region(node, region, ui_scale):
     """Bounding box of `node` in region pixel coords: (xmin, ymin, xmax, ymax).
 
-    node.location is the node's top-left in tree space; node.width is in tree units; node.dimensions
-    is in pixels at ui_scale (not view zoom), so its height in tree units is dimensions.y/ui_scale.
+    node.location_absolute is the node's top-left on the canvas (location is parent-frame-relative,
+    so a framed node would be mis-placed); node.width is in tree units; node.dimensions is in pixels
+    at ui_scale (not view zoom), so its height in tree units is dimensions.y/ui_scale.
     """
     v2d = region.view2d
-    x0, y0 = node.location
+    x0, y0 = node.location_absolute
     w = node.width
     h = node.dimensions.y / ui_scale if ui_scale else node.dimensions.y
     rx0, ry0 = v2d.view_to_region(x0, y0, clip=False)
@@ -1399,6 +1683,8 @@ def register():
         bpy.app.handlers.depsgraph_update_post.append(_depsgraph_update_post)
     if _load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_load_post)
+    if _save_pre not in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.append(_save_pre)
     _add_pivot_overlay()
     _add_node_overlay()
     _ensure_peg_pose_keymap()
@@ -1423,6 +1709,8 @@ def unregister():
     bpy.msgbus.clear_by_owner(_MSGBUS_OWNER)
     _remove_node_overlay()
     _remove_pivot_overlay()
+    if _save_pre in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.remove(_save_pre)
     if _load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post)
     if _depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
