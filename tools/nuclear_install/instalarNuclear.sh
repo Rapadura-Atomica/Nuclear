@@ -104,12 +104,28 @@ Exec=$CURRENT_LINK/blender %F
 Icon=$ICON
 Type=Application
 Categories=Graphics;2DGraphics;
-MimeType=application/x-blender;
+MimeType=application/x-nuclear;application/x-blender;
 StartupNotify=true
 StartupWMClass=Nuclear
 Terminal=false
 EOF
 update-desktop-database "$(dirname "$DESKTOP_FILE")" >/dev/null 2>&1 || true
+
+# Registra o tipo MIME 'application/x-nuclear' (extensão .nuc) para que arquivos
+# criados no Nuclear abram nele ao dar duplo-clique. Arquivos .blend legados também
+# seguem associados (o .desktop acima reivindica os dois tipos).
+MIME_PKG_DIR="$HOME/.local/share/mime/packages"
+mkdir -p "$MIME_PKG_DIR"
+cat > "$MIME_PKG_DIR/nuclear.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-nuclear">
+    <comment>Nuclear scene</comment>
+    <glob pattern="*.nuc"/>
+  </mime-type>
+</mime-info>
+EOF
+update-mime-database "$HOME/.local/share/mime" >/dev/null 2>&1 || true
 
 # --- 5. addons externos ------------------------------------------------------
 

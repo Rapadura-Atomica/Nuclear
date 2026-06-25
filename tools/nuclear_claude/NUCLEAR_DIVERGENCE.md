@@ -225,6 +225,33 @@ documentado). No rebase, re-aplicar cada uma:
 | `source/blender/windowmanager/intern/wm_window.cc` | título de janela usa `NUCLEAR_NAME` (≈559, 644) |
 | `source/blender/python/intern/bpy.cc` | expõe `_bpy._nuclear_version_string()` (versão do fork sem o nome) p/ o About derivar do header |
 
+### Extensão de arquivo `.nuc` (Fase 1 — rebrand de formato, SEM mexer no magic)
+
+Torna `.nuc` a extensão padrão dos arquivos criados no Nuclear, mantendo `.blend` legados
+plenamente abríveis. **Decisão (2026-06-25): apenas Camada A (extensão + MIME).** NÃO se
+trocou o magic de 7 bytes (`BLENDER`), então um `.nuc` é **byte-idêntico** a um `.blend` —
+round-trip perfeito e ainda abrível pelo Blender vanilla se renomeado. Isso bloqueia só a
+abertura *acidental* (associação do SO), não a deliberada. A "Fase 2" (trocar o magic p/
+`NUCLEAR` + leitura dual-magic + "Export to .blend") fica documentada como evolução futura,
+NÃO implementada — tem custo de lock-in do ecossistema e ~5 pontos quentes no `blenloader`.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/blenkernel/intern/blendfile.cc` | `BKE_blendfile_extension_check`: array `ext_test` ganhou `.nuc`/`.nuc.gz` (linchpin único — reconhecimento no browser, no `wm_save_mainfile_check` e em `library_path_explode` passam todos por aqui) |
+| `source/blender/windowmanager/intern/wm_files.cc` | 4 spots: `wm_filepath_default` (nome "Untitled" novo → `.nuc`), `wm_save_mainfile_check` (extensão default ao salvar nome sem extensão → `.nuc`; um `.blend` existente é reconhecido e mantido), e 2 labels de diálogo "Untitled" |
+| `scripts/modules/_bpy_internal/freedesktop.py` | `NUCLEAR_MIME = "application/x-nuclear"`; pacote MIME renomeado `x-blender.xml`→`nuclear.xml` agora declara DOIS `<mime-type>` (blender `*.blend` + nuclear `*.nuc`, glob-only — sem `<magic>`, pois o magic on-disk ainda é `BLENDER`); `.thumbnailer` cobre os dois MIME |
+| `release/freedesktop/blender.desktop` | `MimeType=application/x-nuclear;application/x-blender;` (ambos abrem no Nuclear) |
+| `tools/nuclear_install/instalarNuclear.sh` | `.desktop` reivindica os dois MIME + novo bloco que escreve `~/.local/share/mime/packages/nuclear.xml` e roda `update-mime-database` (antes só `update-desktop-database`) |
+| `scripts/startup/nuclear_cell_library.py` | arquivo do fork: `filter_glob` de import/export → `*.nuc;*.blend`; default de export `cells.blend`→`cells.nuc` |
+
+**Deliberadamente NÃO alterado** (escopo Fase 1): autosave/`quit.blend`/`_crash.blend`
+(`wm_files.cc` ~2083/2310/2313 seguem `.blend` — internos de recovery, nunca documento do
+usuário; o diálogo de recover filtra por `FILE_TYPE_BLENDER` que já inclui `.nuc`), sufixo
+`.asset.blend`, e backups `.blend1` (`file_is_blend_backup` casa literal ".blend"). Rótulos
+de filtro em `rna_space.cc` ("Filter Blender"/"Show .blend files") **devem ir pelo truque de
+tradução** no template Nuclear (`_TRANSLATIONS`), não por edição em C — fecha o item pendente
+do §3 sem virar ponto quente.
+
 ---
 
 ## 3. Branding (subconjunto de pontos quentes + dados)

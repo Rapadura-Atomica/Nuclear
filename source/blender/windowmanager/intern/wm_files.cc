@@ -3629,7 +3629,8 @@ static void wm_filepath_default(const Main *bmain, char *filepath)
   if (bmain->filepath[0] == '\0') {
     char filename_untitled[FILE_MAXFILE];
     /* While a filename need not be UTF8, at this point the constructed name should be UTF8. */
-    SNPRINTF_UTF8(filename_untitled, "%s.blend", DATA_("Untitled"));
+    /* Nuclear: new files default to the `.nuc` extension. */
+    SNPRINTF_UTF8(filename_untitled, "%s.nuc", DATA_("Untitled"));
     BLI_path_filename_ensure(filepath, FILE_MAX, filename_untitled);
   }
 }
@@ -3833,7 +3834,9 @@ static bool wm_save_mainfile_check(bContext * /*C*/, wmOperator *op)
     /* NOTE(@ideasman42): some users would prefer #BLI_path_extension_replace(),
      * we have had some nitpicking bug reports about this.
      * Always adding the extension as users may use '.' as part of the file-name. */
-    BLI_path_extension_ensure(filepath, FILE_MAX, ".blend");
+    /* Nuclear: append `.nuc` (not `.blend`) when the user-typed name has no recognized
+     * extension; an existing `.blend` name is recognized above and kept as-is. */
+    BLI_path_extension_ensure(filepath, FILE_MAX, ".nuc");
     RNA_string_set(op->ptr, "filepath", filepath);
     return true;
   }
@@ -4532,7 +4535,7 @@ static uiBlock *block_create_save_file_overwrite_dialog(bContext *C, ARegion *re
   }
   else {
     /* While a filename need not be UTF8, at this point the constructed name should be UTF8. */
-    SNPRINTF_UTF8(filename, "%s.blend", DATA_("Untitled"));
+    SNPRINTF_UTF8(filename, "%s.nuc", DATA_("Untitled")); /* Nuclear: default extension. */
     /* Since this dialog should only be shown when re-saving an existing file, current filepath
      * should never be empty. */
     BLI_assert_unreachable();
@@ -4747,7 +4750,7 @@ static uiBlock *block_create__close_file_dialog(bContext *C, ARegion *region, vo
   }
   else {
     /* While a filename need not be UTF8, at this point the constructed name should be UTF8. */
-    SNPRINTF_UTF8(filename, "%s.blend", DATA_("Untitled"));
+    SNPRINTF_UTF8(filename, "%s.nuc", DATA_("Untitled")); /* Nuclear: default extension. */
   }
   layout->label(filename, ICON_NONE);
 
