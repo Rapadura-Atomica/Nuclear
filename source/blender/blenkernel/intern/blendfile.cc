@@ -85,7 +85,9 @@ using namespace blender::bke;
 
 bool BKE_blendfile_extension_check(const char *str)
 {
-  const char *ext_test[4] = {".blend", ".ble", ".blend.gz", nullptr};
+  /* Nuclear: recognize the fork's `.nuc` extension alongside the legacy `.blend` family,
+   * so the file browser, save-extension check and library linking all accept both. */
+  const char *ext_test[6] = {".blend", ".ble", ".blend.gz", ".nuc", ".nuc.gz", nullptr};
   return BLI_path_extension_check_array(str, ext_test);
 }
 

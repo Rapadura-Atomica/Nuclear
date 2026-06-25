@@ -1010,7 +1010,7 @@ class NUCLEAR_OT_cells_import(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
-    filter_glob: bpy.props.StringProperty(default="*.blend", options={'HIDDEN'})
+    filter_glob: bpy.props.StringProperty(default="*.nuc;*.blend", options={'HIDDEN'})
     datablock: bpy.props.StringProperty(
         name="Cell Set",
         description="Grease Pencil datablock to read (blank = first in file)",
@@ -1066,7 +1066,7 @@ class NUCLEAR_OT_cells_export(bpy.types.Operator):
     bl_options = {'REGISTER'}
 
     filepath: bpy.props.StringProperty(subtype='FILE_PATH')
-    filter_glob: bpy.props.StringProperty(default="*.blend", options={'HIDDEN'})
+    filter_glob: bpy.props.StringProperty(default="*.nuc;*.blend", options={'HIDDEN'})
     set_name: bpy.props.StringProperty(
         name="Cell Set Name",
         description="Name of the Grease Pencil datablock written to the library",
@@ -1090,7 +1090,7 @@ class NUCLEAR_OT_cells_export(bpy.types.Operator):
 
     def invoke(self, context, event):
         if not self.filepath:
-            self.filepath = "cells.blend"
+            self.filepath = "cells.nuc"
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 

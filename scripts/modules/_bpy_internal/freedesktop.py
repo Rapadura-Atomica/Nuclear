@@ -70,6 +70,9 @@ BLENDER_THUMBNAILER_FILENAME = "blender-thumbnailer"
 
 # The mime type Blender users.
 BLENDER_MIME = "application/x-blender"
+# Nuclear: the fork's own mime type for the `.nuc` extension. Registered alongside the
+# Blender type so both `*.nuc` (new files) and `*.blend` (legacy) open in Nuclear.
+NUCLEAR_MIME = "application/x-nuclear"
 # Use `/usr/local` because this is not managed by the systems package manager.
 SYSTEM_PREFIX = "/usr/local"
 
@@ -248,13 +251,16 @@ def handle_thumbnailer(do_register: bool, all_users: bool) -> str | None:
         fh.write("[Thumbnailer Entry]\n")
         fh.write("TryExec={:s}\n".format(command))
         fh.write("Exec={:s} %i %o\n".format(command))
-        fh.write("MimeType={:s};\n".format(BLENDER_MIME))
+        # Nuclear: thumbnail both the legacy `.blend` and the fork's `.nuc` files
+        # (same on-disk format in this phase, so the existing thumbnailer handles both).
+        fh.write("MimeType={:s};{:s};\n".format(BLENDER_MIME, NUCLEAR_MIME))
     return None
 
 
 def handle_mime_association_xml(do_register: bool, all_users: bool) -> str | None:
-    # `xdg-mime install x-blender.xml`
-    filename = "x-blender.xml"
+    # `xdg-mime install nuclear.xml`
+    # Nuclear: package both the legacy Blender type and the fork's `.nuc` type.
+    filename = "nuclear.xml"
 
     if all_users:
         base_dir = os.path.join(SYSTEM_PREFIX, "share")
@@ -312,6 +318,12 @@ def handle_mime_association_xml(do_register: bool, all_users: bool) -> str | Non
             # already have a file-type icon for this so we might consider this low priority.
             if False:
                 fh.write("""    <icon name="application-x-blender"/>\n""")
+            fh.write("""  </mime-type>\n""")
+            # Nuclear: the fork's own type. Glob-only (the on-disk magic is still `BLENDER`
+            # in this phase, so a `<magic>` match would wrongly claim legacy `.blend` files).
+            fh.write("""  <mime-type type="{:s}">\n""".format(NUCLEAR_MIME))
+            fh.write("""    <comment>Nuclear scene</comment>\n""")
+            fh.write("""    <glob pattern="*.nuc"/>\n""")
             fh.write("""  </mime-type>\n""")
             fh.write("""</mime-info>\n""")
 
