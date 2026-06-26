@@ -336,6 +336,11 @@ bool contour_sample_cage(const Object &cage, const bool deformed, Vector<float3>
   }
   if (cage.type == OB_CURVES_LEGACY) {
     const Curve *cu = static_cast<const Curve *>(cage.data);
+    if (cu == nullptr) {
+      /* Mirror the mesh branch's null guard: a typed curve object can still carry
+       * null data, and is_disabled() only gates on object type. */
+      return false;
+    }
     const ListBase *nurbs = &cu->nurb;
     if (deformed && cage.runtime != nullptr && cage.runtime->curve_cache != nullptr &&
         !BLI_listbase_is_empty(&cage.runtime->curve_cache->deformed_nurbs))

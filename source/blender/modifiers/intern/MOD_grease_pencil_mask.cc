@@ -159,6 +159,15 @@ static bool gather_matte_curves(const ModifierEvalContext *ctx,
 {
   const GreasePencil &matte_gp = *static_cast<const GreasePencil *>(matte_ob.data);
 
+  /* No material slots on the masked object means find_fill_material_index() can only return a
+   * fallback 0 that references nothing: injecting matte strokes with material_index 0 against a
+   * zero-sized material pool drives the GP draw engine's per-material lookup out of bounds (the
+   * known mat-pool-overflow crash class). A normal GP object always ships a default slot; bail
+   * defensively for the empty case rather than emit an invalid index. */
+  if (ctx->object->totcol == 0) {
+    return false;
+  }
+
   /* Matte-object local space -> masked-object local space. The peg transforms live in the object
    * world matrices (Follow Peg post-multiplies them), so this maps the silhouette to where it is
    * seen on screen relative to the masked object. */
