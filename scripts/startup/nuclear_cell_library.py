@@ -785,6 +785,19 @@ def get_cell_icon_id_for_items(items, position):
     return preview.icon_id
 
 
+def _loading_icon_id():
+    """A single cached grey placeholder shown for not-yet-rendered cells, so the panel
+    can render thumbnails progressively (a few per draw) instead of all at once."""
+    pcoll = _thumb_collection()
+    key = "__loading__"
+    if key in pcoll:
+        return pcoll[key].icon_id
+    preview = pcoll.new(key)
+    preview.image_size = (_THUMB_SIZE, _THUMB_SIZE)
+    preview.image_pixels_float = _placeholder_pixels()
+    return preview.icon_id
+
+
 def get_cell_icon_id_at(objects, position):
     """Return composite icon_id for the cell at strip `position` across the GROUP.
 
@@ -1271,6 +1284,23 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
         n = len(keys)
         cur = current_position(objects, fno)
 
+        # Progressive thumbnail rendering: cap GPU offscreen renders per draw so a large
+        # bank doesn't freeze the first paint after load/Refresh. Uncached cells show a
+        # placeholder; the panel re-draws until everything is rendered (then it stops).
+        _budget = [4]
+        _need_redraw = [False]
+
+        def _cell_icon(items, pos):
+            key = _icon_key_for_items(items, pos)
+            pcoll = _thumb_collection()
+            if key in pcoll:
+                return pcoll[key].icon_id
+            if _budget[0] <= 0:
+                _need_redraw[0] = True
+                return _loading_icon_id()
+            _budget[0] -= 1
+            return get_cell_icon_id_for_items(items, pos)
+
         # ---- Cell group status ----
         tag = gp_object.get(GROUP_PROP, "")
         grp_row = layout.row(align=True)
@@ -1283,7 +1313,7 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
 
         # ---- Large thumbnail of the active cell ----
         if n > 0 and cur >= 0:
-            icon_id = get_cell_icon_id_for_items(items_by_pos[cur], cur)
+            icon_id = _cell_icon(items_by_pos[cur], cur)
             col_icon = layout.column()
             col_icon.alignment = 'CENTER'
             col_icon.template_icon(icon_value=icon_id, scale=5.5)
@@ -1338,7 +1368,7 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
                 cell_col = grid.column(align=True)
                 if cur == i:
                     cell_col.alert = True
-                icon_id = get_cell_icon_id_for_items(items_by_pos[i], i)
+                icon_id = _cell_icon(items_by_pos[i], i)
                 op = cell_col.operator(
                     "nuclear.cell_expose",
                     text="" if icon_id else str(i + 1),
@@ -1368,6 +1398,11 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
         sub.enabled = has_any
         sub.operator("nuclear.cells_export", text="Export All Layers…", icon='EXPORT').all_layers = True
         sub.operator("nuclear.cells_export", text="", icon='LAYER_ACTIVE').all_layers = False
+
+        # Keep redrawing while thumbnails are still being rendered in batches (self-stops
+        # once every cell is cached, since _cell_icon then never hits the budget cap).
+        if _need_redraw[0] and context.area:
+            context.area.tag_redraw()
 
 
 # ---------------------------------------------------------------------------

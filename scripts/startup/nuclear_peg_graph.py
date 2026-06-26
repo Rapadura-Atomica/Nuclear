@@ -946,6 +946,20 @@ class VIEW3D_PT_nuclear_peg(Panel):
 # -------------------------------------------------------------------------------------------------
 
 _LAST_SIGNATURES = {}
+_REBUILD_PENDING = set()
+
+
+def _do_rebuild_dirty():
+    # Timer callback (one-shot): runs OUTSIDE the depsgraph handler, where editing ID
+    # data (clearing/relinking the node tree) is safe. Trees are looked up by name so a
+    # tree freed between queueing and now is simply skipped.
+    global _REBUILD_PENDING
+    pending, _REBUILD_PENDING = _REBUILD_PENDING, set()
+    for tree_name in pending:
+        tree = bpy.data.node_groups.get(tree_name)
+        if tree is not None and getattr(tree, "rig", None) is not None:
+            rebuild(tree)
+    return None
 
 
 @bpy.app.handlers.persistent
@@ -955,7 +969,13 @@ def _depsgraph_update_post(_scene, _depsgraph):
     # the session (the register() guard below keeps re-adding idempotent).
     if _SYNCING:
         return
+    # Skip during playback: the graph mirrors rig STRUCTURE, which doesn't change frame
+    # to frame (only poses do), so recomputing signatures every frame is wasted work.
+    screen = getattr(bpy.context, "screen", None)
+    if screen is not None and screen.is_animation_playing:
+        return
     wm = bpy.data.window_managers
+    queued = False
     for win in (w for wm_ in wm for w in wm_.windows):
         for area in win.screen.areas:
             if area.type != 'NODE_EDITOR':
@@ -969,7 +989,12 @@ def _depsgraph_update_post(_scene, _depsgraph):
             sig = _graph_signature(tree)
             if _LAST_SIGNATURES.get(tree.name) != sig:
                 _LAST_SIGNATURES[tree.name] = sig
-                rebuild(tree)
+                # Defer the rebuild: mutating ID data inside a depsgraph handler is
+                # unsafe (latent crash vector); a one-shot timer does it right after.
+                _REBUILD_PENDING.add(tree.name)
+                queued = True
+    if queued and not bpy.app.timers.is_registered(_do_rebuild_dirty):
+        bpy.app.timers.register(_do_rebuild_dirty, first_interval=0.0)
 
 
 # -------------------------------------------------------------------------------------------------
@@ -1124,6 +1149,19 @@ def _active_drawing_object():
     return None
 
 
+def _safe_draw(fn):
+    # Wrap a GPU draw callback so a transient bad state (mid-edit/undo/eval) raises into
+    # a printed traceback instead of a broken/spamming overlay. Mirrors the Xsheet draw.
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+    return wrapper
+
+
+@_safe_draw
 def _draw_pivot_overlay():
     context = bpy.context
     if context.mode != 'OBJECT':
@@ -1219,6 +1257,7 @@ def _node_rect_region(node, region, ui_scale):
     return min(rx0, rx1), min(ry0, ry1), max(rx0, rx1), max(ry0, ry1)
 
 
+@_safe_draw
 def _draw_node_highlight():
     context = bpy.context
     space = context.space_data
