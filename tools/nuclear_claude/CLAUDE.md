@@ -437,15 +437,34 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-06-23.
+Atualizado em 2026-06-26.
 
-- **Nuclear 1.3.2 (Beta) — `NUCLEAR_BUILD = 6` — EMPACOTADO, deploy pendente de aprovação manual (2026-06-23).**
+- **Nuclear 1.4.2 (Beta) — `NUCLEAR_BUILD = 7` — PUBLICADO (2026-06-26).** Nova minor a partir da
+  branch `Nuclear` (HEAD `7a4381e`). **Destaque — Auto-Rig** (novo addon de startup
+  `scripts/startup/nuclear_rig_auto.py`): monta um PegRig completo a partir das peças GP
+  desenhadas — **Auto-Build Skeleton** (casa tronco/espinha/membros por nome, sufixo de lado
+  `.e`/`.d`, pivôs de junta sempre geométricos), **Link Selected to Active** (liga face/acessórios
+  em lote ao pai ativo), padrão de **duas pegs** por peça (junta estrutural + peg de desenho
+  `(ctrl)`), e **Peg Graph agrupado** por região com botão **Auto Layout**. 100% Python sobre a API
+  de PegRig (sem C), validado headless vs rig de referência; convenção de nomes em
+  `RigAutoFeature.md`. Também na release: **formato `.nuc`** como extensão padrão de arquivos novos
+  (Fase 1 — `.blend` legado segue 100% abrível, byte-idêntico; mexe em `blendfile.cc`/`wm_files.cc`
+  + MIME `application/x-nuclear`, daí o rebuild) e **persistência do layout do Peg Graph**
+  (ID-property JSON no rig, sobrevive a Sync/frames e ao export). Compilado nesta máquina em
+  `Nuclear/build` (container `blender`, `ninja && ninja install`), empacotado/verificado/publicado
+  via `nuclear_release.sh --no-bump`. verify-zip + check-manifest OK. Versão cosmética setada direto
+  em **1.4.2** (pula 1.4.0/1.4.1, a pedido); `NUCLEAR_BUILD` 6→7. Backup do zip 1.3.2/b6 no
+  servidor: `nuclear.zip.bak-pre-1.4.2`. **Server-side (separado, NÃO vai no zip):** telemetria com
+  apelido/região por máquina + painel admin (`app.py`/`ping.php`/templates) — `ping.php` segue
+  deploy manual.
+
+- **Nuclear 1.3.2 (Beta) — `NUCLEAR_BUILD = 6` — PUBLICADO (2026-06-23), superado pela 1.4.2.**
   Release de robustez do auto-updater: injeção do script corrigido (commit `d63ac650`) no zip do
   build 5, sem recompilação. Fixes incluídos: log em disco (`nuclear_update.log`), checagem de
   espaço livre antes do download (`_check_free_space`), traceback capturado em caso de falha no
   apply. Bump: PATCH 1.3.1→1.3.2, `NUCLEAR_BUILD` 5→6. verify-zip OK (updater + scipy presentes),
-  check-manifest OK. Artefatos prontos localmente no scratchpad da sessão; deploy aguarda `scp`
-  manual pelo usuário (comandos exatos abaixo). `ping.php` / `instalarNuclear.sh` não tocados.
+  check-manifest OK. **Foi deployado** (estava live no servidor até 2026-06-26, quando a 1.4.2 o
+  substituiu). `ping.php` / `instalarNuclear.sh` não tocados.
 
 - **Nuclear 1.3.1 (Beta) — `NUCLEAR_BUILD = 5` — PUBLICADO (2026-06-23).** Release a partir da
   branch `Nuclear` (HEAD `ee2a8c7`). Empacota a junção Auto-Patch + Envelope **mais** o Contour
@@ -500,18 +519,15 @@ Atualizado em 2026-06-23.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.3.1 (Beta) — `NUCLEAR_BUILD = 5` (2026-06-23, último deploy
-  confirmado no servidor). Máquinas em qualquer build ≤ 4 enxergam como update.
-  Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não registrado à época) →
-  1.3.1/b5 (2026-06-23) → **1.3.2/b6 (empacotado, aguardando deploy)**.
-- **nuclear.zip (b6, aguardando deploy):** 655.649.013 bytes, sha256
-  `45dda5389efb1b8b217a8a3db4e89172dbde4fa5fc7f37bd882946b2712119e3`. Repackage do b5 com
-  injeção do updater corrigido (commit `d63ac650`) e `nuclear_version.json` b6. verify-zip OK
-  (updater + scipy). check-manifest OK. **Artefatos locais no scratchpad da sessão de
-  2026-06-23** (temporários — copiar para local permanente antes de fazer deploy).
-- **nuclear.zip (b5, em produção):** 647.768.664 bytes, sha256
-  `52b94ed0251c72bf86f3afceb78768ea7ddeba88090a1e699308c5b136b0cd51`. Backups no servidor:
-  `nuclear.zip.bak-pre-1.3.0` (o zip 1.3.0/b4 anterior).
+- **Versão em produção:** Nuclear 1.4.2 (Beta) — `NUCLEAR_BUILD = 7` (2026-06-26, deploy
+  confirmado: sha256 do zip no servidor confere com o manifesto live). Máquinas em qualquer
+  build ≤ 6 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → **1.4.2/b7 (2026-06-26)**.
+- **nuclear.zip (b7, em produção):** 647.850.371 bytes, sha256
+  `a851b665ea6a3cb12e6118678197c36dd9c7fcfd6bbe73e69e514a3f57797fff`. Auto-contido por construção
+  (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes do publish.
+  Backups no servidor: `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6 anterior),
+  `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
 - **Build dir:** `Nuclear-git/Nuclear/build` (in-tree nesta máquina, out-of-source aponta pro
   repo), compilado via container distrobox **`blender`** (não `blenderdev`). Empacotamento pelo
   `nuclear_release.sh`: `cp -al bin Nuclear` → stamp → `zip -r` (deps já no `bin`, não injetadas).
