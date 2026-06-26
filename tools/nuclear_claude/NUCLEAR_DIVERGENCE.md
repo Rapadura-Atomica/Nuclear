@@ -44,9 +44,10 @@ revisão se as APIs do core que eles consomem mudarem.
 
 ### Add-ons / scripts de startup
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
-- `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs
+- `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs (+ `compute_grouped_layout` / operador `node.nuclear_peg_auto_layout` "Auto Layout": agrupa o grafo em frames por região do corpo — Braço D/E, Cabeça, Perna D/E, Tronco, Soltos — empacotados horizontalmente, derivados da hierarquia)
 - `scripts/startup/nuclear_squash_gizmo.py` — gizmos de squash & stretch (anchor/tip) no viewport
 - `scripts/startup/nuclear_cell_library.py` — Drawing Substitution (Fase 1): banco de cells fora-de-range + slider/atalhos (ver `CellLibraryFeature.md`)
+- `scripts/startup/nuclear_rig_auto.py` — Auto Rig ("esqueleto auto + ligação em lote"): operador `object.nuclear_rig_auto_skeleton` (casa peças por nome contra ontologia humanoide PT → monta espinha+membros num clique; não-casados ficam soltos) + `object.nuclear_rig_link_to_parent` (prende os selecionados sob o peg do ativo, padrão parent-to-active) + painel `VIEW3D_PT_nuclear_rig_auto` (aba "Rig"). Junta/pivô sempre geométrica (centróide da sobreposição filho∩pai). Python puro sobre a API de PegRig; refino no Peg Graph. Padrão do estúdio: **toda peça ganha uma peg** (não-reconhecidas viram peg raiz no composite). Validado headless vs `Carolina.blend` (56 pegs = 15 esqueleto + 41 acessório, pivôs nas juntas). Sem tool de toolbar (não edita `space_toolsystem_toolbar.py`). Doc: `tools/nuclear_claude/RigAutoFeature.md` (inclui a convenção de nomes). **Não cria ponto quente novo na §2.**
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
 
 ### Application Template Nuclear (a "costura" de UI — P0/P1/P2)

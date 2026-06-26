@@ -567,6 +567,155 @@ def _apply_frames(tree, frames, node_by_key):
 
 
 # -------------------------------------------------------------------------------------------------
+# Auto-grouped layout: one labelled frame per body region (arms, legs, head), packed horizontally.
+# A region = the sub-tree of a "limb root" (a direct child of a root peg that has descendants or is
+# recognised as a limb). Everything else under the root (the root peg + leaf accessories) is the body
+# region; unbound drawings go to a "Soltos" region. The grouping is derived from the hierarchy, so it
+# works for any creature; the friendly labels come from the humanoid name ontology when it matches.
+# -------------------------------------------------------------------------------------------------
+
+_REGION_COL = 320.0   # x per hierarchy depth inside a region
+_REGION_ROW = 210.0   # y per sibling row
+_REGION_GAP = 520.0   # x gap between region frames
+_LIMB_ROLES = {"neck", "head", "upperarm", "forearm", "hand", "thigh", "shin", "foot"}
+_REGION_BASE_LABEL = {
+    "torso": "Tronco", "neck": "Cabeça", "head": "Cabeça",
+    "upperarm": "Braço", "forearm": "Braço", "hand": "Mão",
+    "thigh": "Perna", "shin": "Perna", "foot": "Pé",
+}
+
+
+def _region_label(peg_name):
+    """Friendly PT label for a region whose root peg is `peg_name`, else the peg name itself."""
+    role = side = None
+    try:
+        import nuclear_rig_auto as _nra
+        matched = _nra._match_role(peg_name)
+        if matched is not None:
+            role, side = matched
+    except Exception:
+        pass
+    base = _REGION_BASE_LABEL.get(role)
+    if base is None:
+        return peg_name
+    return base + {"L": " E", "R": " D"}.get(side, "")
+
+
+def compute_grouped_layout(rig):
+    """Write a body-region grouped, horizontally-packed layout to the rig's layout property."""
+    if rig is None or len(rig.pegs) == 0:
+        return
+    pegs = rig.pegs
+    n = len(pegs)
+    children = {i: [] for i in range(n)}
+    roots = []
+    for i in range(n):
+        p = pegs[i].parent_index
+        (children[p].append(i) if 0 <= p < n and p != i else roots.append(i))
+
+    draws_by_peg, loose = {}, []
+    for ob, peg_name in _bound_objects(rig):
+        (draws_by_peg.setdefault(peg_name, []).append(ob.name) if peg_name else loose.append(ob.name))
+
+    def subtree(idx):
+        out, stack = [], [idx]
+        while stack:
+            j = stack.pop()
+            out.append(j)
+            stack.extend(children[j])
+        return out
+
+    def is_limb_root(c):
+        if children[c]:
+            return True
+        try:
+            import nuclear_rig_auto as _nra
+            m = _nra._match_role(pegs[c].name)
+            return m is not None and m[0] in _LIMB_ROLES
+        except Exception:
+            return False
+
+    def is_torso(idx):
+        try:
+            import nuclear_rig_auto as _nra
+            m = _nra._match_role(pegs[idx].name)
+            return m is not None and m[0] == "torso"
+        except Exception:
+            return False
+
+    # Only a "spine root" (a root peg that is the torso or has descendants) anchors the skeleton
+    # regions. Accessory pieces — which now each carry their own root peg (studio standard: every
+    # piece has a peg) — are leaf roots and fall through to the single "Soltos" frame below, instead
+    # of each becoming its own region.
+    main_roots = [r for r in roots if children[r] or is_torso(r)]
+    regions = []          # (label, [peg_idx...], root_idx)
+    claimed_pegs = set()
+    for r in main_roots:
+        limb_children = [c for c in children[r] if is_limb_root(c)]
+        limb_set = set()
+        for c in limb_children:
+            limb_set.update(subtree(c))
+        body = [i for i in subtree(r) if i not in limb_set]
+        regions.append((_region_label(pegs[r].name), body, r))
+        claimed_pegs.update(subtree(r))
+        for c in limb_children:
+            regions.append((_region_label(pegs[c].name), subtree(c), c))
+
+    pegs_pos, draws_pos, frames = {}, {}, []
+    x_cursor = 0.0
+    for label, idxs, root_idx in regions:
+        base_depth = _peg_depth(rig, root_idx)
+        col_rows, members, max_col = {}, [], 0
+        for idx in sorted(idxs, key=lambda j: _peg_depth(rig, j)):
+            d = _peg_depth(rig, idx) - base_depth
+            row = col_rows.get(d, 0)
+            col_rows[d] = row + 1
+            pegs_pos[pegs[idx].name] = [x_cursor + d * _REGION_COL, -row * _REGION_ROW]
+            members.append(["peg", pegs[idx].name])
+            max_col = max(max_col, d)
+            for obn in draws_by_peg.get(pegs[idx].name, []):
+                dc = d + 1
+                drow = col_rows.get(dc, 0)
+                col_rows[dc] = drow + 1
+                draws_pos[obn] = [x_cursor + dc * _REGION_COL, -drow * _REGION_ROW]
+                members.append(["draw", obn])
+                max_col = max(max_col, dc)
+        width = (max_col + 1) * _REGION_COL
+        frames.append({"label": label, "use_custom_color": False, "color": [0.3, 0.3, 0.3],
+                       "label_size": 26, "shrink": True, "loc": [x_cursor, 220.0],
+                       "width": width, "height": 0.0, "members": members})
+        x_cursor += width + _REGION_GAP
+
+    # Everything not claimed by a skeleton region -> one "Soltos" frame: accessory pegs (+ their
+    # drawings) and any peg-less loose drawings, flowed in a grid of peg|drawing cells.
+    leftover = [i for i in range(n) if i not in claimed_pegs]
+    if leftover or loose:
+        members, per_row, cell = [], 6, 0
+        for idx in leftover:
+            pname = pegs[idx].name
+            px = x_cursor + (cell % per_row) * (2 * _REGION_COL)
+            py = -(cell // per_row) * (2 * _REGION_ROW)
+            pegs_pos[pname] = [px, py]
+            members.append(["peg", pname])
+            for di, obn in enumerate(draws_by_peg.get(pname, [])):
+                draws_pos[obn] = [px + _REGION_COL, py - di * _REGION_ROW]
+                members.append(["draw", obn])
+            cell += 1
+        for obn in loose:
+            px = x_cursor + (cell % per_row) * (2 * _REGION_COL)
+            py = -(cell // per_row) * (2 * _REGION_ROW)
+            draws_pos[obn] = [px, py]
+            members.append(["draw", obn])
+            cell += 1
+        frames.append({"label": "Soltos", "use_custom_color": False, "color": [0.3, 0.3, 0.3],
+                       "label_size": 26, "shrink": True, "loc": [x_cursor, 220.0],
+                       "width": per_row * 2 * _REGION_COL, "height": 0.0, "members": members})
+
+    rig[_LAYOUT_KEY] = json.dumps({"pegs": pegs_pos, "draws": draws_pos,
+                                   "rig": [-_REGION_COL, 220.0], "frames": frames})
+
+
+# -------------------------------------------------------------------------------------------------
 # rig -> graph (generate the node tree from the rig)
 # -------------------------------------------------------------------------------------------------
 
@@ -807,6 +956,28 @@ class NODE_OT_nuclear_peg_sync(Operator):
         return {'FINISHED'}
 
 
+class NODE_OT_nuclear_peg_auto_layout(Operator):
+    bl_idname = "node.nuclear_peg_auto_layout"
+    bl_label = "Auto Layout"
+    bl_description = ("Group the graph into labelled body-region frames (arms, legs, head) packed "
+                      "horizontally, derived from the rig hierarchy")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        tree = _active_peg_tree(context)
+        return tree is not None and tree.rig is not None
+
+    def execute(self, context):
+        tree = _active_peg_tree(context)
+        # Clear first so rebuild() does not capture (and re-save) the current ungrouped arrangement
+        # before applying the freshly computed grouped layout.
+        tree.nodes.clear()
+        compute_grouped_layout(tree.rig)
+        rebuild(tree)
+        return {'FINISHED'}
+
+
 class NODE_OT_nuclear_peg_add(Operator):
     bl_idname = "node.nuclear_peg_add"
     bl_label = "Add Peg"
@@ -1002,6 +1173,7 @@ class NODE_PT_nuclear_peg(Panel):
         layout.prop_search(tree, "rig", bpy.data, "pegrigs", text="Rig")
         col = layout.column(align=True)
         col.operator("node.nuclear_peg_sync", icon='FILE_REFRESH')
+        col.operator("node.nuclear_peg_auto_layout", icon='STICKY_UVS_LOC')
         col.operator("node.nuclear_peg_add", icon='ADD')
         col.operator("node.nuclear_peg_remove", icon='REMOVE')
         col.operator("node.nuclear_peg_bind_selected", icon='LINKED')
@@ -1663,6 +1835,7 @@ classes = (
     NuclearPegNode,
     NuclearDrawingNode,
     NODE_OT_nuclear_peg_sync,
+    NODE_OT_nuclear_peg_auto_layout,
     NODE_OT_nuclear_peg_add,
     NODE_OT_nuclear_peg_remove,
     NODE_OT_nuclear_peg_bind_selected,
