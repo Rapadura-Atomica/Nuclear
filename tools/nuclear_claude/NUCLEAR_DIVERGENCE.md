@@ -29,7 +29,9 @@ revisão se as APIs do core que eles consomem mudarem.
 
 ### Modifier Grease Pencil "Curve" (deform arc-length, estilo Toon Boom)
 - `source/blender/modifiers/MOD_grease_pencil_curve.hh`
-- `source/blender/modifiers/intern/MOD_grease_pencil_curve.cc`
+- `source/blender/modifiers/intern/MOD_grease_pencil_curve.cc` — + botões **Reset All / Reset Selected** no painel (operador `OBJECT_OT_greasepencil_curve_reset`).
+- `source/blender/editors/object/object_modifier.cc` — operadores `OBJECT_OT_greasepencil_curve_setup` + `..._curve_bind` + **`..._curve_reset`**. O reset usa a custom-prop `nuclear_curve_rest` (array float, 9 por ponto Bézier) carimbada na **Deform Curve** na criação (`curve_store_rest`) e refeita no Bind; modos `ALL` (curva inteira) e `SELECTED` (pontos selecionados via flags `f1/f2/f3` do `BezTriple`, knot também reseta handles), escreve em `editnurb` no Edit Mode / `cu->nurb` no Object Mode; `OPERATOR_PASS_THROUGH` quando nada selecionado (preserva Alt+R nativo). Decls em `object_intern.hh`, append em `object_ops.cc`.
+- `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — `_register_curve_reset_keymap`: Alt+R no keymap `Object Mode` (mode=`ALL`) e `Curve` edit-mode (mode=`SELECTED`).
 
 ### Modifier Grease Pencil "Cutter" (máscara cross-object, estilo Toon Boom — ver `CutterFeature.md`)
 - `source/blender/modifiers/intern/MOD_grease_pencil_mask.cc` — injeta as strokes do objeto-matte
@@ -207,10 +209,11 @@ documentado). No rebase, re-aplicar cada uma:
 | `source/blender/modifiers/CMakeLists.txt` | `intern/MOD_grease_pencil_contour.cc` + `MOD_grease_pencil_contour.hh` na lista SRC |
 | `source/blender/makesrna/intern/rna_modifier.cc` | item de enum; **setter custom** `rna_GreasePencilContourModifier_object_set` (aceita `OB_MESH` **ou** `OB_CURVES_LEGACY`); `rna_def_modifier_grease_pencil_contour` + chamada |
 | `source/blender/blenkernel/intern/grease_pencil.cc` | `case` do Contour em `influence_data_from_modifier` |
-| `source/blender/editors/object/object_modifier.cc` | operadores `OBJECT_OT_greasepencil_contour_bind` + `OBJECT_OT_greasepencil_envelope_setup` (silhueta convex-hull → Bézier cíclica → bind → controles empty+hook em Object Mode) |
-| `source/blender/editors/object/object_intern.hh` | decls dos 2 operadores |
-| `source/blender/editors/object/object_ops.cc` | `WM_operatortype_append` dos 2 operadores |
+| `source/blender/editors/object/object_modifier.cc` | operadores `OBJECT_OT_greasepencil_contour_bind` + `OBJECT_OT_greasepencil_envelope_setup` + `OBJECT_OT_greasepencil_spine_controllers` + `OBJECT_OT_greasepencil_contour_toggle_controls` + **`OBJECT_OT_greasepencil_contour_reset`** (silhueta convex-hull → Bézier cíclica → bind → controles empty+hook em Object Mode). O reset usa a custom-prop `nuclear_envelope_rest` (float3) carimbada em cada controlador na criação (`envelope_store_rest`) como pose de descanso **e** marcador de "isto é um controlador"; modos `ALL` (via Hooks da cage) e `SELECTED` (seleção; âncora também reseta seus handles filhos); quando nada elegível, retorna `OPERATOR_PASS_THROUGH` p/ não roubar o Alt+R nativo |
+| `source/blender/editors/object/object_intern.hh` | decls dos operadores (incl. `..._contour_reset`) |
+| `source/blender/editors/object/object_ops.cc` | `WM_operatortype_append` dos operadores (incl. `..._contour_reset`) |
 | `source/blender/draw/engines/overlay/overlay_empty.hh` | `Empties::object_sync`: empties desenham com `ob->color` custom (≠ branco, não-selecionado) em vez do cinza do tema — para tingir os controles do envelope (anchor laranja / handle ciano) |
+| `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` | `_register_envelope_reset_keymap`: keymap **addon** em `Object Mode` ligando **Alt+R** → `object.greasepencil_contour_reset` (mode=`SELECTED`); poll/PASS_THROUGH deixam o Alt+R nativo (clear rotation) intacto fora dos controladores |
 
 ### Tool / UI Python
 | Arquivo | O que foi adicionado |
