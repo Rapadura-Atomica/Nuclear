@@ -154,8 +154,9 @@ int BKE_pegrig_peg_add(PegRig *rig, const char *name, const int parent_index)
   copy_v3_fl(peg->scale, 1.0f);
   /* Squash defaults: inert until #PEGRIGPEG_SQUASH is set, but kept non-degenerate (unit vertical
    * axis, full volume preservation) so enabling squash never starts from a zero-length axis. The
-   * anchor stays at the origin from the zeroed allocation. */
-  peg->squash_tip[1] = 1.0f;
+   * vertical axis is Z (the cut-out drawing plane is XZ; Y is depth). The anchor stays at the
+   * origin from the zeroed allocation. */
+  peg->squash_tip[2] = 1.0f;
   peg->squash_rest_len = 1.0f;
   peg->squash_volume = 1.0f;
   unit_m4(peg->world_mat);
@@ -289,39 +290,28 @@ static void pegrig_peg_local_matrix(const PegRigPeg *peg, float r_mat[4][4])
                      float3(peg->scale)) *
                  math::from_location<float4x4>(-pivot);
 
-  /* Squash & Stretch (see SquashFeature.md): fold a volume-preserving non-uniform scale, anchored
-   * in the peg's parent space, on top of the pose. The body scales by `s` along the anchor->tip
-   * axis and compensates by `k` in the orthogonal drawing-plane direction so area is preserved.
-   * Inert unless the flag is set and the rest length is positive, so a peg without squash yields a
-   * byte-identical matrix. The squash is `S * local` (S in parent space) so the anchor stays put
-   * regardless of the peg's own pose. */
+  /* Squash & Stretch (see SquashFeature.md): fold a volume-preserving non-uniform scale on top of
+   * the pose. Inert unless the flag is set and the rest length is positive, so a peg without squash
+   * yields a byte-identical matrix. The squash is `local * S` (S in the peg's OWN posed space, with
+   * anchor/tip in local coordinates) so it travels with the peg: moving/posing the rig carries the
+   * squash along, while during a squash itself the planted anchor stays put. */
   if ((peg->flag & PEGRIGPEG_SQUASH) && peg->squash_rest_len > 1e-6f) {
     const float3 anchor(peg->squash_anchor);
-    const float3 axis = float3(peg->squash_tip) - anchor;
-    const float len = math::length(axis);
-    if (len > 1e-6f) {
-      const float s = len / peg->squash_rest_len;
-      /* volume=0 -> pure axis scale (k=1); volume=1 -> area-preserving (k=1/s). */
+    /* Axis-aligned squash & stretch in the XZ drawing plane: the vertical (Z) span between anchor
+     * and tip drives a scale along Z, compensated by `k` along X so area is preserved. The body
+     * always squashes straight up/down with no shear - the tip's horizontal offset and the depth
+     * axis Y never deform it. Anchored at `anchor` (in the peg's local space) so the planted base
+     * stays put. */
+    const float s = (peg->squash_tip[2] - anchor.z) / peg->squash_rest_len;
+    if (s > 1e-4f) {
+      /* volume=0 -> pure vertical scale (k=1); volume=1 -> area-preserving (k=1/s). */
       const float k = 1.0f + peg->squash_volume * (1.0f / s - 1.0f);
-      const float3 d = axis / len;
-      const float3 e(-d.y, d.x, 0.0f); /* perpendicular within the 2D drawing plane (Z unscaled). */
-
-      /* Linear part: I + (s-1) d⊗d + (k-1) e⊗e. Symmetric, so column/row order is irrelevant. */
       float4x4 squash = float4x4::identity();
-      for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-          squash[j][i] += (s - 1.0f) * d[i] * d[j] + (k - 1.0f) * e[i] * e[j];
-        }
-      }
-      /* Translation that keeps `anchor` fixed: t = anchor - linear * anchor. */
-      float3 lin_anchor;
-      for (int i = 0; i < 3; i++) {
-        lin_anchor[i] = squash[0][i] * anchor[0] + squash[1][i] * anchor[1] +
-                        squash[2][i] * anchor[2];
-      }
-      squash[3] = float4(anchor - lin_anchor, 1.0f);
-
-      mat = squash * mat;
+      squash[0][0] = k;                      /* scale X (area compensation) */
+      squash[2][2] = s;                      /* scale Z (vertical squash/stretch) */
+      squash[3][0] = anchor.x * (1.0f - k);  /* keep anchor fixed in X */
+      squash[3][2] = anchor.z * (1.0f - s);  /* keep anchor fixed in Z */
+      mat = mat * squash;
     }
   }
   copy_m4_m4(r_mat, mat.ptr());
