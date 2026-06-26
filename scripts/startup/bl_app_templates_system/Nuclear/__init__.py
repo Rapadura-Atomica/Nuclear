@@ -847,13 +847,35 @@ _HEADER_OVERRIDES = [
 ]
 
 
+def _make_safe_override(cls, attr, fn):
+    # Wrap a header override so a raise (e.g. after an upstream rebase renames a symbol
+    # the override depends on) degrades to the saved original draw instead of leaving the
+    # whole header blank. Mirrors the defensive try/except the Xsheet draw already uses.
+    def safe(self, context):
+        try:
+            return fn(self, context)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            orig = _orig_draws.get((cls, attr))
+            if orig is not None:
+                try:
+                    return orig(self, context)
+                except Exception:
+                    pass
+    return safe
+
+
 def _apply_header_overrides():
     for cls_name, attr, fn in _HEADER_OVERRIDES:
         cls = getattr(bpy.types, cls_name, None)
         if cls is None:
             continue
-        _orig_draws[(cls, attr)] = getattr(cls, attr)
-        setattr(cls, attr, fn)
+        # Guard against capturing an already-patched function as the "original" if
+        # register() runs twice without an unregister() (script reload / re-activate).
+        if (cls, attr) not in _orig_draws:
+            _orig_draws[(cls, attr)] = getattr(cls, attr)
+        setattr(cls, attr, _make_safe_override(cls, attr, fn))
 
 
 def _revert_header_overrides():

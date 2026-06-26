@@ -860,7 +860,16 @@ class OBJECT_OT_pegrig_pivot_grab(Operator):
         context.area.tag_redraw()
 
     def modal(self, context, event):
-        peg = self._rig.pegs[self._idx]
+        # The rig/index were captured at invoke; an undo, peg removal, or file load
+        # during the grab can free the rig or shrink the collection, so revalidate
+        # before indexing (a stale ID ref raises, an out-of-range index IndexErrors).
+        try:
+            if self._idx < 0 or self._idx >= len(self._rig.pegs):
+                raise IndexError
+            peg = self._rig.pegs[self._idx]
+        except (ReferenceError, IndexError, AttributeError):
+            self._finish(context)
+            return {'CANCELLED'}
         if event.type == 'MOUSEMOVE':
             cur = self._project(context, event.mouse_region_x, event.mouse_region_y)
             init = self._project(context, *self._init_mouse)
@@ -939,7 +948,11 @@ class VIEW3D_PT_nuclear_peg(Panel):
 _LAST_SIGNATURES = {}
 
 
+@bpy.app.handlers.persistent
 def _depsgraph_update_post(_scene, _depsgraph):
+    # Must be @persistent: non-persistent app handlers are stripped on File > Open,
+    # which would silently stop the Peg Graph from tracking rig edits for the rest of
+    # the session (the register() guard below keeps re-adding idempotent).
     if _SYNCING:
         return
     wm = bpy.data.window_managers
