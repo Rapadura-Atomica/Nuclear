@@ -720,9 +720,20 @@ def _nuclear_view3d_header_draw(self, context):
 # tab, so this row is free. `popover_group` only draws panels that pass their poll in the
 # current mode, so the bar stays lean.
 
+_sidebar_cats_cache = None
+_sidebar_cats_stamp = 0.0
+
+
 def _sidebar_categories():
     # Distinct categories of the VIEW_3D sidebar (N-panel) across registered panels.
-    # Recomputed each draw so newly (un)registered addon panels appear/disappear live.
+    # Scanning all of dir(bpy.types) on every tool-header redraw was a per-draw O(types)
+    # cost (viewport stutter, worse with many add-ons); throttle to ~1 Hz so newly
+    # (un)registered addon panels still appear/disappear "live" within a second.
+    import time
+    global _sidebar_cats_cache, _sidebar_cats_stamp
+    now = time.monotonic()
+    if _sidebar_cats_cache is not None and (now - _sidebar_cats_stamp) < 1.0:
+        return _sidebar_cats_cache
     seen = set()
     cats = []
     types = bpy.types
@@ -736,6 +747,8 @@ def _sidebar_categories():
                 seen.add(cat)
                 cats.append(cat)
     cats.sort()
+    _sidebar_cats_cache = cats
+    _sidebar_cats_stamp = now
     return cats
 
 

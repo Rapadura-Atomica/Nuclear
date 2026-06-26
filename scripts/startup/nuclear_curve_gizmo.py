@@ -299,6 +299,19 @@ _draw_handle = None
 _line_shader = None
 
 
+def _safe_draw(fn):
+    # Wrap a GPU draw callback so a transient bad state (mid-edit/undo/eval) raises into
+    # a printed traceback instead of a broken/spamming overlay.
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+    return wrapper
+
+
+@_safe_draw
 def _draw_curve_handles():
     context = bpy.context
     curve_ob = _active_deform_curve(context)
