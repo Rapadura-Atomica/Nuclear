@@ -675,6 +675,15 @@ static void panel_draw(const bContext *C, Panel *panel)
     layout->op("OBJECT_OT_greasepencil_contour_toggle_controls",
                IFACE_("Show/Hide Controllers"),
                ICON_HIDE_OFF);
+    /* Send the controllers home: all of them, or just the selected ones (also bound to Alt+R in
+     * Object Mode). The mode values mirror the operator's enum (0 = All, 1 = Selected). */
+    uiLayout *reset_row = &layout->row(true);
+    PointerRNA reset_all = reset_row->op(
+        "OBJECT_OT_greasepencil_contour_reset", IFACE_("Reset All"), ICON_LOOP_BACK);
+    RNA_enum_set(&reset_all, "mode", 0);
+    PointerRNA reset_sel = reset_row->op(
+        "OBJECT_OT_greasepencil_contour_reset", IFACE_("Reset Selected"), ICON_LOOP_BACK);
+    RNA_enum_set(&reset_sel, "mode", 1);
   }
 
   if (uiLayout *influence_panel = layout->panel_prop(

@@ -1411,6 +1411,99 @@ def _unregister_xsheet_keymap():
     _xsheet_keymaps.clear()
 
 
+# Alt+R in Object Mode sends the selected envelope/spine controllers back to their rest pose. The
+# operator's poll fails (and, when nothing is eligible, it passes the event through) for non-
+# controllers, so native Alt+R (Clear Rotation) keeps working everywhere else.
+_envelope_reset_keymaps = []
+
+
+def _register_envelope_reset_keymap():
+    wm = bpy.context.window_manager
+    kc = getattr(wm.keyconfigs, "addon", None)
+    if kc is None:
+        return
+    km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
+    kmi = km.keymap_items.new(
+        "object.greasepencil_contour_reset", 'R', 'PRESS', alt=True)
+    kmi.properties.mode = 'SELECTED'
+    _envelope_reset_keymaps.append((km, kmi))
+
+
+def _unregister_envelope_reset_keymap():
+    for km, kmi in _envelope_reset_keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except Exception:
+            pass
+    _envelope_reset_keymaps.clear()
+
+
+# Alt+R for the Curve deform: in Object Mode (curve active) it resets the whole Deform Curve; in
+# Curve Edit Mode it resets the selected control points. Poll/PASS_THROUGH keep native Alt+R intact
+# for any non-deform-curve.
+_curve_reset_keymaps = []
+
+
+def _register_curve_reset_keymap():
+    wm = bpy.context.window_manager
+    kc = getattr(wm.keyconfigs, "addon", None)
+    if kc is None:
+        return
+    km_obj = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
+    kmi = km_obj.keymap_items.new("object.greasepencil_curve_reset", 'R', 'PRESS', alt=True)
+    kmi.properties.mode = 'ALL'
+    _curve_reset_keymaps.append((km_obj, kmi))
+
+    km_edit = kc.keymaps.new(name='Curve', space_type='EMPTY')
+    kmi2 = km_edit.keymap_items.new("object.greasepencil_curve_reset", 'R', 'PRESS', alt=True)
+    kmi2.properties.mode = 'SELECTED'
+    _curve_reset_keymaps.append((km_edit, kmi2))
+
+
+def _unregister_curve_reset_keymap():
+    for km, kmi in _curve_reset_keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except Exception:
+            pass
+    _curve_reset_keymaps.clear()
+
+
+# Discoverable reset while shaping a Deform Curve: the GP modifier panel (with the reset buttons) is
+# not visible when the curve itself is the active object, so surface the same operator in the 3D
+# View N-panel (Item tab) whenever a Deform Curve is active - in Object or Edit Mode.
+class NUCLEAR_PT_deform_curve_reset(bpy.types.Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Item"
+    bl_label = "Deform Curve"
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return (ob is not None and ob.type == 'CURVE'
+                and ob.get('nuclear_curve_rest') is not None)
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
+        col.operator("object.greasepencil_curve_reset", text="Reset Selected").mode = 'SELECTED'
+        col.operator("object.greasepencil_curve_reset", text="Reset All").mode = 'ALL'
+
+
+def _register_curve_reset_panel():
+    try:
+        bpy.utils.register_class(NUCLEAR_PT_deform_curve_reset)
+    except Exception:
+        pass
+
+
+def _unregister_curve_reset_panel():
+    try:
+        bpy.utils.unregister_class(NUCLEAR_PT_deform_curve_reset)
+    except Exception:
+        pass
+
+
 # --------------------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------------------
@@ -1439,9 +1532,15 @@ def register():
     _apply_nuclear_theme()
     _enable_xsheet()
     _register_xsheet_keymap()
+    _register_envelope_reset_keymap()
+    _register_curve_reset_keymap()
+    _register_curve_reset_panel()
 
 
 def unregister():
+    _unregister_curve_reset_panel()
+    _unregister_curve_reset_keymap()
+    _unregister_envelope_reset_keymap()
     _unregister_xsheet_keymap()
     _disable_xsheet()
     _revert_nuclear_theme()
