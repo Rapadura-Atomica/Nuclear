@@ -1,0 +1,462 @@
+# SPDX-FileCopyrightText: 2026 Blender Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Nuclear — automatic rig from drawing pieces (Auto Rig).
+
+The artist already has the character split into named Grease Pencil pieces. Rigging is
+split along a non-uniform automation boundary:
+
+* **Auto-Build Skeleton** — the predictable spine + limbs (torso·neck·head and the mirrored
+  arms/legs) are matched by name against a humanoid ontology and built in one click. Pieces
+  the matcher is unsure about stay as *loose members* of the rig, ready to be linked.
+* **Link Selected to Active** — the dense face/accessory "fans" (eyes, brows, hair, glasses,
+  cape…) are attached in batches: select the cluster, make the parent piece active, click.
+
+In every case the joint/pivot is **computed from geometry** (the overlap between a piece and
+its parent), so the animator never places a joint by hand. Refinement happens in the existing
+Peg Graph node editor (reparent by dragging links).
+
+Pure Python over the existing PegRig API; no C side.
+"""
+
+import re
+import unicodedata
+
+import bpy
+import mathutils
+from bpy.props import StringProperty
+from bpy.types import Operator, Panel
+
+# --------------------------------------------------------------------------- #
+# Humanoid ontology
+# --------------------------------------------------------------------------- #
+# role -> parent role (None = root). Sided roles inherit their side from the child.
+_PARENT_ROLE = {
+    "torso": None,
+    "neck": "torso",
+    "head": "neck",
+    "upperarm": "torso",
+    "forearm": "upperarm",
+    "hand": "forearm",
+    "thigh": "torso",
+    "shin": "thigh",
+    "foot": "shin",
+}
+_SIDED = {"upperarm", "forearm", "hand", "thigh", "shin", "foot"}
+
+# Studio pattern: a skeleton piece has a structural JOINT peg (the articulation, in the chain) AND
+# its own DRAWING peg (this suffix) that the drawing binds to, so the piece keeps an independent
+# translation/rotation/scale separate from the joint it hangs on.
+_DRAW_PEG_SUFFIX = " (ctrl)"
+
+# Exact (normalised) base name -> role. PT first, plus a few EN/ES synonyms.
+_ROLE_SYNONYMS = {
+    "torso": ["tronco", "torso", "corpo", "peito", "quadril", "pelvis", "hip", "body"],
+    "neck": ["pescoco", "neck", "cuello"],
+    "head": ["cabeca", "head", "cabeza"],
+    "upperarm": ["braco", "brazo", "upperarm", "arm", "umero"],
+    "forearm": ["antebraco", "antebrazo", "forearm"],
+    "hand": ["mao", "mano", "hand"],
+    "thigh": ["coxa", "thigh", "muslo", "femur"],
+    "shin": ["canela", "shin", "tibia", "espinilla"],
+    "foot": ["pe", "pie", "foot"],
+}
+_CORE_TO_ROLE = {syn: role for role, syns in _ROLE_SYNONYMS.items() for syn in syns}
+
+_LEFT = {"e", "esq", "esquerda", "l", "left", "izq"}
+_RIGHT = {"d", "dir", "direita", "r", "right", "der"}
+
+
+def _norm(name):
+    """Return (core, side) for a piece name. side in {'L','R',None}."""
+    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"\.\d+$", "", s)                      # strip a trailing .001 dup suffix
+    side = None
+    m = re.search(r"[._\- ](e|esq|esquerda|izq|l|left|d|dir|direita|der|r|right)$", s)
+    if m:
+        tok = m.group(1)
+        side = "L" if tok in _LEFT else "R"
+        s = s[: m.start()]
+    s = re.sub(r"[._\- ]?\d+$", "", s)                # any other trailing digits
+    s = s.strip("._- ")
+    return s, side
+
+
+def _match_role(name):
+    """Exact-core match -> (role, side) or None. Exact (not substring) keeps it safe:
+    'perna_do_oculos' won't be read as a shin, 'cabelo' won't be a head."""
+    core, side = _norm(name)
+    role = _CORE_TO_ROLE.get(core)
+    if role is None:
+        return None
+    if role not in _SIDED:
+        side = None
+    return role, side
+
+
+# --------------------------------------------------------------------------- #
+# Geometry — joint pivots from piece overlap
+# --------------------------------------------------------------------------- #
+def _aabb(ob):
+    cs = [ob.matrix_world @ mathutils.Vector(c) for c in ob.bound_box]
+    mn = mathutils.Vector((min(c[i] for c in cs) for i in range(3)))
+    mx = mathutils.Vector((max(c[i] for c in cs) for i in range(3)))
+    return mn, mx
+
+
+def _center_world(ob):
+    mn, mx = _aabb(ob)
+    return (mn + mx) * 0.5
+
+
+def _planar_axes(objs):
+    """The two axes the character lives in (drop the thin/depth axis)."""
+    ext = [0.0, 0.0, 0.0]
+    for ob in objs:
+        mn, mx = _aabb(ob)
+        for i in range(3):
+            ext[i] += mx[i] - mn[i]
+    thin = ext.index(min(ext))
+    return [i for i in range(3) if i != thin]
+
+
+def _joint_world(child, parent, planar):
+    """World point of the joint between child and parent = centroid of their bbox overlap in
+    the character plane. Falls back to the child's centre when they don't overlap."""
+    amn, amx = _aabb(child)
+    bmn, bmx = _aabb(parent)
+    cen = _center_world(child)
+    for i in planar:
+        lo = max(amn[i], bmn[i])
+        hi = min(amx[i], bmx[i])
+        if hi <= lo:
+            return _center_world(child)        # no overlap -> own centre
+        cen[i] = (lo + hi) * 0.5
+    return cen
+
+
+# --------------------------------------------------------------------------- #
+# Peg world matrix (clone of nuclear_peg_graph helpers) + pivot placement
+# --------------------------------------------------------------------------- #
+def _peg_local_matrix(peg):
+    from mathutils import Matrix, Vector, Euler
+    p = Vector(peg.pivot)
+    t = Vector(peg.translation)
+    rot = Euler(peg.rotation, "XYZ").to_matrix().to_4x4()
+    scale = Matrix.Diagonal(Vector((peg.scale[0], peg.scale[1], peg.scale[2], 1.0)))
+    return Matrix.Translation(t + p) @ rot @ scale @ Matrix.Translation(-p)
+
+
+def _peg_world_matrix(rig, idx):
+    chain, i, guard = [], idx, 0
+    while 0 <= i < len(rig.pegs) and guard <= len(rig.pegs):
+        chain.append(i)
+        i = rig.pegs[i].parent_index
+        guard += 1
+    m = mathutils.Matrix()
+    for j in reversed(chain):
+        m = m @ _peg_local_matrix(rig.pegs[j])
+    return m
+
+
+def _set_pivot_world(rig, peg_index, world_pt):
+    """Place a peg's pivot at a world point, expressed in its parent's frame (so the peg
+    rotates in place, not orbiting the parent)."""
+    peg = rig.pegs[peg_index]
+    parent = peg.parent_index
+    pw = _peg_world_matrix(rig, parent) if 0 <= parent < len(rig.pegs) else mathutils.Matrix.Identity(4)
+    peg.pivot = pw.inverted() @ world_pt
+
+
+# --------------------------------------------------------------------------- #
+# Builder core (validated headless vs Carolina)
+# --------------------------------------------------------------------------- #
+def _topo_order(pegs):
+    by_name = {p["name"]: p for p in pegs}
+    ordered, placed = [], set()
+
+    def emit(p, stack):
+        nm = p["name"]
+        if nm in placed or nm in stack:
+            return
+        parent = p.get("parent")
+        if parent and parent in by_name and parent not in placed:
+            emit(by_name[parent], stack | {nm})
+        placed.add(nm)
+        ordered.append(p)
+
+    for p in pegs:
+        emit(p, set())
+    return ordered
+
+
+def _bind(ob, rig, peg_name):
+    """One Follow Peg constraint binding ob -> peg (fresh, so set-inverse keeps its pose)."""
+    for c in list(ob.constraints):
+        if c.type == "FOLLOW_PEG":
+            ob.constraints.remove(c)
+    con = ob.constraints.new("FOLLOW_PEG")
+    con.rig = rig
+    if peg_name:
+        con.peg_name = peg_name
+    return con
+
+
+def build_rig_from_spec(spec):
+    rig = bpy.data.pegrigs.new(spec.get("rig_name") or "PegRig")
+    name_to_index = {}
+    for p in _topo_order(spec["pegs"]):
+        parent = p.get("parent")
+        parent_index = name_to_index.get(parent, -1) if parent else -1
+        peg = rig.pegs.new(p["name"], parent_index=parent_index)
+        name_to_index[p["name"]] = len(rig.pegs) - 1
+        if peg.name != p["name"]:
+            name_to_index[peg.name] = len(rig.pegs) - 1
+    for p in spec["pegs"]:
+        idx = name_to_index[p["name"]]
+        peg = rig.pegs[idx]
+        peg.pivot = p.get("pivot", (0, 0, 0))
+    return rig, name_to_index
+
+
+# --------------------------------------------------------------------------- #
+# Helpers shared by the operators
+# --------------------------------------------------------------------------- #
+def _gp_targets(context):
+    sel = [o for o in context.selected_objects if o.type == "GREASEPENCIL"]
+    if len(sel) >= 2:
+        return sel
+    return [o for o in context.view_layer.objects if o.type == "GREASEPENCIL" and o.visible_get()]
+
+
+def _followpeg(ob):
+    for c in ob.constraints:
+        if c.type == "FOLLOW_PEG":
+            return c
+    return None
+
+
+def _peg_index_of(ob):
+    """(rig, peg_index) the object follows, or (rig, -1) loose, or (None, -1)."""
+    con = _followpeg(ob)
+    if con is None or con.rig is None:
+        return None, -1
+    return con.rig, con.rig.pegs.find(con.peg_name) if con.peg_name else -1
+
+
+def _grouped_layout(rig):
+    """Ask the Peg Graph to (re)compute a body-region grouped layout for this rig, so opening the
+    graph shows tidy horizontal frames instead of a vertical pile. Best-effort: silently skips if the
+    Peg Graph module is unavailable."""
+    try:
+        import nuclear_peg_graph as npg
+        npg.compute_grouped_layout(rig)
+    except Exception:
+        pass
+
+
+# --------------------------------------------------------------------------- #
+# Operator: Auto-Build Skeleton
+# --------------------------------------------------------------------------- #
+class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
+    bl_idname = "object.nuclear_rig_auto_skeleton"
+    bl_label = "Auto-Build Skeleton"
+    bl_description = ("Match the drawing pieces to a humanoid skeleton by name and build the "
+                      "spine + limbs in one click; unmatched pieces stay loose to be linked")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
+    def execute(self, context):
+        objs = _gp_targets(context)
+        if not objs:
+            self.report({"ERROR"}, "No Grease Pencil pieces found")
+            return {"CANCELLED"}
+        planar = _planar_axes(objs)
+
+        matched = {}                      # ob -> (role, side)
+        keymap = {}                       # (role, side) -> ob
+        for ob in objs:
+            r = _match_role(ob.name)
+            if r is not None and r not in keymap:   # first piece wins a role slot
+                matched[ob] = r
+                keymap[r] = ob
+        if not matched:
+            self.report({"ERROR"}, "No skeleton pieces recognised by name (torso/arm/leg/…)")
+            return {"CANCELLED"}
+
+        def ancestor_ob(role, side):
+            pr = _PARENT_ROLE[role]
+            ps = side if pr in _SIDED else None
+            while pr is not None:
+                if (pr, ps) in keymap:
+                    return keymap[(pr, ps)]
+                nr = _PARENT_ROLE[pr]
+                ps = ps if nr in _SIDED else None
+                pr = nr
+            return None
+
+        # 1) Joint chain: one structural peg per matched piece, parented via the collapsed ontology.
+        #    These carry the articulation pivots (hip/knee/…); no drawing binds to them.
+        pegs = []
+        parent_ob_of = {}
+        for ob, (role, side) in matched.items():
+            par = ancestor_ob(role, side)
+            parent_ob_of[ob] = par
+            pegs.append({"name": ob.name, "parent": par.name if par else None, "pivot": (0, 0, 0)})
+        spec = {"rig_name": context.scene.nuclear_rig_name or "PegRig", "pegs": pegs}
+        rig, j_idx = build_rig_from_spec(spec)
+        for ob in matched:
+            par = parent_ob_of[ob]
+            _set_pivot_world(rig, j_idx[ob.name],
+                             _joint_world(ob, par, planar) if par else _center_world(ob))
+
+        # 2) Each matched piece also gets its OWN drawing peg (independent T/R/S), a child of its
+        #    joint; the drawing binds to THIS peg, not to the shared joint. Pivot = the piece centre.
+        for ob in matched:
+            dname = ob.name + _DRAW_PEG_SUFFIX
+            rig.pegs.new(dname, parent_index=j_idx[ob.name])
+            _bind(ob, rig, dname)
+            _set_pivot_world(rig, rig.pegs.find(dname), _center_world(ob))
+
+        # 3) Unmatched pieces: each gets its own peg on the composite (root). A leaf, so a single peg
+        #    is already its independent controller; linkable later.
+        extra = 0
+        for ob in objs:
+            if ob in matched:
+                continue
+            rig.pegs.new(ob.name, parent_index=-1)
+            _bind(ob, rig, ob.name)
+            _set_pivot_world(rig, rig.pegs.find(ob.name), _center_world(ob))
+            extra += 1
+
+        rig.active_peg_index = rig.pegs.find(keymap[("torso", None)].name) if ("torso", None) in keymap else 0
+        _grouped_layout(rig)
+        context.view_layer.update()
+        self.report({"INFO"},
+                    f"Rig '{rig.name}': {len(matched)} joints + {len(matched)} drawing pegs + "
+                    f"{extra} loose pegs (every piece has its own peg) — select a cluster + a parent and Link")
+        return {"FINISHED"}
+
+
+# --------------------------------------------------------------------------- #
+# Operator: Link Selected to Active
+# --------------------------------------------------------------------------- #
+def _cycle(rig, child_idx, new_parent_idx):
+    i, guard = new_parent_idx, 0
+    while 0 <= i < len(rig.pegs) and guard <= len(rig.pegs):
+        if i == child_idx:
+            return True
+        i = rig.pegs[i].parent_index
+        guard += 1
+    return False
+
+
+class OBJECT_OT_nuclear_rig_link_to_parent(Operator):
+    bl_idname = "object.nuclear_rig_link_to_parent"
+    bl_label = "Link Selected to Active"
+    bl_description = ("Make every selected drawing follow the active drawing's peg "
+                      "(joint pivots auto-placed). Batch-attach a fan to one parent")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        act = context.active_object
+        return (context.mode == "OBJECT" and act is not None and act.type == "GREASEPENCIL"
+                and any(o.type == "GREASEPENCIL" and o is not act for o in context.selected_objects))
+
+    def execute(self, context):
+        active = context.active_object
+        children = [o for o in context.selected_objects
+                    if o.type == "GREASEPENCIL" and o is not active]
+        if not children:
+            self.report({"ERROR"}, "Select children + an active parent drawing")
+            return {"CANCELLED"}
+        planar = _planar_axes([active] + children)
+
+        # Resolve (or bootstrap) the rig and the ATTACH peg under the active object. Children should
+        # follow the active piece's structural joint, so if the active drawing follows a drawing peg
+        # (a leaf under a joint), attach under that joint; otherwise attach under the active's own peg.
+        rig, act_dpeg = _peg_index_of(active)
+        if rig is None:
+            rig = bpy.data.pegrigs.new(context.scene.nuclear_rig_name or "PegRig")
+        if act_dpeg < 0:
+            rig.pegs.new(active.name, parent_index=-1)
+            act_dpeg = rig.pegs.find(active.name)
+            _bind(active, rig, active.name)
+            _set_pivot_world(rig, act_dpeg, _center_world(active))
+            attach_idx = act_dpeg
+        else:
+            jp = rig.pegs[act_dpeg].parent_index
+            attach_idx = jp if jp >= 0 else act_dpeg
+        attach_peg_name = rig.pegs[attach_idx].name
+
+        linked = 0
+        for ch in children:
+            ch_rig, ch_idx = _peg_index_of(ch)
+            attach_idx = rig.pegs.find(attach_peg_name)      # re-fetch (array may realloc)
+            if ch_rig is rig and ch_idx >= 0:
+                if not _cycle(rig, ch_idx, attach_idx):
+                    rig.pegs[ch_idx].parent_index = attach_idx
+            else:
+                rig.pegs.new(ch.name, parent_index=attach_idx)
+                ch_idx = rig.pegs.find(ch.name)
+                _bind(ch, rig, ch.name)
+            _set_pivot_world(rig, ch_idx, _joint_world(ch, active, planar))
+            linked += 1
+
+        rig.active_peg_index = rig.pegs.find(attach_peg_name)
+        _grouped_layout(rig)
+        context.view_layer.update()
+        self.report({"INFO"}, f"Linked {linked} piece(s) under '{active.name}'")
+        return {"FINISHED"}
+
+
+# --------------------------------------------------------------------------- #
+# Panel
+# --------------------------------------------------------------------------- #
+class VIEW3D_PT_nuclear_rig_auto(Panel):
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Rig"
+    bl_label = "Auto Rig"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(context.scene, "nuclear_rig_name", text="Name")
+        col = layout.column(align=True)
+        col.scale_y = 1.3
+        col.operator("object.nuclear_rig_auto_skeleton", icon="OUTLINER_OB_ARMATURE")
+        layout.separator()
+        layout.label(text="Select fan + active parent:", icon="INFO")
+        layout.operator("object.nuclear_rig_link_to_parent", icon="LINKED")
+        layout.separator()
+        layout.label(text="Refine in the Peg Graph editor", icon="NODETREE")
+
+
+# --------------------------------------------------------------------------- #
+# Registration
+# --------------------------------------------------------------------------- #
+_classes = (
+    OBJECT_OT_nuclear_rig_auto_skeleton,
+    OBJECT_OT_nuclear_rig_link_to_parent,
+    VIEW3D_PT_nuclear_rig_auto,
+)
+
+
+def register():
+    for cls in _classes:
+        bpy.utils.register_class(cls)
+    bpy.types.Scene.nuclear_rig_name = StringProperty(name="Rig Name", default="PegRig")
+
+
+def unregister():
+    del bpy.types.Scene.nuclear_rig_name
+    for cls in reversed(_classes):
+        bpy.utils.unregister_class(cls)
+
+
+if __name__ == "__main__":
+    register()
