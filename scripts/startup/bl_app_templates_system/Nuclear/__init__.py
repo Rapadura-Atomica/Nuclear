@@ -1068,6 +1068,10 @@ _NUCLEAR_THEME = {
     "accent":   (0.42, 0.30, 0.84),
     "text":     (0.90, 0.90, 0.96),
     "text_sel": (1.00, 1.00, 1.00),
+    # Viewport selection outline: a blue silhouette around selected objects (replaces the amber
+    # bounding-box "squares" the peg overlay used to draw). Active is brighter, like Blender's own.
+    "select":        (0.15, 0.55, 1.00),
+    "select_active": (0.40, 0.78, 1.00),
     "roundness": 0.6,
 }
 
@@ -1124,6 +1128,11 @@ def _apply_nuclear_theme():
             continue
         _theme_set(space, "back", p["bg"])
         _theme_set(space, "header", (*p["panel"], 1.0))
+    # Viewport: blue outline around selected/active objects (the peg "selection" cue).
+    v3d = getattr(theme, "view_3d", None)
+    if v3d is not None:
+        _theme_set(v3d, "object_selected", p["select"])
+        _theme_set(v3d, "object_active", p["select_active"])
 
 
 def _revert_nuclear_theme():

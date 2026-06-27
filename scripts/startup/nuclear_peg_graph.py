@@ -1070,6 +1070,7 @@ _CHAIN_GREEN = (0.25, 0.90, 0.35, 0.95)     # the live root->active hierarchy ch
 _CLIMB_GREEN = (0.55, 1.00, 0.55, 1.00)     # the segment the Ctrl+B climb has walked (brighter)
 _PEG_AMBER = (1.00, 0.75, 0.10, 1.00)       # the active peg's articulation (the "you are here")
 _PEG_FAINT = (1.00, 0.70, 0.10, 0.35)       # other pegs, for context
+_PEG_BLUE = (0.16, 0.58, 1.00, 0.95)        # outline around every drawing the active peg moves
 
 
 def _view_ring(center, right, up, radius, segments=32):
@@ -1091,62 +1092,87 @@ def _selected_peg_index(context):
     return (rig, obj_idx) if obj_idx >= 0 else (None, -1)
 
 
-_BBOX_EDGES = ((0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
-               (0, 4), (1, 5), (2, 6), (3, 7))
-
-
-def _drawing_outline(ob, right, up, s):
-    """LINES points outlining a drawing object: its world bounding box, or -- for a boundless
-    object like an Empty -- a small view-facing square at its origin."""
-    corners = [ob.matrix_world @ mathutils.Vector(c) for c in ob.bound_box]
-    xs = [c.x for c in corners]
-    ys = [c.y for c in corners]
-    zs = [c.z for c in corners]
-    if max(max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)) < 1e-4:
-        c = ob.matrix_world.translation
-        r = s * 1.3
-        a, b = c - right * r - up * r, c + right * r - up * r
-        d, e = c + right * r + up * r, c - right * r + up * r
-        return [a, b, b, d, d, e, e, a]
-    pts = []
-    for i, j in _BBOX_EDGES:
-        pts += [corners[i], corners[j]]
-    return pts
-
-
 def _controlled_drawings(rig, sel_idx):
-    """(object, direct) for every drawing the selected peg moves: bound straight to it (direct=True)
-    or to one of its descendant pegs (direct=False, i.e. it moves along through the chain)."""
-    out = []
+    """Objects the selected peg moves: bound straight to it, or to one of its descendant pegs (carried
+    along through the chain). Deduplicated, order-stable -- this is the full set the active peg poses,
+    so the outline still shows everything when the Ctrl+B climb lands on a parent peg."""
+    out, seen = [], set()
     for ob, peg_name in _bound_objects(rig):
         if not peg_name:
             continue
         bidx = rig.pegs.find(peg_name)
-        if bidx == sel_idx:
-            out.append((ob, True))
-        elif bidx >= 0 and _is_ancestor(rig, sel_idx, bidx):
-            out.append((ob, False))
+        if bidx == sel_idx or (bidx >= 0 and _is_ancestor(rig, sel_idx, bidx)):
+            if ob.name not in seen:
+                seen.add(ob.name)
+                out.append(ob)
     return out
 
 
-def _active_drawing_object():
-    """The Grease Pencil object whose drawing node is the active node in an open Peg Graph, or None.
-    Lets a click on a drawing node light up that drawing in the viewport."""
-    for wm in bpy.data.window_managers:
-        for win in wm.windows:
-            for area in win.screen.areas:
-                if area.type != 'NODE_EDITOR':
-                    continue
-                sp = area.spaces.active
-                if getattr(sp, 'tree_type', '') != _TREE_ID:
-                    continue
-                tree = sp.edit_tree or sp.node_tree
-                if tree is None:
-                    continue
-                node = tree.nodes.active
-                if node is not None and node.bl_idname == _DRAWING_NODE_ID:
-                    return bpy.data.objects.get(node.object_name)
-    return None
+def _gp_world_points(ob, cap=600):
+    """World-space points of `ob`'s currently-visible Grease Pencil strokes, sampled to at most `cap`.
+    Empty for a non-GP or empty object. Follows the object (matrix_world), which is how a Follow Peg
+    constraint poses a drawing."""
+    data = getattr(ob, "data", None)
+    if ob.type != 'GREASEPENCIL' or data is None:
+        return []
+    frame = bpy.context.scene.frame_current
+    mw = ob.matrix_world
+    pts = []
+    for layer in data.layers:
+        if getattr(layer, "hide", False):
+            continue
+        # The drawing exposed at the current frame: the latest keyframe at or before `frame`.
+        drawing, best = None, None
+        for fr in layer.frames:
+            n = fr.frame_number
+            if n <= frame and (best is None or n > best):
+                best, drawing = n, fr.drawing
+        if drawing is None:
+            continue
+        try:
+            strokes = drawing.strokes
+        except Exception:
+            continue
+        for stroke in (strokes or []):
+            for pt in stroke.points:
+                pts.append(mw @ pt.position)
+    if len(pts) > cap:
+        pts = pts[::len(pts) // cap + 1]
+    return pts
+
+
+def _screen_hull_loop(pts3d, region, rv3d):
+    """Closed loop of the 3D points whose 2D screen projection is on the convex hull (Andrew's
+    monotone chain). A silhouette-hugging outline around the drawing, not a bounding box. Returns the
+    loop (closed) as a list of Vectors, or None when too few points project on screen."""
+    proj = []
+    for p in pts3d:
+        s = view3d_utils.location_3d_to_region_2d(region, rv3d, p)
+        if s is not None:
+            proj.append((s.x, s.y, p))
+    if len(proj) < 3:
+        return None
+    proj.sort(key=lambda e: (e[0], e[1]))
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower = []
+    for e in proj:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], e) <= 0:
+            lower.pop()
+        lower.append(e)
+    upper = []
+    for e in reversed(proj):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], e) <= 0:
+            upper.pop()
+        upper.append(e)
+    hull = lower[:-1] + upper[:-1]
+    if len(hull) < 3:
+        return None
+    loop = [e[2] for e in hull]
+    loop.append(loop[0])
+    return loop
 
 
 def _safe_draw(fn):
@@ -1195,27 +1221,26 @@ def _draw_pivot_overlay():
             shader.uniform_float("color", _PEG_FAINT)
             batch_for_shader(shader, 'LINES', {"pos": others}).draw(shader)
 
-        # The drawings this peg moves: bright box for the ones bound straight to it, faint box for
-        # the ones it carries along through the chain (bound to a descendant peg).
-        gpu.state.line_width_set(1.5)
-        for ob, direct in _controlled_drawings(rig, sel):
+        # Every drawing this peg moves gets a blue outline hugging its silhouette (a screen-space
+        # convex hull of its strokes), replacing the old bounding-box squares. Drawn for the WHOLE
+        # controlled set -- including the drawings carried along through descendant pegs -- so the
+        # outline stays visible when the Ctrl+B climb lands on a parent peg whose drawings are not
+        # the active/selected object.
+        region = context.region
+        gpu.state.line_width_set(2.0)
+        shader.uniform_float("color", _PEG_BLUE)
+        for ob in _controlled_drawings(rig, sel):
             if ob is None:
                 continue
-            shader.uniform_float("color", _PEG_AMBER if direct else _PEG_FAINT)
-            batch_for_shader(shader, 'LINES', {"pos": _drawing_outline(ob, right, up, s)}).draw(shader)
+            loop = _screen_hull_loop(_gp_world_points(ob), region, rv3d)
+            if loop:
+                batch_for_shader(shader, 'LINE_STRIP', {"pos": loop}).draw(shader)
 
         # The selected peg itself: a bright ring at its pivot (its rotation centre).
         c = _peg_pivot_world(rig, sel)
         gpu.state.line_width_set(2.5)
         shader.uniform_float("color", _PEG_AMBER)
         batch_for_shader(shader, 'LINE_STRIP', {"pos": _view_ring(c, right, up, s)}).draw(shader)
-
-    # A drawing whose node is actively selected in a Peg Graph: a bright box around it.
-    adraw = _active_drawing_object()
-    if adraw is not None:
-        gpu.state.line_width_set(2.5)
-        shader.uniform_float("color", _PEG_AMBER)
-        batch_for_shader(shader, 'LINES', {"pos": _drawing_outline(adraw, right, up, s)}).draw(shader)
 
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
