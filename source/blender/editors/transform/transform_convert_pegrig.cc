@@ -78,6 +78,49 @@ static PegRig *pegrig_active_peg_get(Object *object, int *r_peg_index)
   return rig;
 }
 
+/* World-space pivot of a peg: the point its rotation and scale turn about. It is the parent's world
+ * frame applied to (pivot + translation) - the same centre #createTransPegRigPeg measures around and
+ * the transform gizmo sits on. */
+static void pegrig_peg_pivot_world(const PegRig *rig, int peg_index, float r_center[3])
+{
+  const PegRigPeg &peg = rig->pegs[peg_index];
+  float parent_world[4][4];
+  if (peg.parent_index >= 0 && peg.parent_index < rig->pegs_num) {
+    BKE_pegrig_peg_compute_world_matrix(rig, peg.parent_index, parent_world);
+  }
+  else {
+    unit_m4(parent_world);
+  }
+  float pivot_local[3];
+  add_v3_v3v3(pivot_local, peg.pivot, peg.translation);
+  mul_v3_m4v3(r_center, parent_world, pivot_local);
+}
+
+bool transform_pegrig_object_pivot_world(Object *object, float r_pivot[3])
+{
+  int peg_index;
+  PegRig *rig = pegrig_active_peg_get(object, &peg_index);
+  if (rig == nullptr) {
+    return false;
+  }
+  pegrig_peg_pivot_world(rig, peg_index, r_pivot);
+  return true;
+}
+
+bool transform_pegrig_object_axis_world(Object *object, float r_mat[3][3])
+{
+  int peg_index;
+  PegRig *rig = pegrig_active_peg_get(object, &peg_index);
+  if (rig == nullptr) {
+    return false;
+  }
+  float peg_to_world[4][4];
+  BKE_pegrig_peg_compute_world_matrix(rig, peg_index, peg_to_world);
+  copy_m3_m4(r_mat, peg_to_world);
+  normalize_m3(r_mat);
+  return true;
+}
+
 static void createTransPegRigPeg(bContext * /*C*/, TransInfo *t)
 {
   BKE_view_layer_synced_ensure(t->scene, t->view_layer);
@@ -119,20 +162,11 @@ static void createTransPegRigPeg(bContext * /*C*/, TransInfo *t)
   copy_v3_v3(td_ext->iscale, peg.scale);
   copy_v3_fl(td_ext->dscale, 1.0f);
 
-  /* Rotation and scale happen about the pivot, not the peg's origin. In world space that centre is
-   * the parent's world frame applied to (pivot + translation) - the exact point the viewport pivot
-   * overlay marks - so the mouse measures the rotation/scale around the visible pivot instead of the
-   * peg origin (which is offset from it by the pivot vector). */
-  float parent_world[4][4];
-  if (peg.parent_index >= 0 && peg.parent_index < rig->pegs_num) {
-    BKE_pegrig_peg_compute_world_matrix(rig, peg.parent_index, parent_world);
-  }
-  else {
-    unit_m4(parent_world);
-  }
-  float pivot_local[3];
-  add_v3_v3v3(pivot_local, peg.pivot, peg.translation);
-  mul_v3_m4v3(td->center, parent_world, pivot_local);
+  /* Rotation and scale happen about the pivot, not the peg's origin. The world centre (parent frame
+   * applied to pivot + translation) is the same point the transform gizmo sits on, so the mouse
+   * measures the rotation/scale around the visible pivot instead of the peg origin (which is offset
+   * from it by the pivot vector). */
+  pegrig_peg_pivot_world(rig, peg_index, td->center);
 
   copy_m3_m4(td->axismtx, peg_to_world.ptr());
   normalize_m3(td->axismtx);

@@ -51,6 +51,7 @@
 
 #include "SEQ_transform.hh"
 #include "transform.hh"
+#include "transform_convert.hh"
 #include "transform_orientations.hh"
 
 namespace blender::ed::transform {
@@ -673,6 +674,26 @@ short calc_orientation_from_type_ex(const Scene *scene,
                                     const int pivot_point,
                                     float r_mat[3][3])
 {
+  /* Nuclear: a Grease Pencil object posed through a peg has no useful object-space frame of its own
+   * (the object stays put; the peg moves the drawing). For the object-derived orientations, align
+   * the gizmo with the peg's world axes instead - the same axes the peg transform moves along - so
+   * Local/Normal matches what posing the peg actually does. Global/View/Cursor are left untouched. */
+  if (ob && ob->mode == OB_MODE_OBJECT &&
+      ELEM(orientation_index,
+           V3D_ORIENT_GIMBAL,
+           V3D_ORIENT_PARENT,
+           V3D_ORIENT_NORMAL,
+           V3D_ORIENT_LOCAL))
+  {
+    float peg_axis[3][3];
+    if (greasepencil::transform_grease_pencil_peg_axis_world(ob, peg_axis) ||
+        transform_pegrig_object_axis_world(ob, peg_axis))
+    {
+      copy_m3_m3(r_mat, peg_axis);
+      return orientation_index;
+    }
+  }
+
   switch (orientation_index) {
     case V3D_ORIENT_GIMBAL: {
 
