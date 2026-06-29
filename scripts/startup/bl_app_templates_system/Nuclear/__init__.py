@@ -720,9 +720,20 @@ def _nuclear_view3d_header_draw(self, context):
 # tab, so this row is free. `popover_group` only draws panels that pass their poll in the
 # current mode, so the bar stays lean.
 
+_sidebar_cats_cache = None
+_sidebar_cats_stamp = 0.0
+
+
 def _sidebar_categories():
     # Distinct categories of the VIEW_3D sidebar (N-panel) across registered panels.
-    # Recomputed each draw so newly (un)registered addon panels appear/disappear live.
+    # Scanning all of dir(bpy.types) on every tool-header redraw was a per-draw O(types)
+    # cost (viewport stutter, worse with many add-ons); throttle to ~1 Hz so newly
+    # (un)registered addon panels still appear/disappear "live" within a second.
+    import time
+    global _sidebar_cats_cache, _sidebar_cats_stamp
+    now = time.monotonic()
+    if _sidebar_cats_cache is not None and (now - _sidebar_cats_stamp) < 1.0:
+        return _sidebar_cats_cache
     seen = set()
     cats = []
     types = bpy.types
@@ -736,6 +747,8 @@ def _sidebar_categories():
                 seen.add(cat)
                 cats.append(cat)
     cats.sort()
+    _sidebar_cats_cache = cats
+    _sidebar_cats_stamp = now
     return cats
 
 
@@ -847,13 +860,35 @@ _HEADER_OVERRIDES = [
 ]
 
 
+def _make_safe_override(cls, attr, fn):
+    # Wrap a header override so a raise (e.g. after an upstream rebase renames a symbol
+    # the override depends on) degrades to the saved original draw instead of leaving the
+    # whole header blank. Mirrors the defensive try/except the Xsheet draw already uses.
+    def safe(self, context):
+        try:
+            return fn(self, context)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            orig = _orig_draws.get((cls, attr))
+            if orig is not None:
+                try:
+                    return orig(self, context)
+                except Exception:
+                    pass
+    return safe
+
+
 def _apply_header_overrides():
     for cls_name, attr, fn in _HEADER_OVERRIDES:
         cls = getattr(bpy.types, cls_name, None)
         if cls is None:
             continue
-        _orig_draws[(cls, attr)] = getattr(cls, attr)
-        setattr(cls, attr, fn)
+        # Guard against capturing an already-patched function as the "original" if
+        # register() runs twice without an unregister() (script reload / re-activate).
+        if (cls, attr) not in _orig_draws:
+            _orig_draws[(cls, attr)] = getattr(cls, attr)
+        setattr(cls, attr, _make_safe_override(cls, attr, fn))
 
 
 def _revert_header_overrides():
@@ -1033,6 +1068,10 @@ _NUCLEAR_THEME = {
     "accent":   (0.42, 0.30, 0.84),
     "text":     (0.90, 0.90, 0.96),
     "text_sel": (1.00, 1.00, 1.00),
+    # Viewport selection outline: a blue silhouette around selected objects (replaces the amber
+    # bounding-box "squares" the peg overlay used to draw). Active is brighter, like Blender's own.
+    "select":        (0.15, 0.55, 1.00),
+    "select_active": (0.40, 0.78, 1.00),
     "roundness": 0.6,
 }
 
@@ -1089,6 +1128,11 @@ def _apply_nuclear_theme():
             continue
         _theme_set(space, "back", p["bg"])
         _theme_set(space, "header", (*p["panel"], 1.0))
+    # Viewport: blue outline around selected/active objects (the peg "selection" cue).
+    v3d = getattr(theme, "view_3d", None)
+    if v3d is not None:
+        _theme_set(v3d, "object_selected", p["select"])
+        _theme_set(v3d, "object_active", p["select_active"])
 
 
 def _revert_nuclear_theme():
@@ -1411,6 +1455,99 @@ def _unregister_xsheet_keymap():
     _xsheet_keymaps.clear()
 
 
+# Alt+R in Object Mode sends the selected envelope/spine controllers back to their rest pose. The
+# operator's poll fails (and, when nothing is eligible, it passes the event through) for non-
+# controllers, so native Alt+R (Clear Rotation) keeps working everywhere else.
+_envelope_reset_keymaps = []
+
+
+def _register_envelope_reset_keymap():
+    wm = bpy.context.window_manager
+    kc = getattr(wm.keyconfigs, "addon", None)
+    if kc is None:
+        return
+    km = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
+    kmi = km.keymap_items.new(
+        "object.greasepencil_contour_reset", 'R', 'PRESS', alt=True)
+    kmi.properties.mode = 'SELECTED'
+    _envelope_reset_keymaps.append((km, kmi))
+
+
+def _unregister_envelope_reset_keymap():
+    for km, kmi in _envelope_reset_keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except Exception:
+            pass
+    _envelope_reset_keymaps.clear()
+
+
+# Alt+R for the Curve deform: in Object Mode (curve active) it resets the whole Deform Curve; in
+# Curve Edit Mode it resets the selected control points. Poll/PASS_THROUGH keep native Alt+R intact
+# for any non-deform-curve.
+_curve_reset_keymaps = []
+
+
+def _register_curve_reset_keymap():
+    wm = bpy.context.window_manager
+    kc = getattr(wm.keyconfigs, "addon", None)
+    if kc is None:
+        return
+    km_obj = kc.keymaps.new(name='Object Mode', space_type='EMPTY')
+    kmi = km_obj.keymap_items.new("object.greasepencil_curve_reset", 'R', 'PRESS', alt=True)
+    kmi.properties.mode = 'ALL'
+    _curve_reset_keymaps.append((km_obj, kmi))
+
+    km_edit = kc.keymaps.new(name='Curve', space_type='EMPTY')
+    kmi2 = km_edit.keymap_items.new("object.greasepencil_curve_reset", 'R', 'PRESS', alt=True)
+    kmi2.properties.mode = 'SELECTED'
+    _curve_reset_keymaps.append((km_edit, kmi2))
+
+
+def _unregister_curve_reset_keymap():
+    for km, kmi in _curve_reset_keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except Exception:
+            pass
+    _curve_reset_keymaps.clear()
+
+
+# Discoverable reset while shaping a Deform Curve: the GP modifier panel (with the reset buttons) is
+# not visible when the curve itself is the active object, so surface the same operator in the 3D
+# View N-panel (Item tab) whenever a Deform Curve is active - in Object or Edit Mode.
+class NUCLEAR_PT_deform_curve_reset(bpy.types.Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Item"
+    bl_label = "Deform Curve"
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return (ob is not None and ob.type == 'CURVE'
+                and ob.get('nuclear_curve_rest') is not None)
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
+        col.operator("object.greasepencil_curve_reset", text="Reset Selected").mode = 'SELECTED'
+        col.operator("object.greasepencil_curve_reset", text="Reset All").mode = 'ALL'
+
+
+def _register_curve_reset_panel():
+    try:
+        bpy.utils.register_class(NUCLEAR_PT_deform_curve_reset)
+    except Exception:
+        pass
+
+
+def _unregister_curve_reset_panel():
+    try:
+        bpy.utils.unregister_class(NUCLEAR_PT_deform_curve_reset)
+    except Exception:
+        pass
+
+
 # --------------------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------------------
@@ -1439,9 +1576,15 @@ def register():
     _apply_nuclear_theme()
     _enable_xsheet()
     _register_xsheet_keymap()
+    _register_envelope_reset_keymap()
+    _register_curve_reset_keymap()
+    _register_curve_reset_panel()
 
 
 def unregister():
+    _unregister_curve_reset_panel()
+    _unregister_curve_reset_keymap()
+    _unregister_envelope_reset_keymap()
     _unregister_xsheet_keymap()
     _disable_xsheet()
     _revert_nuclear_theme()

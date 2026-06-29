@@ -50,6 +50,7 @@
 #include "BLI_math_matrix.hh"
 #include "BLI_math_rotation.h"
 #include "BLI_math_vector.hh"
+#include "BLI_vector.hh"
 
 #include "BKE_attribute.hh"
 #include "BKE_collection.hh"
@@ -3535,6 +3536,9 @@ static bool greasepencil_curve_bind_poll(bContext *C)
 /* Core of the bind: store (or clear, when `unbind`) the per-point rest-pose binding of `ob`'s
  * drawings against `curve_ob`. Shared by the manual Bind button and the one-click setup operator
  * below. Returns false (and reports) on failure. */
+/* Defined below (just before the curve-create helper); used here to refresh the rest snapshot. */
+static void curve_store_rest(Object *curve_ob);
+
 static bool greasepencil_curve_bind_drawings(
     Depsgraph *depsgraph, Object *ob, Object *curve_ob, const bool unbind, ReportList *reports)
 {
@@ -3622,6 +3626,9 @@ static bool greasepencil_curve_bind_drawings(
     w_u.finish();
     w_off.finish();
   }
+  /* The curve's current shape is now the rest pose; snapshot it so Reset can return here after the
+   * artist bends the curve. */
+  curve_store_rest(curve_ob);
   return true;
 }
 
@@ -3703,6 +3710,38 @@ void OBJECT_OT_greasepencil_curve_bind(wmOperatorType *ot)
 /* Create a legacy bezier curve object spanning the drawing horizontally, lying in the drawing
  * plane (GP local XZ; local Y is the drawing normal). Returns the new object (already active and
  * selected via add_type), or null on failure. */
+/* Custom-property key holding the Deform Curve's rest control points (flat float array, 9 per
+ * Bezier point: the 3 vectors x,y,z). Stamped at curve creation and refreshed on Bind, so the
+ * Reset operator can send the edited curve back to the bound rest shape. */
+#define CURVE_REST_PROP "nuclear_curve_rest"
+
+/* Snapshot the first Bezier spline of `curve_ob`'s (object-mode) data as its rest pose. */
+static void curve_store_rest(Object *curve_ob)
+{
+  if (curve_ob == nullptr || curve_ob->type != OB_CURVES_LEGACY) {
+    return;
+  }
+  const Curve *cu = static_cast<const Curve *>(curve_ob->data);
+  const Nurb *nu = static_cast<const Nurb *>(cu->nurb.first);
+  if (nu == nullptr || nu->type != CU_BEZIER || nu->bezt == nullptr || nu->pntsu < 1) {
+    return;
+  }
+  const int n = nu->pntsu;
+  IDProperty *group = IDP_EnsureProperties(&curve_ob->id);
+  IDPropertyTemplate val = {};
+  val.array.len = n * 9;
+  val.array.type = IDP_FLOAT;
+  IDProperty *prop = IDP_New(IDP_ARRAY, &val, CURVE_REST_PROP);
+  float *d = IDP_array_float_get(prop);
+  for (int i = 0; i < n; i++) {
+    const BezTriple &b = nu->bezt[i];
+    copy_v3_v3(d + (i * 9 + 0), b.vec[0]);
+    copy_v3_v3(d + (i * 9 + 3), b.vec[1]);
+    copy_v3_v3(d + (i * 9 + 6), b.vec[2]);
+  }
+  IDP_ReplaceInGroup(group, prop);
+}
+
 static Object *greasepencil_curve_create_for_drawing(bContext *C, Object *ob, ReportList *reports)
 {
   GreasePencil &grease_pencil = *static_cast<GreasePencil *>(ob->data);
@@ -3781,6 +3820,9 @@ static Object *greasepencil_curve_create_for_drawing(bContext *C, Object *ob, Re
   }
   BLI_addtail(&cu->nurb, nu);
   BKE_nurb_handles_calc(nu);
+
+  /* Remember the freshly-fitted shape as the rest pose (refreshed again on Bind). */
+  curve_store_rest(curve_ob);
 
   return curve_ob;
 }
@@ -3907,6 +3949,187 @@ void OBJECT_OT_greasepencil_curve_setup(wmOperatorType *ot)
   /* flags */
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
   edit_modifier_properties(ot);
+}
+
+/** \} */
+
+/* ------------------------------------------------------------------- */
+/** \name Grease Pencil Curve Deform Reset Operator
+ *
+ * Sends the Deform Curve's Bezier control points back to the rest shape snapshotted at creation /
+ * Bind, so the curve deform returns to a no-op. "All" resets the whole curve; "Selected" resets only
+ * the selected control points (a selected knot resets its handles too) - the natural per-point reset
+ * while shaping the curve in Edit Mode. Bound to Alt+R (Object Mode on the curve, and Curve Edit
+ * Mode for the selected case); non-curve objects fall through to native Alt+R.
+ * \{ */
+
+enum {
+  CURVE_RESET_ALL = 0,
+  CURVE_RESET_SELECTED = 1,
+};
+
+/* Resolve the Deform Curve to reset: the active object when it is the curve itself (Object/Edit
+ * Mode on it), otherwise the curve assigned to the active Grease Pencil's Curve modifier (panel
+ * button). Returns null when neither applies. */
+static Object *curve_reset_target(bContext *C, wmOperator *op)
+{
+  Object *active = context_active_object(C);
+  if (active == nullptr) {
+    return nullptr;
+  }
+  if (active->type == OB_CURVES_LEGACY) {
+    return active;
+  }
+  if (active->type == OB_GREASE_PENCIL) {
+    auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(
+        edit_modifier_property_get(op, active, eModifierType_GreasePencilCurve));
+    if (cmd == nullptr) {
+      cmd = reinterpret_cast<GreasePencilCurveModifierData *>(
+          BKE_modifiers_findby_type(active, eModifierType_GreasePencilCurve));
+    }
+    return cmd ? cmd->object : nullptr;
+  }
+  return nullptr;
+}
+
+static bool greasepencil_curve_reset_poll(bContext *C)
+{
+  Object *ob = context_active_object(C);
+  if (ob == nullptr) {
+    return false;
+  }
+  if (ob->type == OB_CURVES_LEGACY) {
+    return ob->id.properties != nullptr &&
+           IDP_GetPropertyTypeFromGroup(ob->id.properties, CURVE_REST_PROP, IDP_ARRAY) != nullptr;
+  }
+  return ob->type == OB_GREASE_PENCIL &&
+         BKE_modifiers_findby_type(ob, eModifierType_GreasePencilCurve) != nullptr;
+}
+
+static wmOperatorStatus greasepencil_curve_reset_exec(bContext *C, wmOperator *op)
+{
+  const int mode = RNA_enum_get(op->ptr, "mode");
+  Object *curve_ob = curve_reset_target(C, op);
+  if (curve_ob == nullptr || curve_ob->type != OB_CURVES_LEGACY) {
+    BKE_report(op->reports, RPT_ERROR, "No Deform Curve to reset on the active object");
+    return OPERATOR_CANCELLED;
+  }
+
+  Curve *cu = static_cast<Curve *>(curve_ob->data);
+  const IDProperty *prop = (curve_ob->id.properties != nullptr) ?
+                               IDP_GetPropertyTypeFromGroup(
+                                   curve_ob->id.properties, CURVE_REST_PROP, IDP_ARRAY) :
+                               nullptr;
+  if (prop == nullptr || prop->subtype != IDP_FLOAT || prop->len < 9) {
+    BKE_report(op->reports, RPT_ERROR, "This curve has no stored rest pose (create or bind it first)");
+    return OPERATOR_CANCELLED;
+  }
+  const float *rest = IDP_array_float_get(const_cast<IDProperty *>(prop));
+  const int rest_points = prop->len / 9;
+
+  /* Edits in Curve Edit Mode live in the edit-nurbs copy; Object Mode uses the base curve. */
+  ListBase *nurbs = (cu->editnurb != nullptr) ? BKE_curve_editNurbs_get(cu) : &cu->nurb;
+  Nurb *nu = (nurbs != nullptr) ? static_cast<Nurb *>(nurbs->first) : nullptr;
+  if (nu == nullptr || nu->type != CU_BEZIER || nu->bezt == nullptr) {
+    return OPERATOR_CANCELLED;
+  }
+
+  const int n = std::min(nu->pntsu, rest_points);
+  int reset_num = 0;
+  for (int i = 0; i < n; i++) {
+    BezTriple &b = nu->bezt[i];
+    const float *r = rest + i * 9;
+    if (mode == CURVE_RESET_ALL) {
+      copy_v3_v3(b.vec[0], r + 0);
+      copy_v3_v3(b.vec[1], r + 3);
+      copy_v3_v3(b.vec[2], r + 6);
+      reset_num++;
+    }
+    else if (b.f2 & SELECT) {
+      /* Knot selected: reset the whole point (anchor + both handles). */
+      copy_v3_v3(b.vec[0], r + 0);
+      copy_v3_v3(b.vec[1], r + 3);
+      copy_v3_v3(b.vec[2], r + 6);
+      reset_num++;
+    }
+    else {
+      /* Otherwise reset only the individually selected handle(s). */
+      if (b.f1 & SELECT) {
+        copy_v3_v3(b.vec[0], r + 0);
+        reset_num++;
+      }
+      if (b.f3 & SELECT) {
+        copy_v3_v3(b.vec[2], r + 6);
+        reset_num++;
+      }
+    }
+  }
+
+  if (mode == CURVE_RESET_SELECTED && reset_num == 0) {
+    /* Nothing selected on the curve: let native Alt+R run instead of consuming the event. */
+    return OPERATOR_PASS_THROUGH;
+  }
+  if (reset_num == 0) {
+    return OPERATOR_CANCELLED;
+  }
+
+  /* Tag the curve DATA (not just the object): in Edit Mode this is what rebuilds the cage batch
+   * cache so the reset is actually drawn, and it propagates to the dependent Grease Pencil deform
+   * through the depsgraph. */
+  DEG_id_tag_update(&cu->id, ID_RECALC_GEOMETRY);
+  DEG_id_tag_update(&curve_ob->id, ID_RECALC_GEOMETRY);
+  WM_event_add_notifier(C, NC_GEOM | ND_DATA, &cu->id);
+  WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, curve_ob);
+  /* When triggered from the Grease Pencil's modifier panel, also tag the drawing so its Curve
+   * deform re-evaluates immediately (not only on the next depsgraph cascade). */
+  Object *active = context_active_object(C);
+  if (active != nullptr && active->type == OB_GREASE_PENCIL) {
+    DEG_id_tag_update(&active->id, ID_RECALC_GEOMETRY);
+    WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, active);
+  }
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_curve_reset_invoke(bContext *C,
+                                                        wmOperator *op,
+                                                        const wmEvent * /*event*/)
+{
+  Object *active = context_active_object(C);
+  /* Panel button (Grease Pencil active) needs the modifier the panel points at. */
+  if (active != nullptr && active->type == OB_GREASE_PENCIL) {
+    edit_modifier_invoke_properties(C, op);
+  }
+  return greasepencil_curve_reset_exec(C, op);
+}
+
+void OBJECT_OT_greasepencil_curve_reset(wmOperatorType *ot)
+{
+  static const EnumPropertyItem mode_items[] = {
+      {CURVE_RESET_ALL, "ALL", 0, "All", "Reset the whole Deform Curve to its rest shape"},
+      {CURVE_RESET_SELECTED,
+       "SELECTED",
+       0,
+       "Selected",
+       "Reset only the selected control points (a selected knot also resets its handles)"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+
+  ot->name = "Reset Deform Curve";
+  ot->description = "Send the Deform Curve's control points back to their rest shape";
+  ot->idname = "OBJECT_OT_greasepencil_curve_reset";
+
+  ot->poll = greasepencil_curve_reset_poll;
+  ot->invoke = greasepencil_curve_reset_invoke;
+  ot->exec = greasepencil_curve_reset_exec;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
+  RNA_def_enum(ot->srna,
+               "mode",
+               mode_items,
+               CURVE_RESET_SELECTED,
+               "Mode",
+               "Which control points to send back to rest");
 }
 
 /** \} */
@@ -4167,6 +4390,39 @@ static void envelope_base_set_hidden(Scene *scene, ViewLayer *view_layer, Object
   BKE_view_layer_need_resync_tag(view_layer);
 }
 
+/* Custom-property key tagging a controller Empty with its rest local location. Presence of the
+ * property both stores the home pose (for the Reset operator) and marks the object as an
+ * envelope/spine controller (so the Reset keymap can leave non-controllers to native Alt+R). */
+#define ENVELOPE_REST_PROP "nuclear_envelope_rest"
+
+/* Stamp `emp` with its rest local location so the Reset operator can send it home. */
+static void envelope_store_rest(Object *emp, const blender::float3 &rest_loc)
+{
+  IDProperty *group = IDP_EnsureProperties(&emp->id);
+  IDPropertyTemplate val = {};
+  val.array.len = 3;
+  val.array.type = IDP_FLOAT;
+  IDProperty *prop = IDP_New(IDP_ARRAY, &val, ENVELOPE_REST_PROP);
+  float *data = IDP_array_float_get(prop);
+  copy_v3_v3(data, rest_loc);
+  IDP_ReplaceInGroup(group, prop);
+}
+
+/* Read a controller Empty's stored rest local location into `r_rest`. Returns false when the
+ * object carries no (valid) rest property, i.e. it is not an envelope/spine controller. */
+static bool envelope_get_rest(const Object *emp, blender::float3 &r_rest)
+{
+  if (emp->id.properties == nullptr) {
+    return false;
+  }
+  IDProperty *prop = IDP_GetPropertyTypeFromGroup(emp->id.properties, ENVELOPE_REST_PROP, IDP_ARRAY);
+  if (prop == nullptr || prop->subtype != IDP_FLOAT || prop->len != 3) {
+    return false;
+  }
+  copy_v3_v3(r_rest, IDP_array_float_get(prop));
+  return true;
+}
+
 /* Create one control Empty parented to `parent`, sitting on the cage point `cage_vec`
  * (curve-local), plus a Hook on `curve_ob` binding the single control point `index` to it. The
  * curve and the whole control chain are identity-parented to the drawing, so the hook's
@@ -4204,6 +4460,8 @@ static Object *envelope_add_hook(Main *bmain,
    * reads as 2D handles and can't be accidentally rotated/scaled. */
   emp->dtx |= OB_DRAW_IN_FRONT;
   emp->protectflag = OB_LOCK_ROT | OB_LOCK_ROTW | OB_LOCK_ROT4D | OB_LOCK_SCALE;
+  /* Remember the home pose so the Reset operator can restore it (and mark this as a controller). */
+  envelope_store_rest(emp, local_loc);
 
   HookModifierData *hmd = (HookModifierData *)BKE_modifier_new(eModifierType_Hook);
   BLI_addtail(&curve_ob->modifiers, hmd);
@@ -4681,6 +4939,163 @@ void OBJECT_OT_greasepencil_envelope_setup(wmOperatorType *ot)
 
   ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
   edit_modifier_properties(ot);
+}
+
+/** \} */
+
+/* ------------------------------------------------------------------- */
+/** \name Grease Pencil Contour (Envelope/Spine) Reset Operator
+ *
+ * Sends the envelope/spine controllers back to the rest pose stamped on them at creation, so the
+ * cage returns to its bound shape and the deform becomes a no-op again. "All" resets every
+ * controller of the active drawing's guide; "Selected" resets only the selected controllers
+ * (resetting an anchor also resets its two handles, which are parented to it). Bound to Alt+R in
+ * Object Mode for the selected case; when the active object is not a controller the operator passes
+ * the event through to native rotation-clear.
+ * \{ */
+
+enum {
+  ENVELOPE_RESET_ALL = 0,
+  ENVELOPE_RESET_SELECTED = 1,
+};
+
+/* Move a single controller Empty back to its stored rest local location. Returns false when the
+ * object is not a controller (carries no rest property). */
+static bool envelope_reset_one(Object *emp)
+{
+  blender::float3 rest;
+  if (!envelope_get_rest(emp, rest)) {
+    return false;
+  }
+  copy_v3_v3(emp->loc, rest);
+  DEG_id_tag_update(&emp->id, ID_RECALC_TRANSFORM);
+  return true;
+}
+
+static bool greasepencil_contour_reset_poll(bContext *C)
+{
+  Object *ob = context_active_object(C);
+  if (ob == nullptr) {
+    return false;
+  }
+  /* Controller active (keymap path) or a Grease Pencil with a Contour modifier (panel path). */
+  blender::float3 rest;
+  if (envelope_get_rest(ob, rest)) {
+    return true;
+  }
+  return ob->type == OB_GREASE_PENCIL &&
+         BKE_modifiers_findby_type(ob, eModifierType_GreasePencilContour) != nullptr;
+}
+
+static wmOperatorStatus greasepencil_contour_reset_exec(bContext *C, wmOperator *op)
+{
+  Scene *scene = CTX_data_scene(C);
+  ViewLayer *view_layer = CTX_data_view_layer(C);
+  Object *active = context_active_object(C);
+  const int mode = RNA_enum_get(op->ptr, "mode");
+
+  int reset_num = 0;
+
+  if (mode == ENVELOPE_RESET_ALL) {
+    /* Reset every controller of the active drawing's Contour guide (found via the cage's Hooks). */
+    GreasePencilContourModifierData *cmd = (GreasePencilContourModifierData *)
+        edit_modifier_property_get(op, active, eModifierType_GreasePencilContour);
+    if (cmd == nullptr || cmd->object == nullptr) {
+      BKE_report(op->reports, RPT_ERROR, "No Contour guide with controllers on the active object");
+      return OPERATOR_CANCELLED;
+    }
+    LISTBASE_FOREACH (ModifierData *, md, &cmd->object->modifiers) {
+      if (md->type != eModifierType_Hook) {
+        continue;
+      }
+      Object *emp = ((HookModifierData *)md)->object;
+      if (emp != nullptr && envelope_reset_one(emp)) {
+        reset_num++;
+      }
+    }
+  }
+  else {
+    /* Reset the selected controllers, plus the handle children of any reset anchor. */
+    BKE_view_layer_synced_ensure(scene, view_layer);
+    ListBase *bases = BKE_view_layer_object_bases_get(view_layer);
+    blender::Vector<Object *> reset_objects;
+    LISTBASE_FOREACH (Base *, base, bases) {
+      if ((base->flag & BASE_SELECTED) == 0) {
+        continue;
+      }
+      if (envelope_reset_one(base->object)) {
+        reset_objects.append(base->object);
+        reset_num++;
+      }
+    }
+    /* Handles are parented to their anchor: pull any whose parent was just reset. */
+    LISTBASE_FOREACH (Base *, base, bases) {
+      Object *emp = base->object;
+      if (emp->parent != nullptr && reset_objects.contains(emp->parent) &&
+          !reset_objects.contains(emp) && envelope_reset_one(emp))
+      {
+        reset_objects.append(emp);
+        reset_num++;
+      }
+    }
+    if (reset_num == 0) {
+      /* Nothing under the selection is a controller: let native Alt+R (rotation clear) run. */
+      return OPERATOR_PASS_THROUGH;
+    }
+  }
+
+  if (reset_num == 0) {
+    return OPERATOR_CANCELLED;
+  }
+
+  DEG_id_tag_update(&scene->id, ID_RECALC_BASE_FLAGS);
+  WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, nullptr);
+  if (active != nullptr) {
+    WM_event_add_notifier(C, NC_OBJECT | ND_MODIFIER, active);
+  }
+  return OPERATOR_FINISHED;
+}
+
+static wmOperatorStatus greasepencil_contour_reset_invoke(bContext *C,
+                                                          wmOperator *op,
+                                                          const wmEvent * /*event*/)
+{
+  /* "All" needs the modifier the panel button points at; "Selected" works straight off selection. */
+  if (RNA_enum_get(op->ptr, "mode") == ENVELOPE_RESET_ALL && !edit_modifier_invoke_properties(C, op))
+  {
+    return OPERATOR_CANCELLED;
+  }
+  return greasepencil_contour_reset_exec(C, op);
+}
+
+void OBJECT_OT_greasepencil_contour_reset(wmOperatorType *ot)
+{
+  static const EnumPropertyItem mode_items[] = {
+      {ENVELOPE_RESET_ALL, "ALL", 0, "All", "Reset every controller of this guide to its rest pose"},
+      {ENVELOPE_RESET_SELECTED,
+       "SELECTED",
+       0,
+       "Selected",
+       "Reset only the selected controllers (an anchor also resets its handles)"},
+      {0, nullptr, 0, nullptr, nullptr},
+  };
+
+  ot->name = "Reset Controllers";
+  ot->description = "Send the envelope/spine controllers back to their rest pose";
+  ot->idname = "OBJECT_OT_greasepencil_contour_reset";
+
+  ot->poll = greasepencil_contour_reset_poll;
+  ot->invoke = greasepencil_contour_reset_invoke;
+  ot->exec = greasepencil_contour_reset_exec;
+
+  ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+  edit_modifier_properties(ot);
+  RNA_def_enum(ot->srna,
+               "mode",
+               mode_items,
+               ENVELOPE_RESET_SELECTED,
+               "Mode",
+               "Which controllers to send back to rest");
 }
 
 /** \} */

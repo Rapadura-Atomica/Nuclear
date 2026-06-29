@@ -277,6 +277,14 @@ namespace greasepencil {
 extern TransConvertTypeInfo TransConvertType_GreasePencil;
 /* Transforms the active "peg" layer-group's transform (object mode). */
 extern TransConvertTypeInfo TransConvertType_GreasePencilPeg;
+/* Nuclear: world-space origin of `object`'s active layer-group "peg", used to place the transform
+ * gizmo on the peg. Returns false when the active node is not a group. Matches the centre that
+ * #TransConvertType_GreasePencilPeg rotates/scales about. */
+bool transform_grease_pencil_peg_pivot_world(Object *object, float r_pivot[3]);
+/* Nuclear: world-space axes of `object`'s active layer-group "peg", used to align the transform
+ * gizmo (Local/Normal orientation) with the peg. Returns false when the active node is not a
+ * group. Matches the axes #TransConvertType_GreasePencilPeg transforms along. */
+bool transform_grease_pencil_peg_axis_world(Object *object, float r_mat[3][3]);
 }
 
 /* `transform_convert_lattice.cc` */
@@ -397,6 +405,14 @@ extern TransConvertTypeInfo TransConvertType_Object;
 /* `transform_convert_pegrig.cc` */
 
 extern TransConvertTypeInfo TransConvertType_PegRigPeg;
+/* Nuclear: world-space pivot of the peg posed by `object`'s Follow Peg constraint, used to place
+ * the transform gizmo on the peg's pivot. Returns false when the object poses no peg. Matches the
+ * centre that #TransConvertType_PegRigPeg rotates/scales about. */
+bool transform_pegrig_object_pivot_world(Object *object, float r_pivot[3]);
+/* Nuclear: world-space axes of the peg posed by `object`'s Follow Peg constraint, used to align the
+ * transform gizmo (Local/Normal orientation) with the peg. Returns false when the object poses no
+ * peg. Matches the axes #TransConvertType_PegRigPeg transforms along. */
+bool transform_pegrig_object_axis_world(Object *object, float r_mat[3][3]);
 
 /* `transform_convert_object_texspace.cc` */
 

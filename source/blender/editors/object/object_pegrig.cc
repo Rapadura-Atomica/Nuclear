@@ -379,23 +379,23 @@ static wmOperatorStatus pegrig_squash_enable_exec(bContext *C, wmOperator *op)
   FOREACH_OBJECT_END;
 
   float3 anchor(0.0f, 0.0f, 0.0f);
-  float3 tip(0.0f, 1.0f, 0.0f);
+  float3 tip(0.0f, 0.0f, 1.0f);
   if (has_bounds) {
+    /* Vertical axis is Z (the cut-out drawing plane is XZ; Y is depth). Span the body bottom->top
+     * along Z, centred in X and Y. */
     const float cx = 0.5f * (wmin.x + wmax.x);
-    const float cz = 0.5f * (wmin.z + wmax.z);
-    /* Anchor/tip live in the peg's PARENT space; map the world bottom/top centres into it. */
-    float4x4 to_parent = float4x4::identity();
-    const int parent = peg->parent_index;
-    if (parent >= 0 && parent < rig->pegs_num) {
-      BKE_pegrig_solve_world_matrices(rig);
-      float parent_world[4][4];
-      BKE_pegrig_peg_world_matrix_get(rig, parent, parent_world);
-      to_parent = math::invert(float4x4(parent_world));
-    }
-    anchor = math::transform_point(to_parent, float3(cx, wmin.y, cz));
-    tip = math::transform_point(to_parent, float3(cx, wmax.y, cz));
+    const float cy = 0.5f * (wmin.y + wmax.y);
+    /* Anchor/tip live in the peg's OWN local space (so the squash follows the rig when posed); map
+     * the world bottom/top centres into it. The squash flag is still off here, so the solved world
+     * matrix carries no squash. */
+    BKE_pegrig_solve_world_matrices(rig);
+    float peg_world[4][4];
+    BKE_pegrig_peg_world_matrix_get(rig, peg_index, peg_world);
+    const float4x4 to_local = math::invert(float4x4(peg_world));
+    anchor = math::transform_point(to_local, float3(cx, cy, wmin.z));
+    tip = math::transform_point(to_local, float3(cx, cy, wmax.z));
     if (math::distance(anchor, tip) < 1e-5f) {
-      tip = anchor + float3(0.0f, 1.0f, 0.0f);
+      tip = anchor + float3(0.0f, 0.0f, 1.0f);
     }
   }
 

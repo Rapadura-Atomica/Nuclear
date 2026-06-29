@@ -57,7 +57,7 @@ def _is_ancestor(rig, ancestor, idx):
 def _active_squash(context):
     """Resolve the controlled peg of the active object when it has squash enabled.
     Honours the Ctrl+B climb (active_peg_index) like nuclear_peg_graph.active_peg.
-    \return (rig, peg) or None."""
+    \return (rig, peg, idx) or None."""
     if context.mode != 'OBJECT':
         return None
     ob = context.active_object
@@ -75,7 +75,7 @@ def _active_squash(context):
     peg = rig.pegs[idx]
     if not peg.use_squash:
         return None
-    return rig, peg
+    return rig, peg, idx
 
 
 def _peg_local_matrix(peg):
@@ -136,9 +136,10 @@ class NUCLEAR_GGT_squash(GizmoGroup):
             res = _active_squash(bpy.context)
             if res is None:
                 return Vector((0.0, 0.0, 0.0))
-            rig, peg = res
+            rig, peg, idx = res
             local = peg.squash_anchor if which == _ANCHOR else peg.squash_tip
-            return _parent_world(rig, peg) @ Vector(local)
+            # anchor/tip live in the peg's OWN posed frame so the squash follows the rig.
+            return _peg_world_matrix(rig, idx) @ Vector(local)
         return _get
 
     def _make_set(self, which):
@@ -146,17 +147,21 @@ class NUCLEAR_GGT_squash(GizmoGroup):
             res = _active_squash(bpy.context)
             if res is None:
                 return
-            rig, peg = res
-            pw = _parent_world(rig, peg)
+            rig, peg, idx = res
+            pw = _peg_world_matrix(rig, idx)
             try:
                 local = pw.inverted() @ Vector(value)
             except ValueError:
                 local = Vector(value)
             if which == _ANCHOR:
-                peg.squash_anchor = local
+                # Keep the anchor in the XZ drawing plane (Y = depth stays 0).
+                peg.squash_anchor = (local.x, 0.0, local.z)
                 self._autokey(peg, "squash_anchor")
             else:
-                peg.squash_tip = local
+                # The squash is axis-aligned (vertical): lock the tip directly above the anchor so
+                # the axis can never go diagonal. Only its Z (height) drives the squash factor.
+                anchor = peg.squash_anchor
+                peg.squash_tip = (anchor[0], 0.0, local.z)
                 self._autokey(peg, "squash_tip")
             rig.id_data.update_tag()
             area = bpy.context.area
@@ -195,13 +200,30 @@ _draw_handle = None
 _line_shader = None
 
 
+def _safe_draw(fn):
+    # Wrap a GPU draw callback so a transient bad state (mid-edit/undo/eval) raises into
+    # a printed traceback instead of a broken/spamming overlay.
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+    return wrapper
+
+
+@_safe_draw
 def _draw_squash_axis():
     res = _active_squash(bpy.context)
     if res is None:
         return
-    rig, peg = res
-    pw = _parent_world(rig, peg)
-    coords = [pw @ Vector(peg.squash_anchor), pw @ Vector(peg.squash_tip)]
+    rig, peg, idx = res
+    pw = _peg_world_matrix(rig, idx)
+    # Draw the axis straight up from the anchor (the squash is vertical/axis-aligned), so the line
+    # always reflects the real deformation axis even if the stored tip drifts horizontally.
+    anchor = Vector(peg.squash_anchor)
+    top = Vector((anchor.x, anchor.y, peg.squash_tip[2]))
+    coords = [pw @ anchor, pw @ top]
     global _line_shader
     if _line_shader is None:
         _line_shader = gpu.shader.from_builtin('UNIFORM_COLOR')

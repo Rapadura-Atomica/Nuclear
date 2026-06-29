@@ -712,18 +712,65 @@ def _cell_drawings_at(objects, position):
     return result
 
 
-def get_cell_icon_id_at(objects, position):
-    """Return composite icon_id for the cell at strip `position` across the GROUP.
+def resolve_group_cells(objects):
+    """One-pass resolution of the WHOLE strip for `objects`. Returns
+    (keys, items_by_pos) where items_by_pos[i] is the list of (drawing, obj) for
+    strip position i (bottom→top per object, hold fallback applied) — i.e. exactly
+    what _cell_drawings_at(objects, i) returns, but computed for every position in a
+    single O(layers × frames) pass instead of O(positions × layers × frames).
 
-    Generates and caches on first call (needs GL context — panel draw() qualifies).
-    Always returns a valid non-zero icon_id (checkerboard placeholder if all empty).
+    This is the hot path that kept the Cells panel quadratic in keyframe count: the
+    panel draws one thumbnail per cell, and each call used to re-scan cell_keys and
+    every layer's frames. Resolve once, reuse across the strip.
     """
-    items = _cell_drawings_at(objects, position)
-    if not items:
-        key = f"empty_{position}"
-    else:
-        key = "ml_" + "_".join(str(d.as_pointer()) for d, _ in items)
+    keys = cell_keys(objects)
+    if not keys:
+        return keys, []
 
+    # Snapshot each participating layer's bank frames once, sorted, in the same
+    # draw order _cell_drawings_at uses (objects in group order, layers bottom→top).
+    layer_banks = []  # list of (obj, [(frame_number, drawing), ...] sorted)
+    for obj in objects:
+        if obj is None or obj.type != 'GREASEPENCIL':
+            continue
+        for lay in reversed(list(obj.data.layers)):
+            if not is_cell_layer(lay):
+                continue
+            banks = sorted(
+                ((f.frame_number, f.drawing) for f in lay.frames
+                 if f.frame_number >= BANK_START and f.drawing is not None),
+                key=lambda t: t[0],
+            )
+            layer_banks.append((obj, banks))
+
+    # Two-pointer merge: keys and each layer's bank frames are both sorted, so the
+    # nearest-bank-at-or-before-key (the hold fallback) advances monotonically.
+    items_by_pos = [[] for _ in keys]
+    for obj, banks in layer_banks:
+        bi = 0
+        best = None
+        for ki, key in enumerate(keys):
+            target = BANK_START + key
+            while bi < len(banks) and banks[bi][0] <= target:
+                best = banks[bi][1]
+                bi += 1
+            if best is not None:
+                items_by_pos[ki].append((best, obj))
+    return keys, items_by_pos
+
+
+def _icon_key_for_items(items, position):
+    """Cache key for a resolved cell: pointer-keyed so it invalidates when the
+    underlying drawings change; positional placeholder when the cell is empty."""
+    if not items:
+        return f"empty_{position}"
+    return "ml_" + "_".join(str(d.as_pointer()) for d, _ in items)
+
+
+def get_cell_icon_id_for_items(items, position):
+    """icon_id for an already-resolved item list. Checks the cache FIRST (so a warm
+    cache costs one dict lookup, never a GPU render); renders only on a miss."""
+    key = _icon_key_for_items(items, position)
     pcoll = _thumb_collection()
     if key in pcoll:
         return pcoll[key].icon_id
@@ -736,6 +783,31 @@ def get_cell_icon_id_at(objects, position):
     preview.image_size = (_THUMB_SIZE, _THUMB_SIZE)
     preview.image_pixels_float = pixels
     return preview.icon_id
+
+
+def _loading_icon_id():
+    """A single cached grey placeholder shown for not-yet-rendered cells, so the panel
+    can render thumbnails progressively (a few per draw) instead of all at once."""
+    pcoll = _thumb_collection()
+    key = "__loading__"
+    if key in pcoll:
+        return pcoll[key].icon_id
+    preview = pcoll.new(key)
+    preview.image_size = (_THUMB_SIZE, _THUMB_SIZE)
+    preview.image_pixels_float = _placeholder_pixels()
+    return preview.icon_id
+
+
+def get_cell_icon_id_at(objects, position):
+    """Return composite icon_id for the cell at strip `position` across the GROUP.
+
+    Generates and caches on first call (needs GL context — panel draw() qualifies).
+    Always returns a valid non-zero icon_id (checkerboard placeholder if all empty).
+
+    Single-position convenience wrapper; the panel uses resolve_group_cells() +
+    get_cell_icon_id_for_items() to avoid the per-cell re-scan.
+    """
+    return get_cell_icon_id_for_items(_cell_drawings_at(objects, position), position)
 
 
 def invalidate_thumb(_drawing_ptr=None):
@@ -1205,8 +1277,29 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
 
         fno = context.scene.frame_current
         objects = group_objects(context)
-        n = cell_position_count(objects)
+        # Resolve the whole strip once (O(layers × frames)); the per-cell thumbnail
+        # loop below reuses this instead of re-scanning every layer for every cell
+        # (which made the panel quadratic in keyframe count → freeze at ~1000 frames).
+        keys, items_by_pos = resolve_group_cells(objects)
+        n = len(keys)
         cur = current_position(objects, fno)
+
+        # Progressive thumbnail rendering: cap GPU offscreen renders per draw so a large
+        # bank doesn't freeze the first paint after load/Refresh. Uncached cells show a
+        # placeholder; the panel re-draws until everything is rendered (then it stops).
+        _budget = [4]
+        _need_redraw = [False]
+
+        def _cell_icon(items, pos):
+            key = _icon_key_for_items(items, pos)
+            pcoll = _thumb_collection()
+            if key in pcoll:
+                return pcoll[key].icon_id
+            if _budget[0] <= 0:
+                _need_redraw[0] = True
+                return _loading_icon_id()
+            _budget[0] -= 1
+            return get_cell_icon_id_for_items(items, pos)
 
         # ---- Cell group status ----
         tag = gp_object.get(GROUP_PROP, "")
@@ -1220,7 +1313,7 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
 
         # ---- Large thumbnail of the active cell ----
         if n > 0 and cur >= 0:
-            icon_id = get_cell_icon_id_at(objects, cur)
+            icon_id = _cell_icon(items_by_pos[cur], cur)
             col_icon = layout.column()
             col_icon.alignment = 'CENTER'
             col_icon.template_icon(icon_value=icon_id, scale=5.5)
@@ -1275,7 +1368,7 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
                 cell_col = grid.column(align=True)
                 if cur == i:
                     cell_col.alert = True
-                icon_id = get_cell_icon_id_at(objects, i)
+                icon_id = _cell_icon(items_by_pos[i], i)
                 op = cell_col.operator(
                     "nuclear.cell_expose",
                     text="" if icon_id else str(i + 1),
@@ -1305,6 +1398,11 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
         sub.enabled = has_any
         sub.operator("nuclear.cells_export", text="Export All Layers…", icon='EXPORT').all_layers = True
         sub.operator("nuclear.cells_export", text="", icon='LAYER_ACTIVE').all_layers = False
+
+        # Keep redrawing while thumbnails are still being rendered in batches (self-stops
+        # once every cell is cached, since _cell_icon then never hits the budget cap).
+        if _need_redraw[0] and context.area:
+            context.area.tag_redraw()
 
 
 # ---------------------------------------------------------------------------

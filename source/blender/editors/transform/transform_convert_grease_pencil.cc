@@ -299,6 +299,41 @@ TransConvertTypeInfo TransConvertType_GreasePencil = {
 /** \name Grease Pencil Peg (object-mode transform of the active peg layer-group)
  * \{ */
 
+bool transform_grease_pencil_peg_pivot_world(Object *object, float r_pivot[3])
+{
+  using namespace blender::bke::greasepencil;
+  if (object == nullptr || object->type != OB_GREASE_PENCIL) {
+    return false;
+  }
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(object->data);
+  TreeNode *active = grease_pencil.get_active_node();
+  if (active == nullptr || !active->is_group()) {
+    return false;
+  }
+  LayerGroup &group = active->as_group();
+  const float4x4 peg_to_world = object->object_to_world() * group.to_object_space();
+  copy_v3_v3(r_pivot, peg_to_world.location());
+  return true;
+}
+
+bool transform_grease_pencil_peg_axis_world(Object *object, float r_mat[3][3])
+{
+  using namespace blender::bke::greasepencil;
+  if (object == nullptr || object->type != OB_GREASE_PENCIL) {
+    return false;
+  }
+  GreasePencil &grease_pencil = *static_cast<GreasePencil *>(object->data);
+  TreeNode *active = grease_pencil.get_active_node();
+  if (active == nullptr || !active->is_group()) {
+    return false;
+  }
+  LayerGroup &group = active->as_group();
+  const float4x4 peg_to_world = object->object_to_world() * group.to_object_space();
+  copy_m3_m4(r_mat, peg_to_world.ptr());
+  normalize_m3(r_mat);
+  return true;
+}
+
 static void createTransGreasePencilPeg(bContext * /*C*/, TransInfo *t)
 {
   using namespace blender::bke::greasepencil;
