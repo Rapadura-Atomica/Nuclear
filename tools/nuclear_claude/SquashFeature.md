@@ -113,9 +113,12 @@ k  = lerp(1, 1/s, squash_volume)       // compensação ortogonal (preserva áre
 S  = T(anchor) · R(d→Y) · diag(k, s, 1) · R(d→Y)⁻¹ · T(-anchor)
 ```
 
-- `R(d→Y)` alinha o eixo do squash `d` ao Y local; `diag(k, s, 1)` esmaga ao longo de Y e
-  compensa em X (Z=1 porque é cut-out 2D).
-- `squash_volume = 0` → escala pura no eixo. `= 1` → preserva área no plano de desenho.
+- **Axis-aligned vertical (ver nota 2026-06-26 na §10):** o squash escala ao longo do **Z**
+  (vertical) por `s = (tip.z − anchor.z) / rest_len` e compensa em **X** por `k`; o **eixo Y
+  (profundidade) fica preso em 1**. Só a altura vertical conta — o offset horizontal do tip é
+  ignorado, então o corpo esmaga **reto** (sem cisalhar/diagonal). Math = `diag(k, 1, s)`
+  ancorado.
+- `squash_volume = 0` → escala vertical pura (k=1). `= 1` → preserva área no plano de desenho.
 
 A matriz local do peg passa a ser:
 
@@ -231,3 +234,28 @@ P0–P1 provam a math antes de investir no gizmo. Cada fase é commitável e rev
   caminho Follow Peg dá `diag (0.5, 2.0, 1.0)` para s=2/volume=1, com squash off = identidade.
 - **Feature completa (P0–P4).** Evoluções futuras possíveis: bulge/falloff por ponto (§8 do
   plano original), gizmos com overlay mais rico, presets de volume.
+- **Correção do plano XZ + AXIS-ALIGNED travado (2026-06-26):** a P1 tinha (a) codificado o
+  plano como **XY** (vertical=Y, profundidade=Z) e (b) deformado ao longo do eixo **livre**
+  âncora→tip. Os rigs vivem no plano **XZ** (Y=profundidade), então o squash esmagava na
+  profundidade (invisível de frente). Iterações no dia: primeiro pro plano XZ com eixo livre
+  (`e=(-d.z,0,d.x)`), mas a diagonal cisalhava; depois axis-aligned vertical; o autor chegou a
+  pedir a diagonal de volta, mas ela apresentava **inversão aparente do lado** no arrasto do
+  gizmo (a deformação seguia certo por valor direto — render tip-direita→inclina-direita —, mas
+  a interação ao vivo confundia). **Decisão final: travar no axis-aligned vertical, sem
+  diagonal.** Math = `s = (tip.z − anchor.z)/rest_len`, `diag(k, 1, s)` ancorado, **Y preso em
+  1**; enable ajusta ao longo de Z (centro X/Y); default `tip = (0,0,1)`; o gizmo trava o tip no
+  eixo vertical da âncora (âncora/tip em y=0) e desenha a linha vertical. Arquivos: `pegrig.cc`
+  (math + default), `object_pegrig.cc` (enable), `nuclear_squash_gizmo.py` (lock + overlay).
+  Sem mudança de DNA/RNA.
+  **Binding (rig, não squash):** o `carolina_pegs_atualizada.blend` tinha 19 GP soltos
+  (olhos/boca/antebraço, sem Follow Peg) que não herdavam o squash; auto-bindados por
+  proximidade ao irmão bindado mais próximo na cópia `_corrigida`. Rest_len das duas pegs de
+  squash recapturado como `tip.z − anchor.z` (s=1 em repouso).
+- **Squash segue o rig (2026-06-26):** antes o squash era `S · local` com âncora/tip no espaço
+  do **pai** → ao mover/posar o próprio peg, o squash ficava pra trás (não acompanhava). Mudado
+  para `local · S` com âncora/tip no espaço **local do próprio peg**: agora o squash viaja com o
+  peg (mover/rotacionar/escalar o rig carrega o squash junto), e durante o squash em si a base
+  segue plantada. Arquivos: `pegrig.cc` (`mat = mat * squash`), `nuclear_squash_gizmo.py`
+  (gizmo mapeia pelo world do próprio peg via `_peg_world_matrix(rig, idx)`), `object_pegrig.cc`
+  (enable ajusta no espaço local). Migração de `.blend` existentes: remapear âncora/tip keyados
+  de parent→local (`local⁻¹ · v`); feito na cópia `_corrigida` da Carolina.

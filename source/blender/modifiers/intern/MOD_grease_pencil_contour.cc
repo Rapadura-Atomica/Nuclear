@@ -336,6 +336,11 @@ bool contour_sample_cage(const Object &cage, const bool deformed, Vector<float3>
   }
   if (cage.type == OB_CURVES_LEGACY) {
     const Curve *cu = static_cast<const Curve *>(cage.data);
+    if (cu == nullptr) {
+      /* Mirror the mesh branch's null guard: a typed curve object can still carry
+       * null data, and is_disabled() only gates on object type. */
+      return false;
+    }
     const ListBase *nurbs = &cu->nurb;
     if (deformed && cage.runtime != nullptr && cage.runtime->curve_cache != nullptr &&
         !BLI_listbase_is_empty(&cage.runtime->curve_cache->deformed_nurbs))
@@ -675,6 +680,15 @@ static void panel_draw(const bContext *C, Panel *panel)
     layout->op("OBJECT_OT_greasepencil_contour_toggle_controls",
                IFACE_("Show/Hide Controllers"),
                ICON_HIDE_OFF);
+    /* Send the controllers home: all of them, or just the selected ones (also bound to Alt+R in
+     * Object Mode). The mode values mirror the operator's enum (0 = All, 1 = Selected). */
+    uiLayout *reset_row = &layout->row(true);
+    PointerRNA reset_all = reset_row->op(
+        "OBJECT_OT_greasepencil_contour_reset", IFACE_("Reset All"), ICON_LOOP_BACK);
+    RNA_enum_set(&reset_all, "mode", 0);
+    PointerRNA reset_sel = reset_row->op(
+        "OBJECT_OT_greasepencil_contour_reset", IFACE_("Reset Selected"), ICON_LOOP_BACK);
+    RNA_enum_set(&reset_sel, "mode", 1);
   }
 
   if (uiLayout *influence_panel = layout->panel_prop(

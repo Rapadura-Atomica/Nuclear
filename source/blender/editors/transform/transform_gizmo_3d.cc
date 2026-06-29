@@ -907,6 +907,18 @@ static int gizmo_3d_foreach_selected(const bContext *C,
         ob = base->object;
       }
 
+      /* Nuclear: a Grease Pencil object posed through a peg (a layer-group peg or a Follow Peg
+       * constraint) contributes the peg's pivot, so the transform gizmo sits on the point the peg
+       * actually rotates and scales about instead of the object origin. */
+      float peg_pivot[3];
+      if (greasepencil::transform_grease_pencil_peg_pivot_world(base->object, peg_pivot) ||
+          transform_pegrig_object_pivot_world(base->object, peg_pivot))
+      {
+        user_fn(peg_pivot);
+        totsel++;
+        continue;
+      }
+
       /* Get the boundbox out of the evaluated object. */
       std::optional<std::array<float3, 8>> bb;
       if (use_only_center == false) {
@@ -1063,6 +1075,13 @@ static bool gizmo_3d_calc_pos(const bContext *C,
       BKE_view_layer_synced_ensure(scene, view_layer);
       Object *ob = BKE_view_layer_active_object_get(view_layer);
       if (ob != nullptr) {
+        /* Nuclear: with a peg-posed Grease Pencil object the active element is the peg, so place the
+         * gizmo on the peg's pivot (matches the median/bounds path in #gizmo_3d_foreach_selected). */
+        if (greasepencil::transform_grease_pencil_peg_pivot_world(ob, r_pivot_pos) ||
+            transform_pegrig_object_pivot_world(ob, r_pivot_pos))
+        {
+          return true;
+        }
         if ((ob->mode & OB_MODE_ALL_SCULPT) && ob->sculpt) {
           SculptSession *ss = ob->sculpt;
           copy_v3_v3(r_pivot_pos, ss->pivot_pos);

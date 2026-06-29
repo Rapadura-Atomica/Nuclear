@@ -244,6 +244,16 @@ static void panel_draw(const bContext *C, Panel *panel)
     PointerRNA unbind_ptr = bind_row->op("OBJECT_OT_greasepencil_curve_bind", IFACE_("Unbind"),
                                          ICON_NONE);
     RNA_boolean_set(&unbind_ptr, "unbind", true);
+    /* Reset the curve to its rest shape: all of it, or the points selected on the curve. "Selected"
+     * acts on the curve's current point selection (set it in the curve's Edit Mode); the mode values
+     * mirror the operator's enum (0 = All, 1 = Selected). */
+    uiLayout *reset_row = &layout->row(true);
+    PointerRNA reset_all = reset_row->op(
+        "OBJECT_OT_greasepencil_curve_reset", IFACE_("Reset All"), ICON_LOOP_BACK);
+    RNA_enum_set(&reset_all, "mode", 0);
+    PointerRNA reset_sel = reset_row->op(
+        "OBJECT_OT_greasepencil_curve_reset", IFACE_("Reset Selected"), ICON_LOOP_BACK);
+    RNA_enum_set(&reset_sel, "mode", 1);
   }
 
   if (uiLayout *influence_panel = layout->panel_prop(
