@@ -829,12 +829,16 @@ def _graph_signature(tree):
     rig = tree.rig
     if rig is None:
         return ""
+    # _bound_objects walks all of bpy.data.objects x their constraints; this runs in the depsgraph
+    # handler on every non-playback tick while a Peg Graph is open, so materialize it ONCE and reuse
+    # for all three derivations instead of scanning the scene three times per tick.
+    bound_objs = list(_bound_objects(rig))
     pegs = ";".join(f"{p.name}:{p.parent_index}" for p in rig.pegs)
-    bound = ";".join(sorted(f"{ob.name}->{name}" for ob, name in _bound_objects(rig)))
-    graph_obnames = {ob.name for ob, _ in _bound_objects(rig)}
+    bound = ";".join(sorted(f"{ob.name}->{name}" for ob, name in bound_objs))
+    graph_obnames = {ob.name for ob, _ in bound_objs}
     cutters = ";".join(sorted(
         f"{ob.name}=>{mn}@{int(_object_cutter_invert(ob, graph_obnames))}"
-        for ob, _ in _bound_objects(rig)
+        for ob, _ in bound_objs
         for mn in _effective_cutter_mattes(ob, graph_obnames)))
     return pegs + "|" + bound + "|" + cutters
 
@@ -1503,6 +1507,7 @@ def _load_post(*_args):
     _ensure_peg_pose_keymap()
     _set_render_border_ctrl_b(False)  # keep Ctrl+B free for peg navigation
     _subscribe_active_peg()  # msgbus subscriptions are cleared on file load; re-arm.
+    _OUTLINE_LOCAL_CACHE.clear()  # object names from the previous file are stale now.
 
 
 @bpy.app.handlers.persistent
@@ -1578,15 +1583,22 @@ def _controlled_drawings(rig, sel_idx):
     return out
 
 
-def _gp_world_points(ob, cap=600):
-    """World-space points of `ob`'s currently-visible Grease Pencil strokes, sampled to at most `cap`.
-    Empty for a non-GP or empty object. Follows the object (matrix_world), which is how a Follow Peg
-    constraint poses a drawing."""
+# Cache of the capped object-LOCAL outline points per controlled drawing, keyed by object name and
+# value (frame, [local Vectors]). The outline overlay redraws every viewport frame; while posing, a
+# drawing's geometry/frame are unchanged and only matrix_world moves, so re-walking every stroke and
+# point each redraw is wasted - we cache the local points and re-apply matrix_world cheaply. One
+# entry per object (auto-bounded to the controlled set); refreshes when its frame changes. A geometry
+# edit at the same frame is reflected on the next frame change (acceptable for a guide overlay).
+_OUTLINE_LOCAL_CACHE = {}
+
+
+def _gp_local_points(ob, cap=600):
+    """Capped object-LOCAL points of `ob`'s currently-visible Grease Pencil strokes at the current
+    frame. The view- and pose-independent part of the outline, so it can be cached."""
     data = getattr(ob, "data", None)
     if ob.type != 'GREASEPENCIL' or data is None:
         return []
     frame = bpy.context.scene.frame_current
-    mw = ob.matrix_world
     pts = []
     for layer in data.layers:
         if getattr(layer, "hide", False):
@@ -1605,10 +1617,25 @@ def _gp_world_points(ob, cap=600):
             continue
         for stroke in (strokes or []):
             for pt in stroke.points:
-                pts.append(mw @ pt.position)
+                pts.append(pt.position.copy())
     if len(pts) > cap:
         pts = pts[::len(pts) // cap + 1]
     return pts
+
+
+def _gp_world_points(ob, cap=600):
+    """World-space points of `ob`'s currently-visible Grease Pencil strokes, sampled to at most `cap`.
+    Empty for a non-GP or empty object. Follows the object (matrix_world), which is how a Follow Peg
+    constraint poses a drawing. Caches the local points so posing only pays the matrix transform."""
+    if ob.type != 'GREASEPENCIL' or getattr(ob, "data", None) is None:
+        return []
+    frame = bpy.context.scene.frame_current
+    entry = _OUTLINE_LOCAL_CACHE.get(ob.name)
+    if entry is None or entry[0] != frame:
+        entry = (frame, _gp_local_points(ob, cap))
+        _OUTLINE_LOCAL_CACHE[ob.name] = entry
+    mw = ob.matrix_world
+    return [mw @ p for p in entry[1]]
 
 
 def _screen_hull_loop(pts3d, region, rv3d):
@@ -1986,5 +2013,6 @@ def unregister():
         bpy.app.timers.unregister(_do_rebuild_dirty)
     _REBUILD_PENDING.clear()
     _LAST_SIGNATURES.clear()
+    _OUTLINE_LOCAL_CACHE.clear()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
