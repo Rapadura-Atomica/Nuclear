@@ -27,6 +27,7 @@
 
 #include <algorithm>
 
+#include "BLI_enumerable_thread_specific.hh"
 #include "BLI_index_mask.hh"
 #include "BLI_listbase.h"
 #include "BLI_math_matrix.hh"
@@ -427,12 +428,31 @@ static void deform_drawing(const GreasePencilContourModifierData &cmd,
   const OffsetIndices<int> points_by_curve = curves.points_by_curve();
   MutableSpan<float3> positions = curves.positions_for_write();
 
+  /* Per-thread scratch buffers (MVC needs s/r/tanhalf; MLS needs w). cage_num is constant for the
+   * whole evaluation, and both deform helpers fully overwrite their buffers per point, so a thread
+   * can reuse one set across every stroke it processes instead of allocating four Arrays per stroke
+   * (the foreach_index functor below runs once per stroke). */
+  struct DeformScratch {
+    Array<float2> s;
+    Array<float> r;
+    Array<float> tanhalf;
+    Array<float> w;
+  };
+  threading::EnumerableThreadSpecific<DeformScratch> scratch_tls([&]() {
+    DeformScratch scratch;
+    scratch.s = Array<float2>(use_mls ? 0 : cage_num);
+    scratch.r = Array<float>(use_mls ? 0 : cage_num);
+    scratch.tanhalf = Array<float>(use_mls ? 0 : cage_num);
+    scratch.w = Array<float>(use_mls ? cage_num : 0);
+    return scratch;
+  });
+
   strokes.foreach_index(blender::GrainSize(64), [&](const int stroke) {
-    /* Scratch buffers reused across the stroke's points. MVC needs s/r/tanhalf; MLS needs w. */
-    Array<float2> s(use_mls ? 0 : cage_num);
-    Array<float> r(use_mls ? 0 : cage_num);
-    Array<float> tanhalf(use_mls ? 0 : cage_num);
-    Array<float> w(use_mls ? cage_num : 0);
+    DeformScratch &scratch = scratch_tls.local();
+    MutableSpan<float2> s = scratch.s;
+    MutableSpan<float> r = scratch.r;
+    MutableSpan<float> tanhalf = scratch.tanhalf;
+    MutableSpan<float> w = scratch.w;
 
     for (const int point : points_by_curve[stroke]) {
       const float weight = input_weights[point];

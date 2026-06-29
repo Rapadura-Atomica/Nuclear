@@ -1199,9 +1199,12 @@ static void followpeg_evaluate(bConstraint *con, bConstraintOb *cob, ListBase * 
     return;
   }
 
-  /* The peg's world matrix, computed read-only (safe across objects sharing the rig). */
+  /* The peg's world matrix: read the value cached by the rig's PEGRIG_SOLVE depsgraph op (resolved
+   * once per evaluation) instead of recomputing the whole peg chain per object. The depsgraph
+   * guarantees the solve ran first: Follow Peg depends on the rig's PARAMETERS component, and that
+   * component's exit waits on the solve op (see DepsgraphRelationBuilder::build_pegrig). */
   float parmat[4][4];
-  BKE_pegrig_peg_compute_world_matrix(data->rig, index, parmat);
+  BKE_pegrig_peg_world_matrix_get(data->rig, index, parmat);
 
   /* Compute the inverse correction matrix once, so binding keeps the owner's current transform. */
   if (data->flag & FOLLOWPEG_SET_INVERSE) {

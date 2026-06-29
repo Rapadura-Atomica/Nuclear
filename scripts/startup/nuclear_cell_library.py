@@ -59,7 +59,9 @@ def bank_cells(layer):
 
 
 def cell_count(layer):
-    return len(bank_cells(layer))
+    # Count bank frames directly — no sort needed just to take a length
+    # (bank_cells sorts, and this runs once per layer on every panel redraw).
+    return sum(1 for f in layer.frames if f.frame_number >= BANK_START)
 
 
 # --- Frame-keyed, group-aware cell model ------------------------------------
@@ -138,19 +140,34 @@ def current_key(objects, frame_no):
     cells) since it is most likely to span every key — a narrow layer (e.g. skin
     keyed only on a few frames) would otherwise report a stale/approximate key.
     Returns None if nothing resolves."""
-    layers = sorted(
-        _participating_layers(objects),
-        key=lambda ol: cell_count(ol[1]),
-        reverse=True,
-    )
-    for _obj, lay in layers:
+    participating = list(_participating_layers(objects))
+    if not participating:
+        return None
+
+    def _key_on(lay):
         exposed = lay.get_frame_at(frame_no)
         if exposed is None:
-            continue
+            return None
         ptr = exposed.drawing.as_pointer()
         for f in lay.frames:
             if f.frame_number >= BANK_START and f.drawing.as_pointer() == ptr:
                 return f.frame_number - BANK_START
+        return None
+
+    # Fast path: judge by the richest participating layer — found with a single
+    # max(), no full sort. It most likely spans every key, so this resolves on
+    # the common redraw without ordering the whole list.
+    richest = max(participating, key=lambda ol: cell_count(ol[1]))
+    k = _key_on(richest[1])
+    if k is not None:
+        return k
+    # Rare fallback: the richest layer currently exposes a loose (non-cell)
+    # drawing. Scan the rest richest-first, exactly as before, so the reported
+    # key stays stable.
+    for _obj, lay in sorted(participating, key=lambda ol: cell_count(ol[1]), reverse=True):
+        k = _key_on(lay)
+        if k is not None:
+            return k
     return None
 
 
@@ -1393,7 +1410,11 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
         row.operator("nuclear.cells_import", text="Import All Layers…", icon='IMPORT').all_layers = True
         row.operator("nuclear.cells_import", text="", icon='LAYER_ACTIVE').all_layers = False
 
-        has_any = any(cell_count(lay) > 0 for lay in gp_object.data.layers)
+        has_any = any(
+            f.frame_number >= BANK_START
+            for lay in gp_object.data.layers
+            for f in lay.frames
+        )
         sub = col.row(align=True)
         sub.enabled = has_any
         sub.operator("nuclear.cells_export", text="Export All Layers…", icon='EXPORT').all_layers = True

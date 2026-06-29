@@ -29,6 +29,8 @@ const char *operationCodeAsString(OperationCode opcode)
       return "PARAMETERS_EVAL";
     case OperationCode::PARAMETERS_EXIT:
       return "PARAMETERS_EXIT";
+    case OperationCode::PEGRIG_SOLVE:
+      return "PEGRIG_SOLVE";
     case OperationCode::VISIBILITY:
       return "VISIBILITY";
     /* Hierarchy. */

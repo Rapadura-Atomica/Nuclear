@@ -83,6 +83,7 @@
 #include "BKE_node_runtime.hh"
 #include "BKE_object.hh"
 #include "BKE_particle.h"
+#include "BKE_pegrig.hh"
 #include "BKE_pointcache.h"
 #include "BKE_rigidbody.h"
 #include "BKE_scene.hh"
@@ -2282,12 +2283,20 @@ void DepsgraphNodeBuilder::build_pegrig(PegRig *pegrig)
   if (built_map_.check_is_built_and_tag(pegrig)) {
     return;
   }
-  /* Pegs are resolved on the fly when objects following them evaluate, so the rig only needs its
-   * animation and parameters in the graph; objects depend on the PARAMETERS component. */
+  /* The rig needs its animation and parameters in the graph; objects following pegs depend on the
+   * PARAMETERS component. A dedicated PEGRIG_SOLVE op then resolves every peg's world matrix ONCE
+   * per evaluation (caching into PegRigPeg::world_mat) so each Follow Peg constraint reads O(1)
+   * instead of recomputing the whole peg chain — see followpeg_evaluate. */
   build_idproperties(pegrig->id.properties);
   build_idproperties(pegrig->id.system_properties);
   build_animdata(&pegrig->id);
   build_parameters(&pegrig->id);
+  PegRig *pegrig_cow = get_cow_datablock(pegrig);
+  add_operation_node(
+      &pegrig->id,
+      NodeType::PARAMETERS,
+      OperationCode::PEGRIG_SOLVE,
+      [pegrig_cow](::Depsgraph * /*depsgraph*/) { BKE_pegrig_solve_world_matrices(pegrig_cow); });
 }
 
 void DepsgraphNodeBuilder::build_sound(bSound *sound)

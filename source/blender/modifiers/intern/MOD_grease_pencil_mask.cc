@@ -173,6 +173,11 @@ static bool gather_matte_curves(const ModifierEvalContext *ctx,
    * seen on screen relative to the masked object. */
   const float4x4 matte_obj_to_local = ctx->object->world_to_object() * matte_ob.object_to_world();
 
+  /* The fill-slot lookup scans the masked object's material slots and depends only on
+   * ctx->object, so it is invariant across matte layers. Compute it once before the loop
+   * rather than re-scanning totcol slots for every visible layer. */
+  const int fill_index = find_fill_material_index(*ctx->object);
+
   Vector<bke::GeometrySet> parts;
   for (const Layer *layer : matte_gp.layers()) {
     if (!layer->is_visible()) {
@@ -192,7 +197,7 @@ static bool gather_matte_curves(const ModifierEvalContext *ctx,
     bke::MutableAttributeAccessor attributes = curves.attributes_for_write();
     bke::SpanAttributeWriter<int> materials = attributes.lookup_or_add_for_write_span<int>(
         "material_index", bke::AttrDomain::Curve);
-    materials.span.fill(find_fill_material_index(*ctx->object));
+    materials.span.fill(fill_index);
     materials.finish();
 
     parts.append(bke::GeometrySet::from_curves(bke::curves_new_nomain(std::move(curves))));

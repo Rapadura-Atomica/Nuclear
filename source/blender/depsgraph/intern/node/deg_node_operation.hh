@@ -36,6 +36,10 @@ enum class OperationCode {
   ID_PROPERTY,
   PARAMETERS_ENTRY,
   PARAMETERS_EVAL,
+  /* Nuclear: resolve a PegRig's per-peg world matrices once per evaluation (cached into
+   * PegRigPeg::world_mat), so Follow Peg constraints read O(1) instead of each recomputing the
+   * whole peg chain from scratch. Runs inside PARAMETERS, after EVAL and before EXIT. */
+  PEGRIG_SOLVE,
   PARAMETERS_EXIT,
   VISIBILITY,
 
