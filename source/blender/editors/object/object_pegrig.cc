@@ -392,11 +392,18 @@ static wmOperatorStatus pegrig_squash_enable_exec(bContext *C, wmOperator *op)
     float peg_world[4][4];
     BKE_pegrig_peg_world_matrix_get(rig, peg_index, peg_world);
     const float4x4 to_local = math::invert(float4x4(peg_world));
-    anchor = math::transform_point(to_local, float3(cx, cy, wmin.z));
-    tip = math::transform_point(to_local, float3(cx, cy, wmax.z));
-    if (math::distance(anchor, tip) < 1e-5f) {
-      tip = anchor + float3(0.0f, 0.0f, 1.0f);
+    const float3 bottom = math::transform_point(to_local, float3(cx, cy, wmin.z));
+    const float3 top = math::transform_point(to_local, float3(cx, cy, wmax.z));
+    /* Anchor the squash at the peg's PIVOT so the deform originates from the joint (the same point
+     * rotation/scale pivot around), with the tip straight above it along LOCAL Z. Its length is the
+     * drawing's vertical extent. Keeping the axis purely vertical - not a world-bounds-tilted
+     * anchor->tip - stops a posed peg from squashing on a diagonal. */
+    float height = math::distance(bottom, top);
+    if (height < 1e-5f) {
+      height = 1.0f;
     }
+    anchor = float3(peg->pivot);
+    tip = float3(anchor.x, anchor.y, anchor.z + height);
   }
 
   peg->squash_anchor[0] = anchor.x;
@@ -406,14 +413,11 @@ static wmOperatorStatus pegrig_squash_enable_exec(bContext *C, wmOperator *op)
   peg->squash_tip[1] = tip.y;
   peg->squash_tip[2] = tip.z;
   /* The deform driver (BKE_pegrig: `s = (squash_tip.z - anchor.z) / squash_rest_len`) measures the
-   * vertical (local-Z) span only, so the rest length MUST be that same Z delta - not the full 3D
-   * distance. Using `distance()` made `s < 1` at rest for any in-plane-rotated (posed) peg, popping
-   * the drawing the instant squash was enabled. The driver's `> 1e-6f` guard skips a degenerate
-   * (near-horizontal / inverted) span. */
+   * vertical local-Z span, and the tip is locked straight above the anchor, so the rest length is
+   * exactly that Z delta - giving s == 1 (identity, no pop) at rest. */
   peg->squash_rest_len = tip.z - anchor.z;
-  if (peg->squash_volume <= 0.0f) {
-    peg->squash_volume = 1.0f;
-  }
+  /* Leave squash_volume as-is (defaults to 0 = pure vertical, no X stretch/drift). The artist
+   * raises it for area-preserving horizontal stretch; it is never forced on here. */
   peg->flag |= PEGRIGPEG_SQUASH;
 
   DEG_id_tag_update(&rig->id, ID_RECALC_PARAMETERS);
@@ -443,7 +447,8 @@ static wmOperatorStatus pegrig_squash_reset_rest_exec(bContext *C, wmOperator * 
   }
   PegRigPeg *peg = &rig->pegs[peg_index];
   /* Match the Z-only deform driver (see pegrig_squash_enable_exec): rest length is the vertical
-   * span, not the 3D distance, so the current pose reads back as s == 1 (identity) at rest. */
+   * local-Z span (the tip is locked above the anchor), so the current pose reads back as s == 1
+   * (identity) at rest. */
   const float len = peg->squash_tip[2] - peg->squash_anchor[2];
   peg->squash_rest_len = (len > 1e-6f) ? len : 1.0f;
 
