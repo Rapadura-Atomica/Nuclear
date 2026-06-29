@@ -46,15 +46,19 @@ typedef struct PegRigPeg {
   float world_mat[4][4];
 
   /* --- Squash & Stretch (Nuclear) — only meaningful when #PEGRIGPEG_SQUASH is set. ---
-   * A volume-preserving non-uniform scale folded into the peg's local matrix, anchored at
-   * #squash_anchor and aligned along (#squash_tip - #squash_anchor). Inert (identity) while the
-   * flag is unset, so a peg without squash behaves exactly as before. See SquashFeature.md. */
+   * A volume-preserving non-uniform scale folded into the peg's local matrix in the XZ drawing
+   * plane: the vertical (local-Z) span between #squash_anchor and #squash_tip drives a scale
+   * along Z, compensated along X, anchored at #squash_anchor. Inert (identity) while the flag is
+   * unset, so a peg without squash behaves exactly as before. See SquashFeature.md.
+   * NOTE: pre-subversion-(500,121) files used a parent-space Y-axis model and are migrated by
+   * clearing #PEGRIGPEG_SQUASH (see versioning_500.cc). */
 
-  /** Bottom gizmo: the planted anchor point and pivot of the squash, in the peg's parent space. */
+  /** Bottom gizmo: the planted anchor point and pivot of the squash, in the peg's local space. */
   float squash_anchor[3];
-  /** Top gizmo: with #squash_anchor defines the squash axis and length, in the peg's parent space. */
+  /** Top gizmo: with #squash_anchor defines the squash span, in the peg's local space. */
   float squash_tip[3];
-  /** Rest length |tip - anchor| captured when squash is enabled; factor = current_len / rest_len. */
+  /** Rest vertical span (squash_tip.z - squash_anchor.z) captured when squash is enabled;
+   * scale factor s = (current squash_tip.z - anchor.z) / rest_len. */
   float squash_rest_len;
   /** Orthogonal compensation amount [0..1]: 0 = pure axis scale, 1 = preserve area in the plane. */
   float squash_volume;

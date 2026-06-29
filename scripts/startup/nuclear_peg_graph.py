@@ -25,6 +25,7 @@ drawing hangs from it. It owns no transform.
 
 import json
 import math
+import traceback
 
 import bpy
 import gpu
@@ -1387,7 +1388,12 @@ class VIEW3D_PT_nuclear_peg(Panel):
 # -------------------------------------------------------------------------------------------------
 
 _LAST_SIGNATURES = {}
-_REBUILD_PENDING = set()
+# {tree_name: signature_pending_rebuild}. The signature is recorded as "drawn" in
+# _LAST_SIGNATURES only AFTER its rebuild succeeds (in _do_rebuild_dirty), never eagerly in
+# the depsgraph handler - otherwise one tree's rebuild failure would drop the other pending
+# trees AND leave them flagged current, desyncing the graph permanently until the rig changes
+# again.
+_REBUILD_PENDING = {}
 
 
 def _do_rebuild_dirty():
@@ -1395,11 +1401,19 @@ def _do_rebuild_dirty():
     # data (clearing/relinking the node tree) is safe. Trees are looked up by name so a
     # tree freed between queueing and now is simply skipped.
     global _REBUILD_PENDING
-    pending, _REBUILD_PENDING = _REBUILD_PENDING, set()
-    for tree_name in pending:
+    pending, _REBUILD_PENDING = _REBUILD_PENDING, {}
+    for tree_name, sig in pending.items():
         tree = bpy.data.node_groups.get(tree_name)
-        if tree is not None and getattr(tree, "rig", None) is not None:
+        if tree is None or getattr(tree, "rig", None) is None:
+            continue
+        try:
             rebuild(tree)
+        except Exception:
+            # Don't let one tree's failure abort the others; leave its signature unrecorded
+            # so the next depsgraph tick re-queues it instead of silently desyncing.
+            traceback.print_exc()
+            continue
+        _LAST_SIGNATURES[tree_name] = sig
     return None
 
 
@@ -1429,10 +1443,11 @@ def _depsgraph_update_post(_scene, _depsgraph):
                 continue
             sig = _graph_signature(tree)
             if _LAST_SIGNATURES.get(tree.name) != sig:
-                _LAST_SIGNATURES[tree.name] = sig
                 # Defer the rebuild: mutating ID data inside a depsgraph handler is
                 # unsafe (latent crash vector); a one-shot timer does it right after.
-                _REBUILD_PENDING.add(tree.name)
+                # The signature is only committed to _LAST_SIGNATURES once that rebuild
+                # actually succeeds (in _do_rebuild_dirty), not here.
+                _REBUILD_PENDING[tree.name] = sig
                 queued = True
     if queued and not bpy.app.timers.is_registered(_do_rebuild_dirty):
         bpy.app.timers.register(_do_rebuild_dirty, first_interval=0.0)
@@ -1965,5 +1980,11 @@ def unregister():
         bpy.app.handlers.load_post.remove(_load_post)
     if _depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_depsgraph_update_post)
+    # Tear down the deferred-rebuild state so an add-on reload can't fire a one-shot timer
+    # bound to stale module globals, and so the dicts don't carry across reloads.
+    if bpy.app.timers.is_registered(_do_rebuild_dirty):
+        bpy.app.timers.unregister(_do_rebuild_dirty)
+    _REBUILD_PENDING.clear()
+    _LAST_SIGNATURES.clear()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
