@@ -158,10 +158,11 @@ class NUCLEAR_GGT_squash(GizmoGroup):
                 peg.squash_anchor = (local.x, 0.0, local.z)
                 self._autokey(peg, "squash_anchor")
             else:
-                # The squash is axis-aligned (vertical): lock the tip directly above the anchor so
-                # the axis can never go diagonal. Only its Z (height) drives the squash factor.
+                # Lock the tip directly above the anchor along local Z so the squash axis stays
+                # vertical/axis-aligned (X/Z) and can never go diagonal. Only its Z (height) drives
+                # the squash factor.
                 anchor = peg.squash_anchor
-                peg.squash_tip = (anchor[0], 0.0, local.z)
+                peg.squash_tip = (anchor[0], anchor[1], local.z)
                 self._autokey(peg, "squash_tip")
             rig.id_data.update_tag()
             area = bpy.context.area
@@ -219,8 +220,8 @@ def _draw_squash_axis():
         return
     rig, peg, idx = res
     pw = _peg_world_matrix(rig, idx)
-    # Draw the axis straight up from the anchor (the squash is vertical/axis-aligned), so the line
-    # always reflects the real deformation axis even if the stored tip drifts horizontally.
+    # Draw the axis straight up from the anchor (the squash is vertical/axis-aligned along local Z),
+    # so the line always reflects the real deformation axis.
     anchor = Vector(peg.squash_anchor)
     top = Vector((anchor.x, anchor.y, peg.squash_tip[2]))
     coords = [pw @ anchor, pw @ top]

@@ -153,12 +153,13 @@ int BKE_pegrig_peg_add(PegRig *rig, const char *name, const int parent_index)
   PegRigPeg *peg = &rig->pegs[new_index];
   copy_v3_fl(peg->scale, 1.0f);
   /* Squash defaults: inert until #PEGRIGPEG_SQUASH is set, but kept non-degenerate (unit vertical
-   * axis, full volume preservation) so enabling squash never starts from a zero-length axis. The
-   * vertical axis is Z (the cut-out drawing plane is XZ; Y is depth). The anchor stays at the
-   * origin from the zeroed allocation. */
+   * axis) so enabling squash never starts from a zero-length axis. The vertical axis is Z (the
+   * cut-out drawing plane is XZ; Y is depth). The anchor stays at the origin from the zeroed
+   * allocation. Volume (the horizontal X stretch that preserves area) defaults OFF so a fresh
+   * squash is purely vertical and never drifts the rig sideways; raise Squash Volume for stretch. */
   peg->squash_tip[2] = 1.0f;
   peg->squash_rest_len = 1.0f;
-  peg->squash_volume = 1.0f;
+  peg->squash_volume = 0.0f;
   unit_m4(peg->world_mat);
   peg->parent_index = (parent_index >= 0 && parent_index < new_index) ? parent_index : -1;
 
@@ -297,20 +298,21 @@ static void pegrig_peg_local_matrix(const PegRigPeg *peg, float r_mat[4][4])
    * squash along, while during a squash itself the planted anchor stays put. */
   if ((peg->flag & PEGRIGPEG_SQUASH) && peg->squash_rest_len > 1e-6f) {
     const float3 anchor(peg->squash_anchor);
-    /* Axis-aligned squash & stretch in the XZ drawing plane: the vertical (Z) span between anchor
-     * and tip drives a scale along Z, compensated by `k` along X so area is preserved. The body
-     * always squashes straight up/down with no shear - the tip's horizontal offset and the depth
-     * axis Y never deform it. Anchored at `anchor` (in the peg's local space) so the planted base
-     * stays put. */
+    /* Deform about the peg's PIVOT - the same fixed point rotation and scale use - so squashing
+     * pivots from the joint instead of sliding the piece. Axis-aligned to LOCAL X/Z: the vertical
+     * (Z) span from anchor to tip drives the scale `s` along Z; `k` (volume, off by default)
+     * optionally stretches X to preserve area. The tip is kept straight above the anchor (enable +
+     * gizmo), so the axis is always vertical and the body never squashes on a diagonal. The depth
+     * axis Y never deforms. */
     const float s = (peg->squash_tip[2] - anchor.z) / peg->squash_rest_len;
     if (s > 1e-4f) {
       /* volume=0 -> pure vertical scale (k=1); volume=1 -> area-preserving (k=1/s). */
       const float k = 1.0f + peg->squash_volume * (1.0f / s - 1.0f);
       float4x4 squash = float4x4::identity();
-      squash[0][0] = k;                      /* scale X (area compensation) */
-      squash[2][2] = s;                      /* scale Z (vertical squash/stretch) */
-      squash[3][0] = anchor.x * (1.0f - k);  /* keep anchor fixed in X */
-      squash[3][2] = anchor.z * (1.0f - s);  /* keep anchor fixed in Z */
+      squash[0][0] = k;                     /* scale X (area compensation, off unless volume>0) */
+      squash[2][2] = s;                     /* scale Z (vertical squash/stretch) */
+      squash[3][0] = pivot.x * (1.0f - k);  /* keep the PIVOT fixed in X */
+      squash[3][2] = pivot.z * (1.0f - s);  /* keep the PIVOT fixed in Z */
       mat = mat * squash;
     }
   }
