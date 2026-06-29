@@ -112,7 +112,42 @@ static bool is_disabled(const Scene * /*scene*/, ModifierData *md, bool /*use_re
   return cmd->object == nullptr || cmd->object->type != OB_CURVES_LEGACY;
 }
 
-static void modify_curves(ModifierData *md, const ModifierEvalContext *ctx, Drawing &drawing)
+/* Pre-sampled posed curve, shared by every drawing of this modifier evaluation. The table depends
+ * only on the curve object (cmd->object) and the GP object (ctx->object) -- never on per-drawing
+ * data -- so it is identical for all drawings and is built once (serially) in modify_geometry_set
+ * instead of being rebuilt inside modify_curves for each drawing. Binding stores u = k/(N-1), so
+ * rounding back to an index reproduces the exact same frame at rest -> identity is preserved. */
+struct CurveSampleTable {
+  static constexpr int sample_count = 256;
+  Array<float3> pos = Array<float3>(sample_count);
+  Array<float3x3> frame = Array<float3x3>(sample_count);
+  Array<bool> ok = Array<bool>(sample_count);
+};
+
+/* Sample the posed curve once, single-threaded: BKE_where_on_path (called via sample_curve) reads
+ * shared curve cache state and must not be called concurrently (doing so crashes). Called once per
+ * modifier evaluation, before the per-drawing loop. */
+static void build_sample_table(ModifierData *md,
+                               const ModifierEvalContext *ctx,
+                               CurveSampleTable &table)
+{
+  const auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(md);
+  /* Same drawing-plane normal (in curve-local space) used when binding, so the planar frame matches
+   * and the rest pose stays an identity. */
+  const float4x4 gp_to_curve = cmd->object->world_to_object() * ctx->object->object_to_world();
+  const float3 plane_normal = math::normalize(float3x3(gp_to_curve) * float3(0.0f, 1.0f, 0.0f));
+
+  for (int k = 0; k < CurveSampleTable::sample_count; k++) {
+    const float u = float(k) / float(CurveSampleTable::sample_count - 1);
+    table.ok[k] = greasepencil_curve::sample_curve(
+        *cmd->object, u, plane_normal, table.pos[k], table.frame[k]);
+  }
+}
+
+static void modify_curves(ModifierData *md,
+                          const ModifierEvalContext *ctx,
+                          const CurveSampleTable &table,
+                          Drawing &drawing)
 {
   const auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(md);
   modifier::greasepencil::ensure_no_bezier_curves(drawing);
@@ -147,35 +182,21 @@ static void modify_curves(ModifierData *md, const ModifierEvalContext *ctx, Draw
     const VArray<float3> offsets = bind_off.varray;
     const float4x4 curve_to_gp = ctx->object->world_to_object() *
                                  cmd->object->object_to_world();
-    /* Same drawing-plane normal (in curve-local space) used when binding, so the planar frame
-     * matches and the rest pose stays an identity. */
-    const float4x4 gp_to_curve = cmd->object->world_to_object() * ctx->object->object_to_world();
-    const float3 plane_normal = math::normalize(float3x3(gp_to_curve) * float3(0.0f, 1.0f, 0.0f));
 
-    /* Pre-sample the posed curve once, single-threaded: BKE_where_on_path reads shared curve
-     * cache state and must not be called concurrently (doing so crashes), and sampling per point
-     * is costly. The parallel loop below only reads this table. Binding stores u = k/(N-1), so
-     * rounding back to an index reproduces the exact same frame at rest -> identity is preserved. */
-    constexpr int sample_count = 256;
-    Array<float3> table_pos(sample_count);
-    Array<float3x3> table_frame(sample_count);
-    Array<bool> table_ok(sample_count);
-    for (int k = 0; k < sample_count; k++) {
-      const float u = float(k) / float(sample_count - 1);
-      table_ok[k] = greasepencil_curve::sample_curve(
-          *cmd->object, u, plane_normal, table_pos[k], table_frame[k]);
-    }
+    /* The posed-curve sample table is shared across drawings and built once in
+     * modify_geometry_set(); the parallel loop below only reads it. */
+    constexpr int sample_count = CurveSampleTable::sample_count;
 
     curves_mask.foreach_index(GrainSize(512), [&](const int64_t curve_i) {
       const IndexRange points = points_by_curve[curve_i];
       for (const int64_t point_i : points) {
         const int idx = math::clamp(
             int(math::round(u_values[point_i] * float(sample_count - 1))), 0, sample_count - 1);
-        if (!table_ok[idx]) {
+        if (!table.ok[idx]) {
           continue;
         }
         const float3 target = math::transform_point(
-            curve_to_gp, table_pos[idx] + table_frame[idx] * float3(offsets[point_i]));
+            curve_to_gp, table.pos[idx] + table.frame[idx] * float3(offsets[point_i]));
         const float factor = cmd->strength * vgroup_weights[point_i];
         positions[point_i] = math::interpolate(positions[point_i], target, factor);
       }
@@ -209,11 +230,19 @@ static void modify_geometry_set(ModifierData *md,
   const int frame = grease_pencil.runtime->eval_frame;
   const Vector<Drawing *> drawings = modifier::greasepencil::get_drawings_for_write(
       grease_pencil, layer_mask, frame);
-  /* Serial across drawings on purpose: modify_curves() samples the shared curve cache via
-   * BKE_where_on_path(), which is not safe to call concurrently. The per-point reconstruction
-   * inside modify_curves() is still parallelised (it only reads the pre-sampled table). */
+  if (drawings.is_empty()) {
+    return;
+  }
+  /* Build the shared posed-curve sample table once (serially) -- it is identical for every drawing
+   * (depends only on the curve and GP objects, not per-drawing data) and sampling it touches the
+   * shared curve cache via BKE_where_on_path(), which is not safe to call concurrently. */
+  CurveSampleTable table;
+  build_sample_table(md, ctx, table);
+  /* Serial across drawings on purpose: although the table is now prebuilt, keeping the drawing loop
+   * serial preserves the original ordering. The per-point reconstruction inside modify_curves() is
+   * still parallelised (it only reads the pre-sampled table). */
   for (Drawing *drawing : drawings) {
-    modify_curves(md, ctx, *drawing);
+    modify_curves(md, ctx, table, *drawing);
   }
 }
 

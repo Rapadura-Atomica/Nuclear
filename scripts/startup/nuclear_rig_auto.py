@@ -318,8 +318,9 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
         for ob in matched:
             dname = ob.name + _DRAW_PEG_SUFFIX
             rig.pegs.new(dname, parent_index=j_idx[ob.name])
+            dpeg_idx = len(rig.pegs) - 1
             _bind(ob, rig, dname)
-            _set_pivot_world(rig, rig.pegs.find(dname), _center_world(ob))
+            _set_pivot_world(rig, dpeg_idx, _center_world(ob))
 
         # 3) Unmatched pieces: each gets its own peg on the composite (root). A leaf, so a single peg
         #    is already its independent controller; linkable later.
@@ -328,8 +329,9 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
             if ob in matched:
                 continue
             rig.pegs.new(ob.name, parent_index=-1)
+            peg_idx = len(rig.pegs) - 1
             _bind(ob, rig, ob.name)
-            _set_pivot_world(rig, rig.pegs.find(ob.name), _center_world(ob))
+            _set_pivot_world(rig, peg_idx, _center_world(ob))
             extra += 1
 
         rig.active_peg_index = rig.pegs.find(keymap[("torso", None)].name) if ("torso", None) in keymap else 0
@@ -402,7 +404,7 @@ class OBJECT_OT_nuclear_rig_link_to_parent(Operator):
                     rig.pegs[ch_idx].parent_index = attach_idx
             else:
                 rig.pegs.new(ch.name, parent_index=attach_idx)
-                ch_idx = rig.pegs.find(ch.name)
+                ch_idx = len(rig.pegs) - 1
                 _bind(ch, rig, ch.name)
             _set_pivot_world(rig, ch_idx, _joint_world(ch, active, planar))
             linked += 1

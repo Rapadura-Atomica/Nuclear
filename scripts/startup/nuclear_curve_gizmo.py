@@ -123,7 +123,18 @@ class NUCLEAR_GT_curve_point(Gizmo):
     # ``si``/``pi``/``kind``/``curve_ob`` are stamped on each gizmo by the group's _build().
 
     def _bp(self):
-        return self.curve_ob.data.splines[self.si].bezier_points[self.pi]
+        # Indices ``si``/``pi`` are stamped on the gizmo and can go stale if the curve's
+        # topology changes without changing the slot count (delete-one + add-one, or a
+        # spline reorder). Bounds-check before indexing so a stale index returns ``None``
+        # instead of letting an IndexError escape into draw/test_select.
+        curve_ob = self.curve_ob
+        data = getattr(curve_ob, "data", None)
+        if data is None or not (0 <= self.si < len(data.splines)):
+            return None
+        spline = data.splines[self.si]
+        if not (0 <= self.pi < len(spline.bezier_points)):
+            return None
+        return spline.bezier_points[self.pi]
 
     def _local(self, bp):
         return {_CO: bp.co, _HL: bp.handle_left, _HR: bp.handle_right}[self.kind]
@@ -138,6 +149,8 @@ class NUCLEAR_GT_curve_point(Gizmo):
 
     def draw(self, context):
         bp = self._bp()
+        if bp is None:
+            return
         if _is_selected(bp, self.kind):
             self.color = _COL_SELECT
             self.alpha = 1.0
@@ -149,6 +162,8 @@ class NUCLEAR_GT_curve_point(Gizmo):
         self.draw_preset_circle(_billboard_matrix(context, world, radius))
 
     def test_select(self, context, location):
+        if self._bp() is None:
+            return -1
         co2d = location_3d_to_region_2d(context.region, context.region_data, self._world_co())
         if co2d is None:
             return -1

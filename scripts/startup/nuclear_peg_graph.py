@@ -25,6 +25,7 @@ drawing hangs from it. It owns no transform.
 
 import json
 import math
+import time
 import traceback
 
 import bpy
@@ -128,8 +129,7 @@ class NuclearPegNode(_PegGraphNode, Node):
         rig = getattr(self.id_data, "rig", None)
         if rig is None:
             return
-        peg = rig.pegs.get(self.peg_name)
-        if peg is not None and peg.use_squash:
+        if _squash_badge_map(rig).get(self.peg_name):
             layout.label(text="Squash", icon='MOD_SIMPLEDEFORM')
 
 
@@ -408,6 +408,31 @@ def _peg_world_matrix(rig, idx):
     for j in reversed(chain):
         m = m @ _peg_local_matrix(rig.pegs[j])
     return m
+
+
+def _peg_world_matrices_memo(rig):
+    """Every peg's world matrix in one pass, memoizing shared ancestors — O(N) instead of the
+    O(N*depth) of calling _peg_world_matrix per peg (sibling pegs share the trunk/root). The
+    `depth < n` guard mirrors _peg_world_matrix's cycle protection."""
+    n = len(rig.pegs)
+    cache = {}
+
+    def world(i, depth):
+        m = cache.get(i)
+        if m is not None:
+            return m
+        parent = rig.pegs[i].parent_index
+        if 0 <= parent < n and parent != i and depth < n:
+            pm = world(parent, depth + 1)
+        else:
+            pm = mathutils.Matrix.Identity(4)
+        m = pm @ _peg_local_matrix(rig.pegs[i])
+        cache[i] = m
+        return m
+
+    for i in range(n):
+        world(i, 0)
+    return cache
 
 
 def _drawing_center_world(ob):
@@ -1418,6 +1443,51 @@ def _do_rebuild_dirty():
             traceback.print_exc()
             continue
         _LAST_SIGNATURES[tree_name] = sig
+    # Structure just changed: the controlled-set/hull caches keyed by (rig, sel) may now be stale
+    # even though their key is unchanged (e.g. a drawing was bound/unbound), so drop them.
+    _invalidate_overlay_caches()
+    return None
+
+
+# Debounce the (whole-scene) signature scan: structural edits aren't realtime, but a depsgraph
+# tick fires on every mouse-move step of a peg drag. Scanning at most every _SIG_DEBOUNCE seconds
+# (leading + trailing edge) keeps posing cheap while still catching structural edits within ~250 ms.
+_SIG_DEBOUNCE = 0.25
+_LAST_SIG_SCAN = [0.0]
+
+
+def _scan_peg_signatures():
+    _LAST_SIG_SCAN[0] = time.monotonic()
+    queued = False
+    for win in (w for wm_ in bpy.data.window_managers for w in wm_.windows):
+        for area in win.screen.areas:
+            if area.type != 'NODE_EDITOR':
+                continue
+            space = area.spaces.active
+            if space.tree_type != _TREE_ID:
+                continue
+            tree = space.edit_tree or space.node_tree
+            if tree is None or tree.rig is None:
+                continue
+            try:
+                sig = _graph_signature(tree)
+            except Exception:
+                # A transient RNA/eval state shouldn't throw on every tick; skip this tree.
+                traceback.print_exc()
+                continue
+            if _LAST_SIGNATURES.get(tree.name) != sig:
+                # Defer the rebuild: mutating ID data inside a depsgraph handler is
+                # unsafe (latent crash vector); a one-shot timer does it right after.
+                # The signature is only committed to _LAST_SIGNATURES once that rebuild
+                # actually succeeds (in _do_rebuild_dirty), not here.
+                _REBUILD_PENDING[tree.name] = sig
+                queued = True
+    if queued and not bpy.app.timers.is_registered(_do_rebuild_dirty):
+        bpy.app.timers.register(_do_rebuild_dirty, first_interval=0.0)
+
+
+def _scan_peg_signatures_timer():
+    _scan_peg_signatures()
     return None
 
 
@@ -1433,28 +1503,18 @@ def _depsgraph_update_post(_scene, _depsgraph):
     screen = getattr(bpy.context, "screen", None)
     if screen is not None and screen.is_animation_playing:
         return
-    wm = bpy.data.window_managers
-    queued = False
-    for win in (w for wm_ in wm for w in wm_.windows):
-        for area in win.screen.areas:
-            if area.type != 'NODE_EDITOR':
-                continue
-            space = area.spaces.active
-            if space.tree_type != _TREE_ID:
-                continue
-            tree = space.edit_tree or space.node_tree
-            if tree is None or tree.rig is None:
-                continue
-            sig = _graph_signature(tree)
-            if _LAST_SIGNATURES.get(tree.name) != sig:
-                # Defer the rebuild: mutating ID data inside a depsgraph handler is
-                # unsafe (latent crash vector); a one-shot timer does it right after.
-                # The signature is only committed to _LAST_SIGNATURES once that rebuild
-                # actually succeeds (in _do_rebuild_dirty), not here.
-                _REBUILD_PENDING[tree.name] = sig
-                queued = True
-    if queued and not bpy.app.timers.is_registered(_do_rebuild_dirty):
-        bpy.app.timers.register(_do_rebuild_dirty, first_interval=0.0)
+    # Squash badges read use_squash, which a (non-structural) toggle changes without a rebuild;
+    # drop the per-redraw badge cache each tick so the next graph redraw rebuilds it fresh.
+    _SQUASH_BADGE_CACHE.clear()
+    now = time.monotonic()
+    elapsed = now - _LAST_SIG_SCAN[0]
+    if elapsed < _SIG_DEBOUNCE:
+        # Inside the debounce window (e.g. a peg drag): don't scan the scene now, but schedule a
+        # single trailing scan so the latest structural state is still picked up shortly after.
+        if not bpy.app.timers.is_registered(_scan_peg_signatures_timer):
+            bpy.app.timers.register(_scan_peg_signatures_timer, first_interval=_SIG_DEBOUNCE - elapsed)
+        return
+    _scan_peg_signatures()
 
 
 # -------------------------------------------------------------------------------------------------
@@ -1507,7 +1567,10 @@ def _load_post(*_args):
     _ensure_peg_pose_keymap()
     _set_render_border_ctrl_b(False)  # keep Ctrl+B free for peg navigation
     _subscribe_active_peg()  # msgbus subscriptions are cleared on file load; re-arm.
-    _OUTLINE_LOCAL_CACHE.clear()  # object names from the previous file are stale now.
+    # Object names / rig pointers from the previous file are stale now.
+    _OUTLINE_LOCAL_CACHE.clear()
+    _SQUASH_BADGE_CACHE.clear()
+    _invalidate_overlay_caches()
 
 
 @bpy.app.handlers.persistent
@@ -1590,6 +1653,34 @@ def _controlled_drawings(rig, sel_idx):
 # entry per object (auto-bounded to the controlled set); refreshes when its frame changes. A geometry
 # edit at the same frame is reflected on the next frame change (acceptable for a guide overlay).
 _OUTLINE_LOCAL_CACHE = {}
+
+# Overlay caches, all cleared on file load / unregister. The controlled-set and hull caches are
+# also cleared on structural change (rebuild) and selection change (msgbus), so they persist across
+# the many idle/pose redraws in between instead of rescanning the scene every frame.
+_CONTROLLED_CACHE = {}   # (rig_ptr, sel_idx) -> [object names] the selected peg moves
+_HULL_CACHE = {}         # ob.name -> (frame, mw_key, view_key, screen_loop)
+_SQUASH_BADGE_CACHE = {}  # rig_ptr -> (peg_count, {name: use_squash}); refreshed each depsgraph tick
+
+
+def _squash_badge_map(rig):
+    """{peg_name: use_squash} for the rig, built once and reused across the node-editor redraw
+    instead of doing an O(pegs) `rig.pegs.get(name)` per node (which was O(nodes*pegs) per redraw).
+    Rebuilt when the peg count changes; the cache is also cleared every depsgraph tick so a squash
+    toggle shows up promptly."""
+    key = rig.as_pointer()
+    n = len(rig.pegs)
+    entry = _SQUASH_BADGE_CACHE.get(key)
+    if entry is None or entry[0] != n:
+        entry = (n, {p.name: p.use_squash for p in rig.pegs})
+        _SQUASH_BADGE_CACHE[key] = entry
+    return entry[1]
+
+
+def _invalidate_overlay_caches(*_args):
+    """Drop the controlled-set + hull caches (structural/selection change). Local-point cache is
+    keyed by frame and self-refreshes, so it is left intact here."""
+    _CONTROLLED_CACHE.clear()
+    _HULL_CACHE.clear()
 
 
 def _gp_local_points(ob, cap=600):
@@ -1684,6 +1775,38 @@ def _safe_draw(fn):
     return wrapper
 
 
+def _controlled_drawings_cached(rig, sel_idx):
+    """Like _controlled_drawings, but cached across redraws. The set only changes on structural
+    edits (which clear the cache via the rebuild) or selection change (msgbus), so this avoids the
+    full bpy.data.objects scan on every viewport redraw while posing. Stores names and re-resolves
+    live objects (deleted ones come back as None, which the overlay already skips)."""
+    key = (rig.as_pointer(), sel_idx)
+    names = _CONTROLLED_CACHE.get(key)
+    if names is None:
+        names = [ob.name for ob in _controlled_drawings(rig, sel_idx)]
+        _CONTROLLED_CACHE[key] = names
+    objects = bpy.data.objects
+    return [objects.get(n) for n in names]
+
+
+def _outline_hull(ob, region, rv3d, frame):
+    """Screen-space silhouette hull for `ob`, cached per object until its frame, world matrix or the
+    view changes. On idle/hover redraws (nothing moved) this returns the cached loop instead of
+    re-projecting up to 600 points and rebuilding the convex hull every frame."""
+    mw = ob.matrix_world
+    mw_key = (mw[0][0], mw[0][1], mw[0][2], mw[0][3], mw[1][0], mw[1][1], mw[1][2], mw[1][3],
+              mw[2][0], mw[2][1], mw[2][2], mw[2][3], mw[3][0], mw[3][1], mw[3][2], mw[3][3])
+    vm = rv3d.view_matrix
+    view_key = (vm[0][0], vm[0][1], vm[0][2], vm[1][0], vm[1][1], vm[1][2], vm[2][0], vm[2][1],
+                vm[2][2], vm[3][0], vm[3][1], vm[3][2])
+    entry = _HULL_CACHE.get(ob.name)
+    if entry is not None and entry[0] == frame and entry[1] == mw_key and entry[2] == view_key:
+        return entry[3]
+    loop = _screen_hull_loop(_gp_world_points(ob), region, rv3d)
+    _HULL_CACHE[ob.name] = (frame, mw_key, view_key, loop)
+    return loop
+
+
 @_safe_draw
 def _draw_pivot_overlay():
     context = bpy.context
@@ -1706,12 +1829,23 @@ def _draw_pivot_overlay():
 
     rig, sel = _selected_peg_index(context)
     if rig is not None and sel >= 0:
+        # Resolve every peg's world matrix once (shared ancestors memoized) instead of rebuilding the
+        # chain per peg, then derive each pivot from it.
+        n_pegs = len(rig.pegs)
+        mats = _peg_world_matrices_memo(rig)
+
+        def pivot_world(i):
+            peg = rig.pegs[i]
+            parent = peg.parent_index
+            pw = mats[parent] if 0 <= parent < n_pegs else mathutils.Matrix.Identity(4)
+            return pw @ (mathutils.Vector(peg.pivot) + mathutils.Vector(peg.translation))
+
         # Other pegs of the rig: small faint dots, just so you can see where they are to click them.
         others = []
-        for i in range(len(rig.pegs)):
+        for i in range(n_pegs):
             if i == sel:
                 continue
-            c = _peg_pivot_world(rig, i)
+            c = pivot_world(i)
             others += [c - right * s * 0.4, c + right * s * 0.4, c - up * s * 0.4, c + up * s * 0.4]
         if others:
             gpu.state.line_width_set(1.0)
@@ -1724,17 +1858,18 @@ def _draw_pivot_overlay():
         # outline stays visible when the Ctrl+B climb lands on a parent peg whose drawings are not
         # the active/selected object.
         region = context.region
+        frame = context.scene.frame_current
         gpu.state.line_width_set(2.0)
         shader.uniform_float("color", _PEG_BLUE)
-        for ob in _controlled_drawings(rig, sel):
+        for ob in _controlled_drawings_cached(rig, sel):
             if ob is None:
                 continue
-            loop = _screen_hull_loop(_gp_world_points(ob), region, rv3d)
+            loop = _outline_hull(ob, region, rv3d, frame)
             if loop:
                 batch_for_shader(shader, 'LINE_STRIP', {"pos": loop}).draw(shader)
 
         # The selected peg itself: a bright ring at its pivot (its rotation centre).
-        c = _peg_pivot_world(rig, sel)
+        c = pivot_world(sel)
         gpu.state.line_width_set(2.5)
         shader.uniform_float("color", _PEG_AMBER)
         batch_for_shader(shader, 'LINE_STRIP', {"pos": _view_ring(c, right, up, s)}).draw(shader)
@@ -2011,8 +2146,12 @@ def unregister():
     # bound to stale module globals, and so the dicts don't carry across reloads.
     if bpy.app.timers.is_registered(_do_rebuild_dirty):
         bpy.app.timers.unregister(_do_rebuild_dirty)
+    if bpy.app.timers.is_registered(_scan_peg_signatures_timer):
+        bpy.app.timers.unregister(_scan_peg_signatures_timer)
     _REBUILD_PENDING.clear()
     _LAST_SIGNATURES.clear()
     _OUTLINE_LOCAL_CACHE.clear()
+    _SQUASH_BADGE_CACHE.clear()
+    _invalidate_overlay_caches()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)

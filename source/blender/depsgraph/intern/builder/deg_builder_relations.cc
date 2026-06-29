@@ -3462,6 +3462,16 @@ void DepsgraphRelationBuilder::build_pegrig(PegRig *pegrig)
   build_idproperties(pegrig->id.system_properties);
   build_animdata(&pegrig->id);
   build_parameters(&pegrig->id);
+
+  /* Chain the peg-world-matrix solve inside PARAMETERS, after EVAL (so it sees the evaluated,
+   * animated peg transforms) and before EXIT. Follow Peg constraints depend on the rig's
+   * PARAMETERS component (its exit), so they automatically read the freshly-solved world matrices
+   * without needing a separate relation. */
+  OperationKey params_eval_key(&pegrig->id, NodeType::PARAMETERS, OperationCode::PARAMETERS_EVAL);
+  OperationKey solve_key(&pegrig->id, NodeType::PARAMETERS, OperationCode::PEGRIG_SOLVE);
+  OperationKey params_exit_key(&pegrig->id, NodeType::PARAMETERS, OperationCode::PARAMETERS_EXIT);
+  add_relation(params_eval_key, solve_key, "PegRig Params -> Solve");
+  add_relation(solve_key, params_exit_key, "PegRig Solve -> Params Exit");
 }
 
 void DepsgraphRelationBuilder::build_sound(bSound *sound)
