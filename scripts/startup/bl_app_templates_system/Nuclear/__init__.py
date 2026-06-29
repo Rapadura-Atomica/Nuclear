@@ -1538,7 +1538,9 @@ def _register_curve_reset_panel():
     try:
         bpy.utils.register_class(NUCLEAR_PT_deform_curve_reset)
     except Exception:
-        pass
+        # A real registration failure would otherwise vanish as a silently-missing N-panel.
+        import traceback
+        traceback.print_exc()
 
 
 def _unregister_curve_reset_panel():

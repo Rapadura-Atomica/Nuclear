@@ -26,6 +26,7 @@
 #include "DNA_mesh_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_node_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_rigidbody_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
@@ -4381,6 +4382,21 @@ void blo_do_versions_500(FileData *fd, Library * /*lib*/, Main *bmain)
       }
       for (LayerGroup *group : grease_pencil->layer_groups_for_write()) {
         copy_v3_fl(group->scale, 1.0f);
+      }
+    }
+  }
+
+  if (!MAIN_VERSION_FILE_ATLEAST(bmain, 500, 121)) {
+    /* Nuclear: squash & stretch was reworked from a parent-space Y axis to a local-space Z
+     * (vertical XZ drawing-plane) model, and #squash_rest_len was redefined as the Z span rather
+     * than the 3D distance. Files written before this (squash shipped in 1.3.0/build 4) store
+     * #squash_tip in the old Y convention, so the new Z-only driver reads s ~= 0 and silently
+     * evaluates to a no-op. There is no faithful axis/space migration, so disable squash on
+     * pre-121 pegs instead of leaving it silently broken - the artist re-enables it with one
+     * click, which re-fits the anchor/tip to the current drawing under the new model. */
+    LISTBASE_FOREACH (PegRig *, pegrig, &bmain->pegrigs) {
+      for (int i = 0; i < pegrig->pegs_num; i++) {
+        pegrig->pegs[i].flag &= ~PEGRIGPEG_SQUASH;
       }
     }
   }
