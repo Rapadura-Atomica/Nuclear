@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 7,
-  "version": "1.4.2",
+  "build": 8,
+  "version": "1.4.3",
   "stage": "Beta",
-  "version_string": "Nuclear 1.4.2 (Beta)",
+  "version_string": "Nuclear 1.4.3 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "a851b665ea6a3cb12e6118678197c36dd9c7fcfd6bbe73e69e514a3f57797fff",
-  "size": 647850371,
+  "sha256": "696afa327748c39c02d90c6a8d9af29fa374333b25b64b9c8e0494fbce0e59bf",
+  "size": 647219842,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Auto-Rig: monta o esqueleto a partir das peças desenhadas (Auto-Build Skeleton num clique + Link em lote para face/acessórios, pivôs de junta geométricos) com Peg Graph agrupado por região (Auto Layout). Formato .nuc como extensão padrão dos arquivos novos (.blend legado segue 100% abrível). Peg Graph: o layout persiste e sobrevive ao export do rig."
+  "notes": "Squash & stretch corrigido: deforma a partir do pivot, sem deslizar em X. Auditoria de performance/estabilidade (PegRig O(1), freeze ~1000 frames) + Reset de envelope/contour/curve e gizmo de controle do envelope."
 }
