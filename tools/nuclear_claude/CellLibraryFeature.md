@@ -221,6 +221,31 @@ Build (só se a Fase 2 entrar): `distrobox enter blender -- bash -lc 'cd .../Nuc
 
 ## 8. Status
 
+- **2026-06-30 — Fix: biblioteca trata cada parte SEPARADAMENTE (conserta o "dois olhos
+  como um só ao dar o append"). VALIDADO COM ARQUIVOS REAIS + GUI.**
+  Bug: todo o módulo opera por objeto/grupo, **menos** os operadores de import/export, que
+  usavam só `context.object.data` (um objeto). Com dois olhos (dois objetos GP separados, o
+  caso real do autor — **sem** cell group), a biblioteca os colapsava num só no append: ou só
+  o olho ativo era exportado/preenchido, ou as layers dos dois acabavam empilhadas num objeto
+  (sintoma visível nos arquivos reais: `PELE.001`, `2L-OLHOS.001/.002/.003`). Fix (Python
+  puro, sem C):
+  - Novo `library_objects(context)` define o escopo da biblioteca: a cell group do ativo se
+    houver, **senão os objetos GP SELECIONADOS** (o artista seleciona os dois olhos). Não
+    depende mais de marcar grupo.
+  - `export_group_set` escreve **um datablock GP por objeto** (`<set>__<base>`), marcado com
+    `CELL_OBJ_PROP` (base name) + `CELL_ORDER_PROP` (ordem).
+  - `import_group_set` **roteia** cada datablock pro objeto de destino pelo base name
+    (fallback posicional quando os nomes divergem). Layers casadas por nome (cria as que
+    faltam). 0-importado (tudo já presente) é no-op silencioso, **não** erro.
+  - Operadores `cells_import`/`cells_export` usam o caminho multi-objeto quando
+    `len(library_objects) > 1` + `all_layers`; objeto solto e libs antigas seguem idênticos.
+    Painel mostra "N parts (kept separate)".
+  Validação headless: grupo 10/10, ungrouped/seleção 9/9, **dados reais 10/10** (export do
+  `olho.b.e`+`olho.b.d` de `biblioteca.zip`: 2 datablocks separados, cada olho repreenchido
+  com suas 6 layers, round-trip exato dos frames de bank, sem duplicar layers, idempotente).
+  GUI validada pelo autor ("está funcional"). **Falta:** empacotar num release (o bin
+  instalado de produção ainda tem a versão antiga).
+
 - **2026-06-22:** design aprovado (§2), modelo de dados verificado (§3). **Fases 1 e 2
   IMPLEMENTADAS e validadas headless** (Fase 1 18/18, Fase 2 7/7), tudo em
   `scripts/startup/nuclear_cell_library.py`, **Python puro, ZERO C++, sem rebuild**.
