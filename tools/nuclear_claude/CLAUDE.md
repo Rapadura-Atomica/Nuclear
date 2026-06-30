@@ -437,9 +437,24 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-06-29.
+Atualizado em 2026-06-30.
 
-- **Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` — PUBLICADO (2026-06-29).** Patch a partir da branch
+- **Nuclear 1.4.4 (Beta) — `NUCLEAR_BUILD = 9` — PUBLICADO (2026-06-30).** Patch a partir da branch
+  `Nuclear` (HEAD `42afdda`). Empacota os dois commits novos desde a 1.4.3: **`15a7f65` fix(cells)**
+  — Cell Library / Drawing Substitution cross-file agora trata **cada objeto como peça distinta**
+  (objetos duplicados, ex. dois olhos, não colapsavam mais num só) — e **`42afdda` addon
+  SVG↔Grease Pencil** (`scripts/addons_core/svg_to_gp/`): import SVG→GP em lote com separação
+  linha/fill, preservação de grupos e normalização; export GP→SVG com câmera automática; UI nova
+  (Sidebar + File ▸ Import/Export). **Os dois commits são 100% Python — sem rebuild de C/C++:** só
+  sincronizei os arquivos na árvore instalada de `build_nuclear_full` (cópia direta do addon novo;
+  `nuclear_cell_library.py` já estava idêntico), removi os relics `bin/versions`+`current`,
+  `cp -al bin Nuclear`, stamp (build 9 / 1.4.4), `zip -r`. verify-zip + check-manifest OK; deploy
+  verificado (version.json público em build 9 com o sha256 certo). Bump cosmético tratado como
+  **PATCH** (1.4.3→1.4.4) por decisão do autor — mantém a fronteira PATCH usada na 1.4.3. Backup do
+  zip 1.4.3/b8 no servidor: `nuclear.zip.bak-pre-1.4.4`. `ping.php` / `instalarNuclear.sh` não
+  tocados.
+
+- **Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` — PUBLICADO (2026-06-29), superado pela 1.4.4.** Patch a partir da branch
   `integration/1.4.3-audit`. Unifica a auditoria de crash/freeze + reset operators na mainline 1.4.x
   e leva **duas rodadas de auditoria de performance** (PegRig avaliado O(1) via nó de depsgraph
   `PEGRIG_SOLVE`; freeze após ~1000 frames; throttle/defer de handlers). **Destaque desta release —
@@ -533,16 +548,18 @@ Atualizado em 2026-06-29.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` (2026-06-29, deploy
-  confirmado: sha256 do zip no servidor confere com o manifesto live). Máquinas em qualquer
-  build ≤ 7 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
-  registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
-  **1.4.3/b8 (2026-06-29)**.
-- **nuclear.zip (b8, em produção):** 647.219.842 bytes, sha256
-  `696afa327748c39c02d90c6a8d9af29fa374333b25b64b9c8e0494fbce0e59bf`. Auto-contido por construção
+- **Versão em produção:** Nuclear 1.4.4 (Beta) — `NUCLEAR_BUILD = 9` (2026-06-30, deploy
+  confirmado: version.json público em build 9 e sha256 do zip baixado via HTTP confere com o
+  manifesto live). Máquinas em qualquer build ≤ 8 enxergam como update. Histórico: 1.1.0/b2
+  (2026-06-11) → 1.3.0/b4 (2026-06-19, não registrado à época) → 1.3.1/b5 (2026-06-23) →
+  1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) → 1.4.3/b8 (2026-06-29) → **1.4.4/b9
+  (2026-06-30)**.
+- **nuclear.zip (b9, em produção):** 646.752.231 bytes, sha256
+  `4a7c271db7956843d0563ece6eaadb06fdd3bceb63798dec830b22af36892ed5`. Auto-contido por construção
   (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes do publish.
-  Backups no servidor: `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7 anterior),
-  `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6), `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
+  Backups no servidor: `nuclear.zip.bak-pre-1.4.4` (zip 1.4.3/b8 anterior),
+  `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7), `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6),
+  `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
 - **Build dir:** `~/Documentos/GitHub/build_nuclear_full` (out-of-source; container distrobox
   **`blender`**, `ninja -j2 nice`). Empacotamento manual: `cp -al bin Nuclear` → **rm
   `Nuclear/versions`+`Nuclear/current`** (relíquias de auto-update ~5GB) → stamp → `zip -r`
