@@ -437,9 +437,23 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-06-26.
+Atualizado em 2026-06-29.
 
-- **Nuclear 1.4.2 (Beta) — `NUCLEAR_BUILD = 7` — PUBLICADO (2026-06-26).** Nova minor a partir da
+- **Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` — PUBLICADO (2026-06-29).** Patch a partir da branch
+  `integration/1.4.3-audit`. Unifica a auditoria de crash/freeze + reset operators na mainline 1.4.x
+  e leva **duas rodadas de auditoria de performance** (PegRig avaliado O(1) via nó de depsgraph
+  `PEGRIG_SOLVE`; freeze após ~1000 frames; throttle/defer de handlers). **Destaque desta release —
+  squash & stretch corrigido:** o squash agora deforma a partir do **pivot da peg** (mesmo ponto fixo
+  da rotação/escala), axis-aligned ao X/Z local, com a compensação de área (X) **desligada por
+  padrão** (`squash_volume = 0`) — fim do "desliza na diagonal/em X" da peça posada. Também: **gizmo
+  de pontos no viewport pro envelope/Contour** (`nuclear_contour_gizmo.py`, espelha o do Curve:
+  dot por controller, click/shift-click/drag, Reset Selected honra) e **operadores de Reset**
+  (envelope/contour/curve). Compilado nesta máquina em `build_nuclear_full` (container `blender`,
+  `ninja -j2`), empacotado/verificado/publicado via fluxo manual (`--no-bump`, staging sem
+  `bin/versions`+`current`). verify-zip + check-manifest OK. Backup do zip 1.4.2/b7 no servidor:
+  `nuclear.zip.bak-pre-1.4.3`. `ping.php` / `instalarNuclear.sh` não tocados.
+
+- **Nuclear 1.4.2 (Beta) — `NUCLEAR_BUILD = 7` — PUBLICADO (2026-06-26), superado pela 1.4.3.** Nova minor a partir da
   branch `Nuclear` (HEAD `7a4381e`). **Destaque — Auto-Rig** (novo addon de startup
   `scripts/startup/nuclear_rig_auto.py`): monta um PegRig completo a partir das peças GP
   desenhadas — **Auto-Build Skeleton** (casa tronco/espinha/membros por nome, sufixo de lado
@@ -519,18 +533,20 @@ Atualizado em 2026-06-26.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.4.2 (Beta) — `NUCLEAR_BUILD = 7` (2026-06-26, deploy
+- **Versão em produção:** Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` (2026-06-29, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live). Máquinas em qualquer
-  build ≤ 6 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
-  registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → **1.4.2/b7 (2026-06-26)**.
-- **nuclear.zip (b7, em produção):** 647.850.371 bytes, sha256
-  `a851b665ea6a3cb12e6118678197c36dd9c7fcfd6bbe73e69e514a3f57797fff`. Auto-contido por construção
+  build ≤ 7 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
+  **1.4.3/b8 (2026-06-29)**.
+- **nuclear.zip (b8, em produção):** 647.219.842 bytes, sha256
+  `696afa327748c39c02d90c6a8d9af29fa374333b25b64b9c8e0494fbce0e59bf`. Auto-contido por construção
   (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes do publish.
-  Backups no servidor: `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6 anterior),
-  `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
-- **Build dir:** `Nuclear-git/Nuclear/build` (in-tree nesta máquina, out-of-source aponta pro
-  repo), compilado via container distrobox **`blender`** (não `blenderdev`). Empacotamento pelo
-  `nuclear_release.sh`: `cp -al bin Nuclear` → stamp → `zip -r` (deps já no `bin`, não injetadas).
+  Backups no servidor: `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7 anterior),
+  `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6), `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
+- **Build dir:** `~/Documentos/GitHub/build_nuclear_full` (out-of-source; container distrobox
+  **`blender`**, `ninja -j2 nice`). Empacotamento manual: `cp -al bin Nuclear` → **rm
+  `Nuclear/versions`+`Nuclear/current`** (relíquias de auto-update ~5GB) → stamp → `zip -r`
+  (deps já no `bin`). ⚠️ O `nuclear_release.sh` não exclui `versions/current` sozinho.
 - **Instalador versionado:** publicado em `instalarNuclear-versionado.sh` (o `.sh` antigo
   segue sendo o flat).
 - **Telas:** diálogos fixos (`invoke_props_dialog`); primeira checagem 3 s após abrir;
