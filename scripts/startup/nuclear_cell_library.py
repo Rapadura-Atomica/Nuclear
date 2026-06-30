@@ -80,6 +80,14 @@ def cell_count(layer):
 
 GROUP_PROP = "nuclear_cell_group"
 
+# Library files written from a cell GROUP store one GreasePencil datablock per
+# group object, each tagged so import can route it back to the right object
+# (e.g. the left-eye cells land on the left eye, not collapsed onto one). The
+# tag is the object's base name; the order index is a deterministic fallback
+# when names don't line up across files.
+CELL_OBJ_PROP = "nuclear_cell_obj"
+CELL_ORDER_PROP = "nuclear_cell_order"
+
 
 def _participating_layers(objects):
     """Yield (obj, layer) for every cell-participating layer across `objects`
@@ -321,6 +329,32 @@ def group_objects(context):
     return objs or [obj]
 
 
+def library_objects(context):
+    """Objects the cross-file library treats as DISTINCT parts.
+
+    Two separate eye objects must each keep their own cells — the library must
+    not collapse them into one on append. The scope is:
+      - the active object's cell group, if it is tagged into one; else
+      - every selected Grease Pencil object (so the artist selects both eyes and
+        each is exported/imported as its own datablock, routed back by name).
+    Always includes the active object; sorted by name for deterministic routing.
+    """
+    obj = context.object
+    if obj is None or obj.type != 'GREASEPENCIL':
+        return []
+    grp = group_objects(context)
+    if len(grp) > 1:
+        return grp
+    sel = [o for o in getattr(context, "selected_objects", []) or []
+           if o.type == 'GREASEPENCIL']
+    if obj not in sel:
+        sel.append(obj)
+    # De-dup (object pointers are hashable) and order by name so export order and
+    # import positional-fallback line up across files.
+    sel = sorted(set(sel), key=lambda o: o.name)
+    return sel or [obj]
+
+
 def _tag_redraw(context):
     """Force the N-panel and surrounding UI to reflect the new cell state."""
     if context.area:
@@ -491,6 +525,111 @@ def export_layer_set(src_gp, filepath, set_name):
     _bpy.data.libraries.write(filepath, {tmp}, fake_user=True)
     _bpy.data.grease_pencils.remove(tmp)
     return total
+
+
+def export_group_set(objects, filepath, set_name):
+    """Write bank cells from EVERY object in `objects` to one library .blend.
+
+    One GreasePencil datablock per object (named "<set>__<obj base>"), tagged with
+    the object's base name + order so import can route each datablock back to the
+    matching object. Without this two separate eyes collapsed onto a single object
+    on round-trip (the bug). Returns total cells written.
+    """
+    import bpy as _bpy
+    tmps = []
+    total = 0
+    for idx, obj in enumerate(objects):
+        if obj is None or obj.type != 'GREASEPENCIL':
+            continue
+        src_gp = obj.data
+        if not any(bank_cells(lay) for lay in src_gp.layers):
+            continue  # this object holds no cells — nothing to write
+        base = _base_name(obj.name)
+        tmp = _bpy.data.grease_pencils.new(f"{set_name}__{base}")
+        for m in src_gp.materials:
+            tmp.materials.append(m)
+        for src_layer in src_gp.layers:
+            cells = bank_cells(src_layer)
+            if not cells:
+                continue
+            tlay = tmp.layers.new(src_layer.name)
+            for cf in cells:
+                # Preserve the cell key as the library frame number (round-trips).
+                nf = tlay.frames.new(cf.frame_number - BANK_START)
+                nf.drawing = cf.drawing
+                total += 1
+        tmp[CELL_OBJ_PROP] = base
+        tmp[CELL_ORDER_PROP] = idx
+        tmp.use_fake_user = True
+        tmps.append(tmp)
+    if tmps:
+        _bpy.data.libraries.write(filepath, set(tmps), fake_user=True)
+    for tmp in tmps:
+        _bpy.data.grease_pencils.remove(tmp)
+    return total
+
+
+def import_group_set(objects, filepath):
+    """Import a multi-part library into EVERY object in `objects`.
+
+    Routes each library datablock to the destination object whose base name
+    matches its CELL_OBJ_PROP tag; falls back to order-index position when names
+    drifted across files. This keeps two separate eyes distinct (each gets its
+    own cells) instead of dumping everything onto the active object.
+    Layers within each object are matched by name (missing ones created).
+    Returns (total_count, error_or_None).
+    """
+    import bpy as _bpy
+    mats_before = set(_bpy.data.materials.keys())
+    with _bpy.data.libraries.load(filepath, link=False) as (src, dst):
+        names = list(src.grease_pencils)
+        if not names:
+            return 0, "No Grease Pencil data in that file"
+        dst.grease_pencils = names  # append every datablock in the library
+    src_gps = list(dst.grease_pencils)
+    try:
+        by_tag = {}
+        ordered = []
+        for sg in src_gps:
+            ordered.append((sg.get(CELL_ORDER_PROP, 0), sg))
+            tag = sg.get(CELL_OBJ_PROP, "")
+            if tag:
+                by_tag.setdefault(tag, sg)
+        ordered.sort(key=lambda t: t[0])
+        ordered_gps = [sg for _i, sg in ordered]
+
+        dst_objs = [o for o in objects if o is not None and o.type == 'GREASEPENCIL']
+        total = 0
+        used = set()
+        for pos, obj in enumerate(dst_objs):
+            sg = by_tag.get(_base_name(obj.name))
+            if sg is None or sg.as_pointer() in used:
+                # Name didn't resolve (or already consumed): take the next
+                # untouched datablock by export order.
+                sg = next(
+                    (g for g in ordered_gps if g.as_pointer() not in used), None)
+            if sg is None:
+                continue
+            used.add(sg.as_pointer())
+            dst_gp = obj.data
+            for src_layer in sg.layers:
+                dst_layer = dst_gp.layers.get(src_layer.name)
+                if dst_layer is None:
+                    dst_layer = dst_gp.layers.new(src_layer.name)
+                total += import_cells_from_layer(dst_gp, dst_layer, sg, src_layer)
+        if total == 0 and not any(len(sg.layers) for sg in src_gps):
+            # Genuinely nothing to import (empty/wrong file). A 0 with cells
+            # present means every cell was already imported — that is a valid
+            # idempotent no-op, NOT an error (re-importing must not report one).
+            return 0, "No cells found to import"
+    finally:
+        for sg in src_gps:
+            _bpy.data.grease_pencils.remove(sg)
+        for name in set(_bpy.data.materials.keys()) - mats_before:
+            m = _bpy.data.materials.get(name)
+            if m is not None and m.users == 0:
+                _bpy.data.materials.remove(m)
+    return total, None
 
 
 # ---------------------------------------------------------------------------
@@ -1131,7 +1270,13 @@ class NUCLEAR_OT_cells_import(bpy.types.Operator):
             self.report({'WARNING'}, "No file selected")
             return {'CANCELLED'}
         dst_gp = context.object.data
-        if self.all_layers:
+        objects = library_objects(context)
+        if self.all_layers and len(objects) > 1:
+            # Multiple distinct parts (e.g. two selected eyes): route each
+            # library datablock to its matching object by name so they stay
+            # separate instead of collapsing onto one object on append.
+            count, err = import_group_set(objects, self.filepath)
+        elif self.all_layers:
             count, err = import_layer_set(dst_gp, self.filepath, self.datablock)
         else:
             dst_layer = _active_layer(context)
@@ -1188,7 +1333,13 @@ class NUCLEAR_OT_cells_export(bpy.types.Operator):
             self.report({'WARNING'}, "No file selected")
             return {'CANCELLED'}
         gp = context.object.data
-        if self.all_layers:
+        objects = library_objects(context)
+        if self.all_layers and len(objects) > 1:
+            # Multiple distinct parts (e.g. two selected eyes): one tagged
+            # datablock per object, so import can route each part back separately.
+            name = self.set_name or gp.name
+            n = export_group_set(objects, self.filepath, name)
+        elif self.all_layers:
             name = self.set_name or gp.name
             n = export_layer_set(gp, self.filepath, name)
         else:
@@ -1405,6 +1556,13 @@ class NUCLEAR_PT_cell_library(bpy.types.Panel):
         box = layout.box()
         box.label(text="Library", icon='ASSET_MANAGER')
         col = box.column(align=True)
+
+        # When more than one part is in scope (a cell group, or several selected GP
+        # objects like two eyes), the library keeps each object as its own datablock
+        # — import/export route them separately instead of merging into one.
+        lib_objs = library_objects(context)
+        if len(lib_objs) > 1:
+            col.label(text=f"{len(lib_objs)} parts (kept separate)", icon='LINKED')
 
         row = col.row(align=True)
         row.operator("nuclear.cells_import", text="Import All Layers…", icon='IMPORT').all_layers = True
