@@ -18,8 +18,10 @@ máquinas estão online agora e quais estão offline (com o último horário vis
 | Caminho | Papel |
 | --- | --- |
 | `scripts/startup/nuclear_telemetry.py` | **Cliente** embutido no build. Ping no startup + heartbeat a cada 5 min, em background. Falha em silêncio se o servidor estiver fora. |
+| `scripts/startup/nuclear_crash_report.py` | **Cliente de crash.** Detecta saída suja (sentinela por sessão / *dead-man's switch*) e, no próximo boot, oferece um pop-up para enviar um relatório de falha. Reusa o mesmo token; não embute segredo novo. |
 | `server/app.py` | **Referência canônica** — servidor Flask + SQLite. Edite aqui primeiro. |
-| `server/ping.php` / `server/admin.php`* | Porta PHP do mesmo servidor para hospedagem compartilhada (HostGator). Mantenha em paridade com `app.py`. |
+| `server/ping.php` / `server/admin.php` | Porta PHP do mesmo servidor para hospedagem compartilhada (HostGator). Mantenha em paridade com `app.py`. |
+| `server/crash.php` | Endpoint PHP que recebe os relatórios de falha e os grava como `.txt` em `data/crashes/` (pasta protegida, acessível por FTP). |
 | `server/templates/dashboard.html` | Painel público (bolinha verde/cinza). |
 | `server/templates/admin.html` | Painel de admin (apelido + região), protegido por senha. |
 
@@ -60,13 +62,19 @@ em `public_html/nuclear/`. Não precisa de Python nem Passenger.
 | `NUCLEAR_DB` | `./telemetry.db` | arquivo SQLite |
 | `NUCLEAR_TOKEN` | *(definido)* | pings precisam mandar `X-Nuclear-Token` igual |
 | `NUCLEAR_ONLINE_SECS` | `600` | segundos sem ping para virar "offline" |
-| `NUCLEAR_ADMIN_USER` / `NUCLEAR_ADMIN_TOKEN` | `admin` / *(definido)* | **login do `/admin` — segredo SEPARADO do token de ping** |
+| `NUCLEAR_ADMIN_USER` / `NUCLEAR_ADMIN_TOKEN` | `admin` / *(sem default)* | **login do `/admin` — segredo SEPARADO do token de ping.** Sem `NUCLEAR_ADMIN_TOKEN` o `/admin` fica **DESLIGADO** (fail-closed, responde 503). Defina só por env var; nunca commite a senha. |
 | `NUCLEAR_GEOIP` | `1` | `0` desliga o preenchimento automático de região |
 | `PORT` | `8000` | porta do servidor de teste |
 
 No PHP, os mesmos valores são constantes no topo de `ping.php`/`admin.php`
-(`$TOKEN`, `$ADMIN_USER`, `$ADMIN_PASSWORD`, `$GEOIP_AUTOFILL`). **Troque a senha
-de admin antes de subir.**
+(`$TOKEN`, `$ADMIN_USER`, `$ADMIN_PASSWORD`, `$GEOIP_AUTOFILL`).
+
+> ⚠️ **Segredo de admin = só no ambiente, nunca no repo.** No Flask, `NUCLEAR_ADMIN_TOKEN`
+> não tem default: se não for definido, o `/admin` fica desligado. Se você portar o
+> `admin.php`, **não** deixe a senha hardcoded — leia de `getenv()` e mantenha o valor
+> fora do Git. O **token de ping** (`X-Nuclear-Token`) é público por construção (vai
+> embutido em todo build do cliente); a **senha de admin não é** — se algum valor já foi
+> commitado, **rotacione no servidor**, porque o histórico do Git ainda o guarda.
 
 ## 2. Apontar o cliente para o servidor
 
@@ -78,6 +86,44 @@ export NUCLEAR_TELEMETRY_OFF="1"               # desliga a telemetria no cliente
 
 Enquanto a URL for o placeholder `CHANGE-ME`, o cliente fica quieto e não envia
 nada — o build não "telefona" para lugar nenhum até você configurar.
+
+### Relatórios de falha (crash report)
+
+`nuclear_crash_report.py` detecta quando o Nuclear fechou de forma anormal (segfault,
+OOM kill, falta de energia, kill duro — qualquer saída que pule o encerramento normal)
+e, no **próximo** boot, abre um pop-up perguntando se você quer enviar um relatório. O
+mecanismo é um *dead-man's switch*: cada sessão grava uma sentinela
+(`config/nuclear_sessions/session_<pid>.json`) e a apaga ao sair limpo; uma sentinela
+órfã de um PID que não existe mais = crash. O relatório carrega **estúdio/responsável**
+(campo lembrado entre execuções), **descrição opcional**, dados da máquina e o
+*backtrace* do próprio Blender (`*.crash.txt`, se houver). **Nenhum `.blend` é enviado.**
+O servidor (`crash.php`) grava cada um como `.txt` em `data/crashes/` — leia por FTP.
+
+```sh
+export NUCLEAR_CRASH_URL="https://SUA-HOSPEDAGEM.com/nuclear/crash.php"  # opcional
+export NUCLEAR_STUDIO="Estúdio Fulano"   # pré-preenche o campo "estúdio/responsável"
+export NUCLEAR_CRASH_OFF="1"             # desliga os relatórios de falha no cliente
+export NUCLEAR_CRASH_TEST="1"            # força um crash sintético no próximo boot
+```
+
+O token é o mesmo do ping (`NUCLEAR_TELEMETRY_TOKEN`) — não há segredo novo no build.
+
+#### Testar de forma controlada
+
+- **No app real (UI + envio):** abra o Nuclear com `NUCLEAR_CRASH_TEST=1` — em vez de
+  esperar um crash de verdade, o cliente injeta uma falha sintética e o pop-up aparece
+  ~4 s depois. Aponte `NUCLEAR_CRASH_URL` para um endpoint de teste (ou o de produção)
+  para ver o `.txt` chegar. Não precisa rebuildar.
+- **Offline, sem Blender nem PHP** (CI / sanidade rápida):
+
+  ```sh
+  python3 tools/nuclear_telemetry/selftest_crash.py
+  ```
+
+  Roda o código real do cliente contra um `crash.php` simulado (servidor HTTP local) e
+  verifica detecção da sessão travada, ausência de falso positivo com instância viva, o
+  *dead-man's switch*, o gatilho de teste e o envio (estúdio + descrição + backtrace +
+  token). Sai com código ≠ 0 se algo falhar.
 
 ## 3. Localizar as suas máquinas (apelido + região)
 
