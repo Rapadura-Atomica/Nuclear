@@ -28,6 +28,9 @@ Configuration (environment variables):
   NUCLEAR_DB           path to the SQLite file (default: ./telemetry.db)
   NUCLEAR_TOKEN        if set, pings must carry a matching X-Nuclear-Token header
   NUCLEAR_ONLINE_SECS  seconds since last ping to still count as "online" (default: 600)
+  NUCLEAR_ADMIN_USER   /admin username (default: admin; not a secret)
+  NUCLEAR_ADMIN_TOKEN  /admin password. NO default - if unset, /admin is disabled.
+                       Keep it ONLY in the environment, never in this file.
   PORT                 port for the built-in dev server (default: 8000)
 """
 
@@ -49,7 +52,11 @@ ONLINE_SECS = int(os.environ.get("NUCLEAR_ONLINE_SECS", "600"))
 # de ping - o token de ping vai embutido em todo build do cliente, entao e
 # publico de fato e nao serve para autenticar admin.
 ADMIN_USER = os.environ.get("NUCLEAR_ADMIN_USER", "admin")
-ADMIN_TOKEN = os.environ.get("NUCLEAR_ADMIN_TOKEN", "9e3b147a854124e537328356")
+# Sem default funcional (fail-closed): se NUCLEAR_ADMIN_TOKEN nao estiver definido,
+# a pagina /admin fica DESLIGADA. NUNCA embuta a senha de admin neste arquivo - ele
+# vai para o repositorio publico e o segredo vaza. Defina por variavel de ambiente
+# no servidor e rotacione se algum valor antigo ja tiver sido commitado.
+ADMIN_TOKEN = os.environ.get("NUCLEAR_ADMIN_TOKEN", "")
 
 # Preenche a regiao por GeoIP uma unica vez, quando a maquina aparece pela
 # primeira vez. Rotulo manual no admin sempre tem prioridade. Desligue com
@@ -234,6 +241,10 @@ def dashboard():
 def _admin_authed():
     import hmac
 
+    # Fail-closed: sem segredo configurado, ninguem entra. Evita cair numa senha
+    # vazia/conhecida quando NUCLEAR_ADMIN_TOKEN nao foi definido no servidor.
+    if not ADMIN_TOKEN:
+        return False
     auth = request.authorization
     if not auth:
         return False
@@ -251,6 +262,13 @@ def _admin_challenge():
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
+    # Admin desligado quando nao ha segredo configurado: 503 explicito em vez de
+    # um 401 sem fim (e sem porta dos fundos por senha vazia).
+    if not ADMIN_TOKEN:
+        return Response(
+            "Admin desativado: defina NUCLEAR_ADMIN_TOKEN no servidor para habilitar.",
+            503, {"Content-Type": "text/plain; charset=utf-8"},
+        )
     if not _admin_authed():
         return _admin_challenge()
 
