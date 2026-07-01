@@ -437,9 +437,25 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-06-29.
+Atualizado em 2026-07-01.
 
-- **Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` — PUBLICADO (2026-06-29).** Patch a partir da branch
+- **Nuclear 1.4.4 (Beta) — `NUCLEAR_BUILD = 9` — PUBLICADO (2026-07-01).** Patch a partir da branch
+  `Nuclear`. Delta 100% Python sobre a 1.4.3/b8: **relatório automático de falha** (cliente de startup
+  `scripts/startup/nuclear_crash_report.py`, dead-man's switch, POST HTTPS pro `crash.php` reusando o
+  token público de ping — sem segredo novo no build), **addon SVG ↔ Grease Pencil**
+  (`scripts/addons_core/svg_to_gp/`, importa/exporta traços) e **fix da Cell Library** (trata cada
+  objeto como parte distinta na biblioteca cross-file). Compilado **nesta máquina** (checkout
+  `Nuclear-git/Nuclear`, dir `Nuclear/build`) — ⚠️ o container `blender` estava corrompido (falha de
+  `devpts` no init, exit 32) e foi removido; o toolchain foi **reconstruído num container `blenderdev`
+  fresco** (`gcc 16.1.1`, `cmake 4.3.0`, `ninja-build 1.13.2` via dnf), build incremental de 761 passos
+  com gcc 16 sem erros. Empacotado/verificado via fluxo manual (`stamp` + `zip`, staging sem
+  `versions`/`current`). verify-zip (updater + scipy) + check-manifest OK; publish confirmado no
+  servidor (sha256 do zip live == manifesto). Backup do zip 1.4.3/b8 no servidor:
+  `nuclear.zip.bak-pre-1.4.4`. **Server-side pendente (NÃO vai no zip, deploy manual bloqueado):**
+  deploy do `crash.php`/`admin.php` + rotação da senha de admin vazada. `ping.php` /
+  `instalarNuclear.sh` não tocados.
+
+- **Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` — PUBLICADO (2026-06-29), superado pela 1.4.4.** Patch a partir da branch
   `integration/1.4.3-audit`. Unifica a auditoria de crash/freeze + reset operators na mainline 1.4.x
   e leva **duas rodadas de auditoria de performance** (PegRig avaliado O(1) via nó de depsgraph
   `PEGRIG_SOLVE`; freeze após ~1000 frames; throttle/defer de handlers). **Destaque desta release —
@@ -533,18 +549,21 @@ Atualizado em 2026-06-29.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.4.3 (Beta) — `NUCLEAR_BUILD = 8` (2026-06-29, deploy
+- **Versão em produção:** Nuclear 1.4.4 (Beta) — `NUCLEAR_BUILD = 9` (2026-07-01, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live). Máquinas em qualquer
-  build ≤ 7 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  build ≤ 8 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
-  **1.4.3/b8 (2026-06-29)**.
-- **nuclear.zip (b8, em produção):** 647.219.842 bytes, sha256
-  `696afa327748c39c02d90c6a8d9af29fa374333b25b64b9c8e0494fbce0e59bf`. Auto-contido por construção
+  1.4.3/b8 (2026-06-29) → **1.4.4/b9 (2026-07-01)**.
+- **nuclear.zip (b9, em produção):** 647.980.318 bytes, sha256
+  `630cab0f112fc1d7724cfbcb0666e8f7f0948c721d584832e78ee9e20ccb30e6`. Auto-contido por construção
   (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes do publish.
-  Backups no servidor: `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7 anterior),
-  `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6), `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
-- **Build dir:** `~/Documentos/GitHub/build_nuclear_full` (out-of-source; container distrobox
-  **`blender`**, `ninja -j2 nice`). Empacotamento manual: `cp -al bin Nuclear` → **rm
+  Backups no servidor: `nuclear.zip.bak-pre-1.4.4` (zip 1.4.3/b8 anterior),
+  `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7), `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6),
+  `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
+- **Build dir:** `Nuclear/build` nesta máquina (checkout `Nuclear-git/Nuclear`), ou
+  `~/Documentos/GitHub/build_nuclear_full` na máquina primária (out-of-source; container distrobox
+  **`blender`** — ou `blenderdev` com toolchain reconstruído via dnf se o `blender` corromper,
+  ver entrada 1.4.4/b9). `ninja -j2 nice`. Empacotamento manual: `cp -al bin Nuclear` → **rm
   `Nuclear/versions`+`Nuclear/current`** (relíquias de auto-update ~5GB) → stamp → `zip -r`
   (deps já no `bin`). ⚠️ O `nuclear_release.sh` não exclui `versions/current` sozinho.
 - **Instalador versionado:** publicado em `instalarNuclear-versionado.sh` (o `.sh` antigo

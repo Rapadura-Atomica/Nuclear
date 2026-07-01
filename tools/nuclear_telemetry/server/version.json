@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 8,
-  "version": "1.4.3",
+  "build": 9,
+  "version": "1.4.4",
   "stage": "Beta",
-  "version_string": "Nuclear 1.4.3 (Beta)",
+  "version_string": "Nuclear 1.4.4 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "696afa327748c39c02d90c6a8d9af29fa374333b25b64b9c8e0494fbce0e59bf",
-  "size": 647219842,
+  "sha256": "630cab0f112fc1d7724cfbcb0666e8f7f0948c721d584832e78ee9e20ccb30e6",
+  "size": 647980318,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Squash & stretch corrigido: deforma a partir do pivot, sem deslizar em X. Auditoria de performance/estabilidade (PegRig O(1), freeze ~1000 frames) + Reset de envelope/contour/curve e gizmo de controle do envelope."
+  "notes": "Relatorio automatico de falha embutido; novo addon SVG <-> Grease Pencil (importa/exporta tracos); Cell Library trata cada objeto como parte distinta na biblioteca cross-file."
 }
