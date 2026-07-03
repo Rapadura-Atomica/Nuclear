@@ -264,6 +264,10 @@ def _apply_paint_defaults(*_args):
     _px_defaulted.clear()  # re-apply the pixel-size default to the freshly loaded file's brushes
     _last_stroke_count[0] = None  # restart recent-color tracking for the new file
     _last_object[0] = None
+    # Recents start EMPTY every file/session and only fill as colors are actually painted.
+    pal = _recent_palette(create=False)
+    if pal is not None:
+        pal.colors.clear()
     for scene in bpy.data.scenes:
         gpp = getattr(scene.tool_settings, "gpencil_paint", None)
         if gpp is not None:
