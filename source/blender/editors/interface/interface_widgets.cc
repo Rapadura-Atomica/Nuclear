@@ -3065,8 +3065,181 @@ void ui_hsvcircle_pos_from_vals(
   *r_ypos = centy + sinf(-ang) * rad;
 }
 
+/* -------------------------------------------------------------------- */
+/* Nuclear: Krita-style hue ring + saturation/value triangle for HsvCircle buttons. */
+
+/* Geometry as fractions of the widget radius. Thin ring band + a large fixed triangle. */
+#define HSV_TRI_RING_INNER 0.90f
+#define HSV_TRI_RADIUS 0.88f
+
+/* Screen direction of a hue, matching ui_hsvcircle_pos_from_vals()'s angle convention. */
+static void ui_hsv_hue_dir(const float hue, float r_dir[2])
+{
+  const float ang = 2.0f * float(M_PI) * hue + float(M_PI_2);
+  r_dir[0] = cosf(-ang);
+  r_dir[1] = sinf(-ang);
+}
+
+/* The three SV-triangle corners, in a FIXED orientation (does not rotate with hue):
+ * pure-hue apex at the right, white at the top-left, black at the bottom-left. */
+static void ui_hsvtriangle_corners(const rcti *rect, float A[2], float W[2], float K[2])
+{
+  const float centx = BLI_rcti_cent_x_fl(rect);
+  const float centy = BLI_rcti_cent_y_fl(rect);
+  const float r = float(min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect))) / 2.0f *
+                  HSV_TRI_RADIUS;
+  A[0] = centx + r;
+  A[1] = centy; /* pure hue (s=1, v=1) -> right */
+  W[0] = centx - r * 0.5f;
+  W[1] = centy + r * 0.8660254f; /* white (s=0, v=1) -> top-left */
+  K[0] = centx - r * 0.5f;
+  K[1] = centy - r * 0.8660254f; /* black (v=0) -> bottom-left */
+}
+
+void ui_hsvtriangle_pos_from_vals(const rcti *rect, const float *hsv, float *r_xpos, float *r_ypos)
+{
+  float A[2], W[2], K[2];
+  ui_hsvtriangle_corners(rect, A, W, K);
+  const float s = clamp_f(hsv[1], 0.0f, 1.0f);
+  const float v = clamp_f(hsv[2], 0.0f, 1.0f);
+  const float a = s * v, b = (1.0f - s) * v, c = 1.0f - v;
+  *r_xpos = a * A[0] + b * W[0] + c * K[0];
+  *r_ypos = a * A[1] + b * W[1] + c * K[1];
+}
+
+void ui_hsvtriangle_vals_from_pos(
+    const rcti *rect, const float mx, const float my, float *r_s, float *r_v)
+{
+  float A[2], W[2], K[2];
+  ui_hsvtriangle_corners(rect, A, W, K);
+  const float v0[2] = {W[0] - A[0], W[1] - A[1]};
+  const float v1[2] = {K[0] - A[0], K[1] - A[1]};
+  const float v2[2] = {mx - A[0], my - A[1]};
+  const float d00 = v0[0] * v0[0] + v0[1] * v0[1];
+  const float d01 = v0[0] * v1[0] + v0[1] * v1[1];
+  const float d11 = v1[0] * v1[0] + v1[1] * v1[1];
+  const float d20 = v2[0] * v0[0] + v2[1] * v0[1];
+  const float d21 = v2[0] * v1[0] + v2[1] * v1[1];
+  const float denom = d00 * d11 - d01 * d01;
+  float bW = 0.0f, bK = 0.0f;
+  if (fabsf(denom) > 1e-8f) {
+    bW = (d11 * d20 - d01 * d21) / denom;
+    bK = (d00 * d21 - d01 * d20) / denom;
+  }
+  const float bA = 1.0f - bW - bK;
+  const float av = bA + bW; /* == 1 - bK == value weight */
+  *r_v = clamp_f(av, 0.0f, 1.0f);
+  *r_s = (av > 1e-6f) ? clamp_f(bA / av, 0.0f, 1.0f) : 0.0f;
+}
+
+static void ui_draw_but_HSVTRIANGLE(uiBut *but, const uiWidgetColors *wcol, const rcti *rect)
+{
+  const int tot = 64;
+  const float centx = BLI_rcti_cent_x_fl(rect);
+  const float centy = BLI_rcti_cent_y_fl(rect);
+  const float radius = float(min_ii(BLI_rcti_size_x(rect), BLI_rcti_size_y(rect))) / 2.0f;
+  const float ring_in = radius * HSV_TRI_RING_INNER;
+
+  ColorPicker *cpicker = static_cast<ColorPicker *>(but->custom_data);
+  const bool is_color_gamma = ui_but_is_color_gamma(but);
+  float rgb[3], hsv[3], rgb_perceptual[3];
+
+  ui_but_v3_get(but, rgb);
+  copy_v3_v3(rgb_perceptual, rgb);
+  ui_scene_linear_to_perceptual_space(but, rgb_perceptual);
+  copy_v3_v3(hsv, cpicker->hsv_perceptual);
+  ui_color_picker_rgb_to_hsv_compat(rgb_perceptual, hsv);
+  if (!is_color_gamma) {
+    ui_block_cm_to_display_space_v3(but->block, rgb);
+  }
+  CLAMP(hsv[2], 0.0f, 1.0f);
+
+  GPUVertFormat *format = immVertexFormat();
+  uint pos = GPU_vertformat_attr_add(format, "pos", blender::gpu::VertAttrType::SFLOAT_32_32);
+  const uint color = GPU_vertformat_attr_add(
+      format, "color", blender::gpu::VertAttrType::SFLOAT_32_32_32);
+
+  immBindBuiltinProgram(GPU_SHADER_3D_SMOOTH_COLOR);
+
+  /* Hue ring (annulus). */
+  immBegin(GPU_PRIM_TRI_STRIP, (tot + 1) * 2);
+  for (int a = 0; a <= tot; a++) {
+    const float h = float(a) / float(tot);
+    float d[2], hsv_h[3] = {h, 1.0f, 1.0f}, rgb_h[3];
+    ui_hsv_hue_dir(h, d);
+    ui_color_picker_hsv_to_rgb(hsv_h, rgb_h);
+    ui_perceptual_to_scene_linear_space(but, rgb_h);
+    if (!is_color_gamma) {
+      ui_block_cm_to_display_space_v3(but->block, rgb_h);
+    }
+    immAttr3fv(color, rgb_h);
+    immVertex2f(pos, centx + d[0] * ring_in, centy + d[1] * ring_in);
+    immAttr3fv(color, rgb_h);
+    immVertex2f(pos, centx + d[0] * radius, centy + d[1] * radius);
+  }
+  immEnd();
+
+  /* Saturation/value triangle (fixed orientation; only the apex color follows the hue). */
+  float A[2], W[2], K[2];
+  ui_hsvtriangle_corners(rect, A, W, K);
+  float col_a[3], col_w[3] = {1.0f, 1.0f, 1.0f}, col_k[3] = {0.0f, 0.0f, 0.0f};
+  float hsv_apex[3] = {hsv[0], 1.0f, 1.0f};
+  ui_color_picker_hsv_to_rgb(hsv_apex, col_a);
+  ui_perceptual_to_scene_linear_space(but, col_a);
+  ui_perceptual_to_scene_linear_space(but, col_w);
+  ui_perceptual_to_scene_linear_space(but, col_k);
+  if (!is_color_gamma) {
+    ui_block_cm_to_display_space_v3(but->block, col_a);
+    ui_block_cm_to_display_space_v3(but->block, col_w);
+    ui_block_cm_to_display_space_v3(but->block, col_k);
+  }
+  immBegin(GPU_PRIM_TRIS, 3);
+  immAttr3fv(color, col_a);
+  immVertex2f(pos, A[0], A[1]);
+  immAttr3fv(color, col_w);
+  immVertex2f(pos, W[0], W[1]);
+  immAttr3fv(color, col_k);
+  immVertex2f(pos, K[0], K[1]);
+  immEnd();
+  immUnbindProgram();
+
+  /* Outlines: ring edges + triangle. */
+  format = immVertexFormat();
+  pos = GPU_vertformat_attr_add(format, "pos", blender::gpu::VertAttrType::SFLOAT_32_32);
+  immBindBuiltinProgram(GPU_SHADER_3D_UNIFORM_COLOR);
+  GPU_blend(GPU_BLEND_ALPHA);
+  GPU_line_smooth(true);
+  immUniformColor3ubv(wcol->outline);
+  imm_draw_circle_wire_2d(pos, centx, centy, radius, tot);
+  imm_draw_circle_wire_2d(pos, centx, centy, ring_in, tot);
+  immBegin(GPU_PRIM_LINE_STRIP, 4);
+  immVertex2f(pos, A[0], A[1]);
+  immVertex2f(pos, W[0], W[1]);
+  immVertex2f(pos, K[0], K[1]);
+  immVertex2f(pos, A[0], A[1]);
+  immEnd();
+  immUnbindProgram();
+  GPU_blend(GPU_BLEND_NONE);
+  GPU_line_smooth(false);
+
+  /* Cursors: hue marker on the ring + sat/value dot in the triangle. */
+  const float zoom = 1.0f / but->block->aspect;
+  float hd[2];
+  ui_hsv_hue_dir(hsv[0], hd);
+  const float midr = (ring_in + radius) * 0.5f;
+  ui_hsv_cursor(centx + hd[0] * midr, centy + hd[1] * midr, zoom, rgb, hsv, but->flag & UI_SELECT);
+  float sx, sy;
+  ui_hsvtriangle_pos_from_vals(rect, hsv, &sx, &sy);
+  ui_hsv_cursor(sx, sy, zoom, rgb, hsv, but->flag & UI_SELECT);
+}
+
 static void ui_draw_but_HSVCIRCLE(uiBut *but, const uiWidgetColors *wcol, const rcti *rect)
 {
+  if (but->drawflag & UI_BUT_HSV_TRIANGLE) {
+    ui_draw_but_HSVTRIANGLE(but, wcol, rect);
+    return;
+  }
+
   /* TODO(merwin): reimplement as shader for pixel-perfect colors */
 
   const int tot = 64;
