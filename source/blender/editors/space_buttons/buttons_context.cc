@@ -320,6 +320,19 @@ static bool buttons_context_path_modifier(ButsContextPath *path)
   return false;
 }
 
+static bool buttons_context_path_paint(ButsContextPath *path)
+{
+  if (buttons_context_path_object(path)) {
+    Object *ob = static_cast<Object *>(path->ptr[path->len - 1].data);
+
+    if (ob && ob->type == OB_GREASE_PENCIL && (ob->mode & OB_MODE_PAINT_GREASE_PENCIL)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 static bool buttons_context_path_shaderfx(ButsContextPath *path)
 {
   if (buttons_context_path_object(path)) {
@@ -679,6 +692,9 @@ static bool buttons_context_path(
       break;
     case BCONTEXT_SHADERFX:
       found = buttons_context_path_shaderfx(path);
+      break;
+    case BCONTEXT_PAINT:
+      found = buttons_context_path_paint(path);
       break;
     case BCONTEXT_DATA:
       found = buttons_context_path_data(path, -1);
