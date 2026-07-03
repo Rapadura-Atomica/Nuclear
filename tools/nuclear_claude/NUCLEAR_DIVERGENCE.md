@@ -51,6 +51,7 @@ revisão se as APIs do core que eles consomem mudarem.
 - `scripts/startup/nuclear_cell_library.py` — Drawing Substitution (Fase 1): banco de cells fora-de-range + slider/atalhos (ver `CellLibraryFeature.md`)
 - `scripts/startup/nuclear_rig_auto.py` — Auto Rig ("esqueleto auto + ligação em lote"): operador `object.nuclear_rig_auto_skeleton` (casa peças por nome contra ontologia humanoide PT → monta espinha+membros num clique; não-casados ficam soltos) + `object.nuclear_rig_link_to_parent` (prende os selecionados sob o peg do ativo, padrão parent-to-active) + painel `VIEW3D_PT_nuclear_rig_auto` (aba "Rig"). Junta/pivô sempre geométrica (centróide da sobreposição filho∩pai). Python puro sobre a API de PegRig; refino no Peg Graph. Padrão do estúdio: **toda peça ganha uma peg** (não-reconhecidas viram peg raiz no composite). Validado headless vs `Carolina.blend` (56 pegs = 15 esqueleto + 41 acessório, pivôs nas juntas). Sem tool de toolbar (não edita `space_toolsystem_toolbar.py`). Doc: `tools/nuclear_claude/RigAutoFeature.md` (inclui a convenção de nomes). **Não cria ponto quente novo na §2.**
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
+- `scripts/startup/nuclear_theme.py` — aplica o tema Nuclear (navy + "pill"/roundness) **globalmente** via `@persistent load_post` handler + apply no register, para que TODOS os templates (Nuclear, 2D Animation, Storyboarding) compartilhem a identidade — antes o tema morava só no `Nuclear/__init__.py` (Seam 6) e era revertido ao trocar de template, deixando 2D Animation/Storyboarding cinza. Só dado de tema (inclui `roundness` por widget), zero C. O bloco Seam 6 foi removido do `__init__.py` (dono único agora é este arquivo). **Não cria ponto quente na §2.**
 
 ### Application Template Nuclear (a "costura" de UI — P0/P1/P2)
 - `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam central. Contém:
@@ -221,6 +222,18 @@ documentado). No rebase, re-aplicar cada uma:
 |---|---|
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | tool `builtin.peg_pose` ("Peg Pose") + keymap |
 | `scripts/startup/bl_operators/wm.py` | menu `WM_MT_splash_about`: Version/Date/Hash/Branch literais + linha "Nuclear, a derivative of Blender" (branding do About) |
+| `scripts/startup/bl_ui/space_topbar.py` | `TOPBAR_MT_file_new.draw_ex`: 3 seams pequenas — (a) reordena `paths` com `Nuclear` sempre primeiro; (b) **remove o item "General"** (o `wm.read_homefile` com `app_template=""`) do menu/splash/Ctrl+N; (c) ícone `OUTLINER_OB_GREASEPENCIL` p/ o template `Nuclear`. Deixa só os 3 templates 2D (Nuclear, Storyboarding, 2D Animation) no `File > New`. **Acoplamento de runtime:** depende dos nomes de template `Nuclear`/`2D_Animation` e da estrutura do `draw_ex`; degrada sem quebrar se o upstream refatorar. Reversível via git. |
+
+### Boot no template Nuclear (`--app-template Nuclear` no launcher)
+O Blender **não** entra em nenhum app template no boot (nem restaura do userpref) —
+só via `--app-template <id>`. Para o produto abrir sempre no template Nuclear, a flag
+vai no comando de lançamento (dado/launcher, zero C):
+| Arquivo | O que foi alterado |
+|---|---|
+| `release/freedesktop/blender.desktop` | `Exec=blender %f` → `Exec=blender --app-template Nuclear %f` |
+| `tools/nuclear_install/instalarNuclear.sh` | `.desktop` gerado: `Exec=$CURRENT_LINK/blender --app-template Nuclear %F` |
+| `scripts/startup/nuclear_update.py` | `_repoint_desktop`: reescreve o `Exec` mantendo `--app-template Nuclear %F` (antes dropava args E o `%F` a cada update) |
+> ⚠️ **Server-side pendente:** o `instalarNuclear-versionado.sh` (só no servidor, não versionado) precisa da mesma flag no `.desktop` que gera — deploy manual.
 
 ### Branding (ver seção 3)
 | Arquivo | O que foi alterado |
@@ -275,6 +288,7 @@ os demais são pendências do plano de rebranding.
 - [feito] `source/creator/creator_args.cc` — prints de versão usam `NUCLEAR_VERSION_STRING` (≈599, 621, 627, 656, 1340) + doc do `--version` → "Print Nuclear version"
 - [feito] `windowmanager/intern/wm_init_exit.cc` — "Nuclear quit" (≈697)
 - [feito] `release/datafiles/splash.png` — splash trocada por arte interna do autor (fora desta sessão)
+- [feito] `release/datafiles/startup.blend` — cena de boot de fábrica trocada pela do template **Nuclear** (cópia de `scripts/startup/bl_app_templates_system/Nuclear/startup.blend`). Abrir sem arquivo / `--factory-startup` cai direto na cena 2D do Nuclear (não no cubo 3D). O `datatoc` assa este arquivo no binário → **exige rebuild**. Reversível via `git checkout Nuclear -- release/datafiles/startup.blend`. Par com a edição de `space_topbar.py` acima (§2, Tool / UI Python).
 - [feito] **Strings residuais via truque de tradução** (template `Nuclear/__init__.py`, locale `en_US`, SEM editar C; valida com `pgettext_iface`): "Blender Version", "Blender Drivers Editor", "Blender Info Log", "Load Factory Blender Preferences" → Nuclear. O template força `use_translate_interface=True` + `language='en_US'`. Isso **substitui** a necessidade de editar `screen_ops.cc`/`wm_files.cc` para essas strings — não viram pontos quentes.
 - [feito] `scripts/startup/bl_operators/wm.py` — About: versão agora derivada via `_bpy._nuclear_version_string()` (não diverge mais do CLI); botões reorganizados → removidos Donate e Blender Store; "What's New" → GitHub releases do Nuclear; "Nuclear Website" → rapaduraatomica.com.br; Credits e License mantidos em blender.org (atribuição + GPL, por exigência legal)
 - [ ] `windowmanager/intern/wm_splash_screen.cc` — URLs do manual ainda pendentes (≈391, 396, instalação macOS/Windows)

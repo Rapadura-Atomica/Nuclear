@@ -1054,94 +1054,9 @@ def _update_startup_properties():
 
 
 # --------------------------------------------------------------------------------------
-# Seam 6 — Nuclear theme (the navy + rounded "pill" look). Done via theme data, NOT C:
-#   the theme exposes per-widget `roundness` (0..1) + colors, so the mockup's rounded look
-#   needs no interface_widgets.cc surgery (zero rebase risk). Applied on register, fully
-#   restored on unregister (originals captured in _THEME_BACKUP).
-# --------------------------------------------------------------------------------------
-
-# RGB(A) 0..1. Navy base, purple/blue accents, light text — from the mockup.
-_NUCLEAR_THEME = {
-    "bg":       (0.07, 0.07, 0.13),
-    "panel":    (0.11, 0.11, 0.19),
-    "widget":   (0.15, 0.15, 0.25),
-    "accent":   (0.42, 0.30, 0.84),
-    "text":     (0.90, 0.90, 0.96),
-    "text_sel": (1.00, 1.00, 1.00),
-    # Viewport selection outline: a blue silhouette around selected objects (replaces the amber
-    # bounding-box "squares" the peg overlay used to draw). Active is brighter, like Blender's own.
-    "select":        (0.15, 0.55, 1.00),
-    "select_active": (0.40, 0.78, 1.00),
-    "roundness": 0.6,
-}
-
-_THEME_WIDGET_GROUPS = [
-    "wcol_regular", "wcol_tool", "wcol_toolbar_item", "wcol_radio", "wcol_text",
-    "wcol_option", "wcol_toggle", "wcol_num", "wcol_numslider", "wcol_box",
-    "wcol_menu", "wcol_pulldown", "wcol_menu_item", "wcol_list_item", "wcol_tab",
-    "wcol_progress",
-]
-_THEME_SPACE_AREAS = [
-    "view_3d", "properties", "dopesheet_editor", "image_editor", "node_editor",
-    "file_browser", "outliner", "preferences",
-]
-
-# Captured originals: list of (object, attr, original_value) replayed on revert.
-_THEME_BACKUP = []
-
-
-def _theme_set(obj, attr, value):
-    if obj is None or not hasattr(obj, attr):
-        return
-    try:
-        cur = getattr(obj, attr)
-        orig = tuple(cur) if hasattr(cur, "__len__") else cur
-        setattr(obj, attr, value)
-        _THEME_BACKUP.append((obj, attr, orig))
-    except Exception:
-        pass
-
-
-def _apply_nuclear_theme():
-    p = _NUCLEAR_THEME
-    try:
-        theme = bpy.context.preferences.themes[0]
-    except Exception:
-        return
-    ui = theme.user_interface
-    for gname in _THEME_WIDGET_GROUPS:
-        w = getattr(ui, gname, None)
-        if w is None:
-            continue
-        _theme_set(w, "roundness", p["roundness"])
-        _theme_set(w, "inner", (*p["widget"], 1.0))
-        _theme_set(w, "inner_sel", (*p["accent"], 1.0))
-        _theme_set(w, "outline", (*p["bg"],))
-        _theme_set(w, "text", p["text"])
-        _theme_set(w, "text_sel", p["text_sel"])
-        _theme_set(w, "show_shaded", False)
-    # Editor backgrounds → navy; headers → panel tone.
-    for aname in _THEME_SPACE_AREAS:
-        ta = getattr(theme, aname, None)
-        space = getattr(ta, "space", None) if ta is not None else None
-        if space is None:
-            continue
-        _theme_set(space, "back", p["bg"])
-        _theme_set(space, "header", (*p["panel"], 1.0))
-    # Viewport: blue outline around selected/active objects (the peg "selection" cue).
-    v3d = getattr(theme, "view_3d", None)
-    if v3d is not None:
-        _theme_set(v3d, "object_selected", p["select"])
-        _theme_set(v3d, "object_active", p["select_active"])
-
-
-def _revert_nuclear_theme():
-    for obj, attr, orig in reversed(_THEME_BACKUP):
-        try:
-            setattr(obj, attr, orig)
-        except Exception:
-            pass
-    _THEME_BACKUP.clear()
+# Seam 6 — Nuclear theme: MOVED OUT to scripts/startup/nuclear_theme.py so the navy
+# "pill" look is applied GLOBALLY (Nuclear + 2D Animation + Storyboarding), not only
+# while this template is active. Still theme-data only, zero C divergence.
 
 
 # --------------------------------------------------------------------------------------
@@ -1575,7 +1490,8 @@ def register():
     _load_logo()
     _apply_header_overrides()
     _apply_toolbar_overrides()
-    _apply_nuclear_theme()
+    # Nuclear theme is applied GLOBALLY by scripts/startup/nuclear_theme.py
+    # (so it also covers 2D Animation / Storyboarding), not here.
     _enable_xsheet()
     _register_xsheet_keymap()
     _register_envelope_reset_keymap()
@@ -1589,7 +1505,7 @@ def unregister():
     _unregister_envelope_reset_keymap()
     _unregister_xsheet_keymap()
     _disable_xsheet()
-    _revert_nuclear_theme()
+    # Theme is owned globally by nuclear_theme.py (see register); nothing to revert here.
     _revert_toolbar_overrides()
     _revert_header_overrides()
     _unload_logo()
