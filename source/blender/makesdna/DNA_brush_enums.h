@@ -518,6 +518,8 @@ typedef enum eBrushGPaintType {
   GPAINT_BRUSH_TYPE_FILL = 1,
   GPAINT_BRUSH_TYPE_ERASE = 2,
   GPAINT_BRUSH_TYPE_TINT = 3,
+  /* Nuclear: smear/smudge existing strokes (reuses the sculpt grab operation). */
+  GPAINT_BRUSH_TYPE_SMUDGE = 4,
 } eBrushGPaintType;
 
 /** #Brush.gpencil_vertex_brush_type */
