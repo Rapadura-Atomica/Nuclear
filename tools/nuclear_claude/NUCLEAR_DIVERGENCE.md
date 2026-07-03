@@ -224,6 +224,17 @@ documentado). No rebase, re-aplicar cada uma:
 | `scripts/startup/bl_operators/wm.py` | menu `WM_MT_splash_about`: Version/Date/Hash/Branch literais + linha "Nuclear, a derivative of Blender" (branding do About) |
 | `scripts/startup/bl_ui/space_topbar.py` | `TOPBAR_MT_file_new.draw_ex`: 3 seams pequenas — (a) reordena `paths` com `Nuclear` sempre primeiro; (b) **remove o item "General"** (o `wm.read_homefile` com `app_template=""`) do menu/splash/Ctrl+N; (c) ícone `OUTLINER_OB_GREASEPENCIL` p/ o template `Nuclear`. Deixa só os 3 templates 2D (Nuclear, Storyboarding, 2D Animation) no `File > New`. **Acoplamento de runtime:** depende dos nomes de template `Nuclear`/`2D_Animation` e da estrutura do `draw_ex`; degrada sem quebrar se o upstream refatorar. Reversível via git. |
 
+### Boot no template Nuclear (`--app-template Nuclear` no launcher)
+O Blender **não** entra em nenhum app template no boot (nem restaura do userpref) —
+só via `--app-template <id>`. Para o produto abrir sempre no template Nuclear, a flag
+vai no comando de lançamento (dado/launcher, zero C):
+| Arquivo | O que foi alterado |
+|---|---|
+| `release/freedesktop/blender.desktop` | `Exec=blender %f` → `Exec=blender --app-template Nuclear %f` |
+| `tools/nuclear_install/instalarNuclear.sh` | `.desktop` gerado: `Exec=$CURRENT_LINK/blender --app-template Nuclear %F` |
+| `scripts/startup/nuclear_update.py` | `_repoint_desktop`: reescreve o `Exec` mantendo `--app-template Nuclear %F` (antes dropava args E o `%F` a cada update) |
+> ⚠️ **Server-side pendente:** o `instalarNuclear-versionado.sh` (só no servidor, não versionado) precisa da mesma flag no `.desktop` que gera — deploy manual.
+
 ### Branding (ver seção 3)
 | Arquivo | O que foi alterado |
 |---|---|
