@@ -467,7 +467,9 @@ def _refresh_desktop(layout):
                 cur = line[len("Exec="):].strip().split()[0] if line[len("Exec="):].strip() else ""
                 # Only touch a launcher that already points into our install base.
                 if cur and os.path.realpath(os.path.dirname(cur)).startswith(base_real):
-                    lines[i] = "Exec=%s\n" % target_exec
+                    # Keep booting into the Nuclear app template (and preserve the file
+                    # field code) — a bare `Exec=<binary>` would drop both on every update.
+                    lines[i] = "Exec=%s --app-template Nuclear %%F\n" % target_exec
                     changed = True
             if changed:
                 with open(path, "w", encoding="utf-8") as fh:

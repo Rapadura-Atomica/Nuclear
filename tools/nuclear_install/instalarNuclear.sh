@@ -100,7 +100,7 @@ cat > "$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Name=Nuclear
 GenericName=2D Animation
-Exec=$CURRENT_LINK/blender %F
+Exec=$CURRENT_LINK/blender --app-template Nuclear %F
 Icon=$ICON
 Type=Application
 Categories=Graphics;2DGraphics;

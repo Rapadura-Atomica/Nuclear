@@ -241,6 +241,9 @@ class TOPBAR_MT_file_new(Menu):
 
         # Limit number of templates in splash screen, spill over into more menu.
         paths = TOPBAR_MT_file_new.app_template_paths()
+        # Nuclear is the primary template: always first in the list.
+        if "Nuclear" in paths:
+            paths = ["Nuclear"] + [p for p in paths if p != "Nuclear"]
         splash_limit = 6
 
         if use_splash:
@@ -254,14 +257,12 @@ class TOPBAR_MT_file_new(Menu):
             show_more = False
 
         # Draw application templates.
-        if not use_more:
-            props = layout.operator("wm.read_homefile", text="General", icon='FILE_NEW')
-            props.app_template = ""
-
         for d in paths:
             icon = 'FILE_NEW'
             # Set icon per template.
-            if d == "2D_Animation":
+            if d == "Nuclear":
+                icon = 'OUTLINER_OB_GREASEPENCIL'
+            elif d == "2D_Animation":
                 icon = 'GREASEPENCIL_LAYER_GROUP'
             elif d == "Sculpting":
                 icon = 'SCULPTMODE_HLT'
