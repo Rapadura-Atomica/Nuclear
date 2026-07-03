@@ -22,7 +22,7 @@
 
 using blender::StringRefNull;
 
-#define WHEEL_SIZE (5 * U.widget_unit)
+#define WHEEL_SIZE (7 * U.widget_unit)
 
 void uiTemplateColorPicker(uiLayout *layout,
                            PointerRNA *ptr,
@@ -103,6 +103,9 @@ void uiTemplateColorPicker(uiLayout *layout,
   }
 
   but->custom_data = cpicker;
+  if (U.color_picker_type == USER_CP_CIRCLE_HSV) {
+    but->drawflag |= UI_BUT_HSV_TRIANGLE; /* Nuclear: Krita-style ring + SV triangle. */
+  }
 
   cpicker->use_color_lock = lock;
   cpicker->use_color_cubic = cubic;

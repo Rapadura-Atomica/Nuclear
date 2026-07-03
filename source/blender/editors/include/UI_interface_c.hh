@@ -384,6 +384,9 @@ enum {
 
   /** Draw icon inverted to indicate a special state. */
   UI_BUT_ICON_INVERT = 1 << 27,
+
+  /** Nuclear: draw an HsvCircle button as a Krita-style hue ring + saturation/value triangle. */
+  UI_BUT_HSV_TRIANGLE = 1 << 28,
 };
 
 enum class ButPointerType : uint8_t {
