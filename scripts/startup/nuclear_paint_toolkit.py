@@ -355,6 +355,12 @@ class NUCLEAR_PT_paint_brushes(_NuclearPaintPanel, Panel):
         layout.operator("nuclear.gp_smudge_toggle", text="Smudge Mode", icon='BRUSH_DATA',
                         depress=(brush.gpencil_brush_type == 'SMUDGE'))
 
+        # Tip texture: Nuclear samples brush.texture per stroke sample and modulates opacity,
+        # giving textured/grungy strokes. Assign an image or procedural texture here.
+        box = layout.box()
+        box.label(text="Tip Texture (textured strokes):")
+        box.template_ID(brush, "texture", new="texture.new")
+
 
 class NUCLEAR_PT_paint_size(_NuclearPaintPanel, Panel):
     bl_label = "Size"
