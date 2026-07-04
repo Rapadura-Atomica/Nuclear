@@ -277,6 +277,7 @@ versionamento — só **append de enums** e um **drawflag runtime**; rebase = re
 | `source/blender/makesdna/DNA_brush_enums.h` | `GPAINT_BRUSH_TYPE_SMUDGE = 4` (append em `eBrushGPaintType`) |
 | `source/blender/makesrna/intern/rna_brush.cc` | item `SMUDGE` em `rna_enum_brush_gpencil_types_items` |
 | `source/blender/editors/sculpt_paint/grease_pencil_draw_ops.cc` | `get_stroke_operation`: `case GPAINT_BRUSH_TYPE_SMUDGE → greasepencil::new_grab_operation(stroke_mode)` (reusa o grab do sculpt no modo paint) |
+| `source/blender/editors/sculpt_paint/grease_pencil_paint.cc` | `PaintOperationExecutor` (~690): quando `brush->mtex.tex` existe, `BKE_brush_sample_tex_3d` na posição em world-space modula `opacity` → traços texturizados (textura de bico) |
 
 ---
 
