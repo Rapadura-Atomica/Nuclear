@@ -961,7 +961,7 @@ def _draw_statusbar(self, context):
         return
     row = self.layout.row(align=True)
     row.operator("nuclear.update_dialog",
-                 text="Nuclear %s disponível" % _latest_label(), icon='IMPORT')
+                 text="%s disponível" % _latest_label(), icon='IMPORT')
 
 
 def _install_statusbar():
