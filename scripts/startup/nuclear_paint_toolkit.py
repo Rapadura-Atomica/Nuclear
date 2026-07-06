@@ -54,6 +54,9 @@ _last_object = [None]
 # Symmetry mirrors only AFTER a stroke finishes (its point count stops growing), never mid-stroke.
 _pending_mirror = [None]      # (start, end) stroke range awaiting a stable point count, or None
 _last_pointcount = [None]     # point count of the active drawing's last stroke at the last tick
+# Active VIEW_3D tool at the last tick — when a Nuclear paint tool becomes active the timer sets
+# the matching brush type once (so the toolbar buttons "are" the brush type).
+_last_tool = [None]
 # Brushes already given the Krita-style pixel-size default this session (one-time per brush,
 # so the artist's later View/Scene toggle is respected).
 _px_defaulted = set()
@@ -227,7 +230,9 @@ def _push_recent_color(context, rgb):
     if pal is None:
         return
     paint = getattr(context.tool_settings, "gpencil_paint", None)
-    if paint is not None and paint.palette is None:
+    # Keep the recents palette in the GP paint slot so its swatches always show — even if a stray
+    # palette (e.g. one made with the widget's "+" button) got assigned there.
+    if paint is not None and paint.palette is not pal:
         paint.palette = pal
 
     for c in list(pal.colors):
@@ -256,6 +261,27 @@ def _color_poll_timer():
             _last_stroke_count[0] = None
             _pending_mirror[0] = None
             _last_pointcount[0] = None
+        # Left-toolbar tools: when a Nuclear paint tool becomes active, set the matching brush type
+        # once (so switching tools switches Draw/Erase/Fill/Tint/Smudge/Blur). Only on change, so
+        # the artist can still override the type from the Paint tab without the timer fighting back.
+        try:
+            _tool = context.workspace.tools.from_space_view3d_mode('PAINT_GREASE_PENCIL', create=False)
+            _tid = _tool.idname if _tool else None
+        except Exception:
+            _tid = None
+        if _tid != _last_tool[0]:
+            _last_tool[0] = _tid
+            _bt = _NUCLEAR_TOOL_TYPES.get(_tid)
+            if _bt is not None:
+                _tb = _gp_paint_brush(context)
+                if _tb is not None:
+                    try:
+                        _tb.gpencil_brush_type = _bt
+                        if _bt == 'BLUR':
+                            _tb.gpencil_settings.use_edit_position = True
+                            _tb.gpencil_settings.use_edit_strength = True
+                    except Exception:
+                        pass
         cnt = _drawn_stroke_count(context)
         wm = context.window_manager
         if cnt is not None:
@@ -391,6 +417,49 @@ class NUCLEAR_OT_smudge_toggle(Operator):
                 gp.use_edit_strength = True
             except Exception:
                 pass
+        return {'FINISHED'}
+
+
+def _set_deform_flags(brush, brush_type):
+    """Blur reuses the sculpt Smooth op, which needs the brush's sculpt_mode_flag bits on."""
+    if brush_type == 'BLUR':
+        try:
+            brush.gpencil_settings.use_edit_position = True
+            brush.gpencil_settings.use_edit_strength = True
+        except Exception:
+            pass
+
+
+class NUCLEAR_OT_typed_stroke(Operator):
+    """Set the brush type for this toolbar tool, then paint a normal Grease Pencil stroke.
+
+    The left-toolbar tools bind their LMB to this so a click both selects the mode
+    (Draw/Erase/Fill/Tint/Smudge/Blur) and immediately paints with it — deterministically,
+    without waiting on the poll timer to notice the tool change."""
+    bl_idname = "nuclear.gp_typed_stroke"
+    bl_label = "Paint (typed)"
+
+    brush_type: bpy.props.StringProperty()
+
+    def invoke(self, context, event):
+        brush = _gp_paint_brush(context)
+        if brush is not None and self.brush_type:
+            try:
+                brush.gpencil_brush_type = self.brush_type
+            except Exception:
+                pass
+            _set_deform_flags(brush, self.brush_type)
+        # Hand off to the right stock modal; it runs on its own after we return. Fill is a
+        # bucket-fill click (grease_pencil.fill), not a stroke — brush_stroke would only draw the
+        # fill *guide* lines, which is why the plain FILL stroke "looked wrong".
+        try:
+            if self.brush_type == 'FILL':
+                bpy.ops.grease_pencil.fill('INVOKE_DEFAULT')
+            else:
+                bpy.ops.grease_pencil.brush_stroke('INVOKE_DEFAULT')
+        except Exception as ex:
+            self.report({'WARNING'}, str(ex))
+            return {'CANCELLED'}
         return {'FINISHED'}
 
 
@@ -599,6 +668,19 @@ class NUCLEAR_PT_paint_brushes(_NuclearPaintPanel, Panel):
         if brush.gpencil_brush_type in {'SMUDGE', 'BLUR'}:
             col.prop(brush, "strength", text="Strength", slider=True)
 
+        # Fill controls — the bucket fill (grease_pencil.fill) quality lives in these. The native
+        # Fill tool hides gap-closure in a popover; surface it here so the fill can be made clean.
+        if brush.gpencil_brush_type == 'FILL':
+            gp = brush.gpencil_settings
+            col = layout.column(align=True)
+            col.prop(gp, "fill_factor", text="Precision")     # finer = smoother fill edges
+            col.prop(gp, "dilate", text="Dilate")             # grow the fill to hide hairline gaps
+            col = layout.column(align=True)
+            col.prop(gp, "fill_extend_mode", text="Gaps")
+            col.prop(gp, "extend_stroke_factor", text="Gap Size")  # >0 bridges gaps in the outline
+            col.prop(gp, "show_fill_extend", text="Show Gap Helper")
+            layout.prop(gp, "fill_layer_mode", text="Layers")
+
         # Lasso fill reachable WITHOUT leaving the brush tool, so the active brush/settings stay
         # put (the toolbar WorkSpaceTool version drops the brush controls from the header).
         layout.operator("nuclear.gp_lasso_fill", text="Lasso Fill", icon='MOD_MASK')
@@ -697,6 +779,47 @@ class NUCLEAR_PT_paint_symmetry(_NuclearPaintPanel, Panel):
 # Toolbar tool + tool-header toggle
 # -----------------------------------------------------------------------------
 
+# Left-toolbar group: (idname, label, tool-icon, brush type). Activating one sets the brush type
+# (the timer applies it on change) and paints with the normal GP brush stroke.
+_NUCLEAR_TOOLS = (
+    ("nuclear.tool_draw",   "Draw",   "ops.gpencil.draw",         'DRAW'),
+    ("nuclear.tool_erase",  "Erase",  "brush.gpencil_draw.erase", 'ERASE'),
+    ("nuclear.tool_fill",   "Fill",   "brush.gpencil_draw.fill",  'FILL'),
+    ("nuclear.tool_tint",   "Tint",   "ops.gpencil.draw",         'TINT'),
+    ("nuclear.tool_smudge", "Smudge", "ops.gpencil.sculpt_smear", 'SMUDGE'),
+    ("nuclear.tool_blur",   "Blur",   "ops.gpencil.sculpt_blur",  'BLUR'),
+)
+_NUCLEAR_TOOL_TYPES = {tid: bt for (tid, _label, _icon, bt) in _NUCLEAR_TOOLS}
+
+def _make_nuclear_tool(idname, label, icon, brush_type):
+    """Build a WorkSpaceTool class whose LMB sets the brush type and paints (via
+    ``nuclear.gp_typed_stroke``), so a click both picks the mode and draws with it."""
+    return type(
+        "NuclearTool_" + brush_type,
+        (bpy.types.WorkSpaceTool,),
+        {
+            "bl_space_type": 'VIEW_3D',
+            "bl_context_mode": 'PAINT_GREASE_PENCIL',
+            "bl_idname": idname,
+            "bl_label": label,
+            "bl_description": "Paint with the %s brush" % label,
+            "bl_icon": icon,
+            # Mark it a brush tool: GREASE_PENCIL_OT_brush_stroke.poll() requires
+            # WM_toolsystem_active_tool_is_brush (TOOLREF_FLAG_USE_BRUSHES), else it refuses with
+            # "context is incorrect" and the tool paints nothing.
+            "bl_options": {'USE_BRUSHES'},
+            "bl_widget": None,
+            "bl_keymap": (
+                ("nuclear.gp_typed_stroke", {"type": 'LEFTMOUSE', "value": 'PRESS'},
+                 {"properties": [("brush_type", brush_type)]}),
+            ),
+        },
+    )
+
+
+_nuclear_tool_classes = [_make_nuclear_tool(*t) for t in _NUCLEAR_TOOLS]
+
+
 class NuclearLassoFillTool(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'PAINT_GREASE_PENCIL'
@@ -749,6 +872,7 @@ def _draw_symmetry_toolheader(self, context):
 classes = (
     NUCLEAR_OT_brush_tab,
     NUCLEAR_OT_smudge_toggle,
+    NUCLEAR_OT_typed_stroke,
     NUCLEAR_OT_lasso_fill,
     NUCLEAR_PT_paint_brushes,
     NUCLEAR_PT_paint_size,
@@ -768,9 +892,17 @@ def register():
         bpy.app.timers.register(_color_poll_timer, persistent=True)
     if _apply_paint_defaults not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_apply_paint_defaults)
+    # Left-toolbar group: Draw / Erase / Fill / Tint / Smudge / Blur, then Lasso Fill — chained so
+    # they sit together as one block after the stock Brush tool.
+    prev = "builtin.brush"
+    for i, tcls in enumerate(_nuclear_tool_classes):
+        try:
+            bpy.utils.register_tool(tcls, after={prev}, separator=(i == 0), group=False)
+            prev = tcls.bl_idname
+        except Exception:
+            pass
     try:
-        bpy.utils.register_tool(NuclearLassoFillTool, after={"builtin.brush"},
-                                separator=True, group=False)
+        bpy.utils.register_tool(NuclearLassoFillTool, after={prev}, separator=False, group=False)
     except Exception:
         pass
     try:
@@ -794,6 +926,12 @@ def unregister():
         bpy.utils.unregister_tool(NuclearLassoFillTool)
     except Exception:
         pass
+    for tcls in _nuclear_tool_classes:
+        try:
+            bpy.utils.unregister_tool(tcls)
+        except Exception:
+            pass
+    _last_tool[0] = None
     if _apply_paint_defaults in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_apply_paint_defaults)
     if bpy.app.timers.is_registered(_color_poll_timer):
