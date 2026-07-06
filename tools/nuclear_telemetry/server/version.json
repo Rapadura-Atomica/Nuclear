@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 9,
-  "version": "1.4.4",
+  "build": 10,
+  "version": "1.5.0",
   "stage": "Beta",
-  "version_string": "Nuclear 1.4.4 (Beta)",
+  "version_string": "Nuclear 1.5.0 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "630cab0f112fc1d7724cfbcb0666e8f7f0948c721d584832e78ee9e20ccb30e6",
-  "size": 647980318,
+  "sha256": "8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1",
+  "size": 646626577,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Relatorio automatico de falha embutido; novo addon SVG <-> Grease Pencil (importa/exporta tracos); Cell Library trata cada objeto como parte distinta na biblioteca cross-file."
+  "notes": "Novo kit de pintura Grease Pencil: aba Paint no Properties com color picker estilo Krita (roda de matiz + triangulo saturacao/valor), pinceis Smudge e Blur/Dissolve, Lasso Fill, balde e cores recentes. Rebrand da pasta de config: .config/blender vira .config/Nuclear (idem cache), com migracao automatica dos settings existentes no updater e no instalador."
 }

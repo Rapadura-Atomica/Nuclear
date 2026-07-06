@@ -198,7 +198,7 @@ Major source areas under `source/blender/`:
 > `version.json`, etc.), **atualize este documento na mesma leva**. O agente
 > `nuclear-release` é obrigado a fazer isso ao final de cada release.
 
-Última atualização: 2026-06-23.
+Última atualização: 2026-07-06.
 
 ---
 
@@ -440,9 +440,28 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-07-01.
+Atualizado em 2026-07-06.
 
-- **Nuclear 1.4.4 (Beta) — `NUCLEAR_BUILD = 9` — PUBLICADO (2026-07-01).** Patch a partir da branch
+- **Nuclear 1.5.0 (Beta) — `NUCLEAR_BUILD = 10` — PUBLICADO (2026-07-06).** Minor a partir da
+  branch `Nuclear` (bump/build já feitos e testados no commit `8bbcfde3b5b`, este agente só
+  empacotou/publicou). **Destaque 1 — kit de pintura Grease Pencil:** nova aba "Paint" no
+  Properties (`scripts/startup/nuclear_paint_toolkit.py`) com color picker estilo Krita (roda de
+  matiz + triângulo saturação/valor), pincéis Smudge e Blur/Dissolve, Lasso Fill, balde e cores
+  recentes. **Destaque 2 — rebrand da pasta de config:** `.config/blender` → `.config/Nuclear`
+  (idem cache), com **migração automática** dos settings existentes embutida no updater
+  (`nuclear_update.py::_migrate_legacy_config`, roda no apply) e no instalador — ninguém perde
+  tema/keymaps/addons no auto-update. Compilado **nesta máquina** em
+  `~/Documentos/GitHub/build_nuclear_full` (container distrobox `blender`, `ninja install` exit
+  0, binário 236 MB, `--version` confirma "Nuclear 1.5.0 (Beta)"). Empacotado/verificado por este
+  fluxo: `cp -al bin Nuclear` (staging leftover da 1.4.4 removido antes) → sem relíquias
+  `versions`/`current` no `bin` (nada a limpar desta vez) → `stamp` → `zip -r` → `verify-zip`
+  (updater + 2615 arquivos `site-packages/scipy`) OK → `manifest` → `check-manifest` OK. Backup do
+  zip 1.4.4/b9 no servidor: `nuclear.zip.bak-pre-1.5.0` (sha256 conferido == `630cab0f11…` antes
+  do overwrite). Publish confirmado: sha256 do zip live no servidor == manifesto live ==
+  `8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1` (646.626.577 bytes).
+  `ping.php` / `instalarNuclear.sh` não tocados.
+
+- **Nuclear 1.4.4 (Beta) — `NUCLEAR_BUILD = 9` — PUBLICADO (2026-07-01), superado pela 1.5.0.** Patch a partir da branch
   `Nuclear`. Delta 100% Python sobre a 1.4.3/b8: **relatório automático de falha** (cliente de startup
   `scripts/startup/nuclear_crash_report.py`, dead-man's switch, POST HTTPS pro `crash.php` reusando o
   token público de ping — sem segredo novo no build), **addon SVG ↔ Grease Pencil**
@@ -552,17 +571,17 @@ Atualizado em 2026-07-01.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.4.4 (Beta) — `NUCLEAR_BUILD = 9` (2026-07-01, deploy
+- **Versão em produção:** Nuclear 1.5.0 (Beta) — `NUCLEAR_BUILD = 10` (2026-07-06, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live). Máquinas em qualquer
-  build ≤ 8 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  build ≤ 9 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
-  1.4.3/b8 (2026-06-29) → **1.4.4/b9 (2026-07-01)**.
-- **nuclear.zip (b9, em produção):** 647.980.318 bytes, sha256
-  `630cab0f112fc1d7724cfbcb0666e8f7f0948c721d584832e78ee9e20ccb30e6`. Auto-contido por construção
+  1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → **1.5.0/b10 (2026-07-06)**.
+- **nuclear.zip (b10, em produção):** 646.626.577 bytes, sha256
+  `8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1`. Auto-contido por construção
   (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes do publish.
-  Backups no servidor: `nuclear.zip.bak-pre-1.4.4` (zip 1.4.3/b8 anterior),
-  `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7), `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6),
-  `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
+  Backups no servidor: `nuclear.zip.bak-pre-1.5.0` (zip 1.4.4/b9 anterior),
+  `nuclear.zip.bak-pre-1.4.4` (zip 1.4.3/b8), `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7),
+  `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6), `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
 - **Build dir:** `Nuclear/build` nesta máquina (checkout `Nuclear-git/Nuclear`), ou
   `~/Documentos/GitHub/build_nuclear_full` na máquina primária (out-of-source; container distrobox
   **`blender`** — ou `blenderdev` com toolchain reconstruído via dnf se o `blender` corromper,
