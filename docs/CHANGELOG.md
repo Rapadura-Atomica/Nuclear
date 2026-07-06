@@ -19,6 +19,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
   (ver [ADR](decisions/2026-07-06-gp-paint-toolkit-remaining-fixes.md))
 
 ### Added
+- **Tab Paint: grupo de ferramentas na toolbar + fill + fix das recentes (2026-07-06).** Grupo de
+  WorkSpaceTools na **coluna T** do viewport — **Draw / Erase / Fill / Tint / Smudge / Blur** +
+  **Lasso** — clicáveis enquanto desenha; cada uma seta o tipo do brush (síncrono, via o operador
+  `nuclear.gp_typed_stroke`, + o timer como reforço) e pinta. ⚠️ **Pegadinha-chave:** o poll do
+  `GREASE_PENCIL_OT_brush_stroke` exige `WM_toolsystem_active_tool_is_brush`, então cada tool
+  precisa de **`bl_options = {'USE_BRUSHES'}`** — sem isso pinta nada ("context is incorrect"). O
+  **Fill** usa `grease_pencil.fill` (balde), não `brush_stroke` (que só desenha as linhas-guia), e
+  a aba Brushes agora expõe os controles de fill (Precision/Dilate/Gaps/Gap Size/Layers). **Cores
+  recentes:** a palette "Nuclear Recent" agora fica **sempre** no slot `gpencil_paint.palette`
+  (antes uma palette avulsa no slot escondia as swatches). Só
+  `scripts/startup/nuclear_paint_toolkit.py`.
+  (ver [ADR](decisions/2026-07-06-gp-paint-toolkit-remaining-fixes.md))
+
 - **Tab Paint: modo Blur/Dissolve + raio e força do smudge (2026-07-06).** Segundo modo de
   smudge — `GPAINT_BRUSH_TYPE_BLUR` (novo append em `eBrushGPaintType`, roteado a
   `new_smooth_operation`) — que **dissolve/relaxa** traços existentes; botão "Blur / Dissolve
