@@ -689,6 +689,18 @@ struct PaintOperationExecutor {
     float opacity = ed::greasepencil::opacity_from_input_sample(
         extension_sample.pressure, brush_, settings_);
 
+    /* Nuclear: modulate opacity by the brush tip texture (Brush.mtex) when one is assigned,
+     * giving textured/grungy strokes. */
+    if (brush_->mtex.tex != nullptr) {
+      const float3 world_pos = math::transform_point(self.placement_.to_world_space(), position);
+      const float point3[3] = {world_pos.x, world_pos.y, world_pos.z};
+      float tex_rgba[4];
+      const Paint *paint = &scene_->toolsettings->gp_paint->paint;
+      const float tex_intensity = BKE_brush_sample_tex_3d(
+          paint, brush_, &brush_->mtex, point3, tex_rgba, 0, nullptr);
+      opacity *= tex_intensity;
+    }
+
     const float brush_radius_px = brush_radius_to_pixel_radius(
         rv3d, brush_, math::transform_point(self.placement_.to_world_space(), position));
 

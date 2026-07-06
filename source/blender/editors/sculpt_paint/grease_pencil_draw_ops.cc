@@ -116,6 +116,12 @@ static std::unique_ptr<GreasePencilStrokeOperation> get_stroke_operation(bContex
         return greasepencil::new_paint_operation(/* do_fill_guides = */ true);
       case GPAINT_BRUSH_TYPE_TINT:
         return greasepencil::new_tint_operation(stroke_mode == BRUSH_STROKE_ERASE);
+      case GPAINT_BRUSH_TYPE_SMUDGE:
+        /* Nuclear: reuse the sculpt grab operation to smear strokes in paint mode. */
+        return greasepencil::new_grab_operation(stroke_mode);
+      case GPAINT_BRUSH_TYPE_BLUR:
+        /* Nuclear: reuse the sculpt smooth operation to dissolve/blur strokes in paint mode. */
+        return greasepencil::new_smooth_operation(stroke_mode);
     }
   }
   else if (mode == PaintMode::SculptGPencil) {

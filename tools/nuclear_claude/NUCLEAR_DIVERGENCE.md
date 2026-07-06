@@ -52,6 +52,7 @@ revisão se as APIs do core que eles consomem mudarem.
 - `scripts/startup/nuclear_rig_auto.py` — Auto Rig ("esqueleto auto + ligação em lote"): operador `object.nuclear_rig_auto_skeleton` (casa peças por nome contra ontologia humanoide PT → monta espinha+membros num clique; não-casados ficam soltos) + `object.nuclear_rig_link_to_parent` (prende os selecionados sob o peg do ativo, padrão parent-to-active) + painel `VIEW3D_PT_nuclear_rig_auto` (aba "Rig"). Junta/pivô sempre geométrica (centróide da sobreposição filho∩pai). Python puro sobre a API de PegRig; refino no Peg Graph. Padrão do estúdio: **toda peça ganha uma peg** (não-reconhecidas viram peg raiz no composite). Validado headless vs `Carolina.blend` (56 pegs = 15 esqueleto + 41 acessório, pivôs nas juntas). Sem tool de toolbar (não edita `space_toolsystem_toolbar.py`). Doc: `tools/nuclear_claude/RigAutoFeature.md` (inclui a convenção de nomes). **Não cria ponto quente novo na §2.**
 - `scripts/startup/nuclear_telemetry.py` — telemetria de presença (→ rapaduraatomica.com.br)
 - `scripts/startup/nuclear_theme.py` — aplica o tema Nuclear (navy + "pill"/roundness) **globalmente** via `@persistent load_post` handler + apply no register, para que TODOS os templates (Nuclear, 2D Animation, Storyboarding) compartilhem a identidade — antes o tema morava só no `Nuclear/__init__.py` (Seam 6) e era revertido ao trocar de template, deixando 2D Animation/Storyboarding cinza. Só dado de tema (inclui `roundness` por widget), zero C. O bloco Seam 6 foi removido do `__init__.py` (dono único agora é este arquivo). **Não cria ponto quente na §2.**
+- `scripts/startup/nuclear_paint_toolkit.py` — kit de pintura GP na **tab Paint** (`bl_context="paint"`, ver §2): painéis Brushes (categorias + preview + toggle Smudge), Color (picker + swatches recentes via Palette), Size (px), Stabilizer, Symmetry (espelho ao vivo por dados). Timer captura cor pintada + default px; `load_post` default VertexColor. **Cria pontos quentes na §2** (a tab e o picker precisam de C).
 
 ### Application Template Nuclear (a "costura" de UI — P0/P1/P2)
 - `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam central. Contém:
@@ -268,6 +269,29 @@ usuário; o diálogo de recover filtra por `FILE_TYPE_BLENDER` que já inclui `.
 de filtro em `rna_space.cc` ("Filter Blender"/"Show .blend files") **devem ir pelo truque de
 tradução** no template Nuclear (`_TRANSLATIONS`), não por edição em C — fecha o item pendente
 do §3 sem virar ponto quente.
+
+### Ferramentas de pintura GP (tab Paint + picker Krita + brushes Smudge/Blur)
+
+Suporte C para o `nuclear_paint_toolkit.py` (§1). Nenhum mexe em DNA de struct nem exige
+versionamento — só **append de enums** e um **drawflag runtime**; rebase = re-aplicar cada seam.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/makesdna/DNA_space_enums.h` | `BCONTEXT_PAINT = 20` (append em `eSpaceButtons_Context`, antes de `BCONTEXT_TOT`) |
+| `source/blender/makesrna/intern/rna_space.cc` | item `PAINT` em `buttons_context_items[]` + `"show_properties_paint"` no `filter_items` de `rna_def_space_properties_filter` (ambos tamanho `BCONTEXT_TOT`, em lockstep) |
+| `source/blender/editors/space_buttons/buttons_context.cc` | `buttons_context_path_paint()` (gate GP + `OB_MODE_PAINT_GREASE_PENCIL`) + `case BCONTEXT_PAINT` no switch de `buttons_context_path` |
+| `source/blender/editors/space_buttons/space_buttons.cc` | `add_tab(BCONTEXT_PAINT)` (após Material) + `case BCONTEXT_PAINT: return "paint"` (a string do `bl_context`) + `"show_properties_paint"` no menu de visibilidade |
+| `source/blender/editors/include/UI_interface_c.hh` | `UI_BUT_HSV_TRIANGLE = 1 << 28` (drawflag runtime, bit livre) |
+| `source/blender/editors/interface/interface_intern.hh` | declara `ui_hsvtriangle_pos_from_vals` / `ui_hsvtriangle_vals_from_pos` |
+| `source/blender/editors/interface/interface_widgets.cc` | helpers de geometria + `ui_draw_but_HSVTRIANGLE` (anel de matiz + triângulo SV fixo) + branch no topo de `ui_draw_but_HSVCIRCLE` |
+| `source/blender/editors/interface/interface_handlers.cc` | branch em `ui_numedit_but_HSVCIRCLE` (banda do anel→hue, interior→sat/val baricêntrico) |
+| `source/blender/editors/interface/regions/interface_region_color_picker.cc` | `ui_colorpicker_circle`: OR do flag quando `U.color_picker_type == USER_CP_CIRCLE_HSV` |
+| `source/blender/editors/interface/templates/interface_template_color_picker.cc` | idem no picker inline + `WHEEL_SIZE` 5→7 (picker maior) |
+| `source/blender/makesdna/DNA_brush_enums.h` | `GPAINT_BRUSH_TYPE_SMUDGE = 4` **e `GPAINT_BRUSH_TYPE_BLUR = 5`** (appends em `eBrushGPaintType`) |
+| `source/blender/makesrna/intern/rna_brush.cc` | itens `SMUDGE` **e `BLUR`** em `rna_enum_brush_gpencil_types_items` |
+| `source/blender/editors/sculpt_paint/grease_pencil_draw_ops.cc` | `get_stroke_operation`: `case GPAINT_BRUSH_TYPE_SMUDGE → greasepencil::new_grab_operation(stroke_mode)` (reusa o grab do sculpt) **e `case GPAINT_BRUSH_TYPE_BLUR → greasepencil::new_smooth_operation(stroke_mode)` (reusa o smooth do sculpt p/ dissolver/borrar no modo paint)** |
+| `source/blender/editors/sculpt_paint/paint_cursor.cc` | `grease_pencil_brush_cursor_draw`: seta `pixel_radius = brush->size/2` p/ `GPAINT_BRUSH_TYPE_SMUDGE`/`_BLUR` (senão o anel do cursor fica raio 0 = invisível) |
+| `source/blender/editors/sculpt_paint/grease_pencil_paint.cc` | `PaintOperationExecutor` (~690): quando `brush->mtex.tex` existe, `BKE_brush_sample_tex_3d` na posição em world-space modula `opacity` → traços texturizados (textura de bico) |
 
 ---
 
