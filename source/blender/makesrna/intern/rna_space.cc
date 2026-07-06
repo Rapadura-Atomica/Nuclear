@@ -556,6 +556,7 @@ const EnumPropertyItem buttons_context_items[] = {
      ICON_SEQ_STRIP_MODIFIER,
      "Strip Modifiers",
      "Strip Modifier Properties"},
+    {BCONTEXT_PAINT, "PAINT", ICON_BRUSH_DATA, "Paint", "Grease Pencil Paint Settings"},
     {0, nullptr, 0, nullptr, nullptr},
 };
 
@@ -5896,6 +5897,7 @@ static void rna_def_space_properties_filter(StructRNA *srna)
       "show_properties_effects",
       "show_properties_strip",
       "show_properties_strip_modifier",
+      "show_properties_paint",
   };
 
   for (const int i : blender::IndexRange(BCONTEXT_TOT)) {

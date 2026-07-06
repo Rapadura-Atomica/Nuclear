@@ -536,6 +536,9 @@ static void ui_colorpicker_circle(uiBlock *block,
                       TIP_("Color"));
   UI_but_func_set(bt, ui_colorpicker_rgba_update_cb, bt, bt);
   bt->custom_data = cpicker;
+  if (U.color_picker_type == USER_CP_CIRCLE_HSV) {
+    bt->drawflag |= UI_BUT_HSV_TRIANGLE; /* Nuclear: Krita-style ring + SV triangle. */
+  }
 
   /* value */
   if (U.color_picker_type == USER_CP_CIRCLE_HSL) {

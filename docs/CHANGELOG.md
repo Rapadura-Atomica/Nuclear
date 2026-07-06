@@ -5,6 +5,55 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **Tab Paint: ferramentas de brush e Lasso Fill (2026-07-06).** As categorias
+  **Draw/Erase/Fill/Tint** não trocavam/aplicavam porque usavam `wm.tool_set_by_id`; no
+  Blender 5.0 os brushes GP são **assets read-only** e a operação vem do **tipo do brush**
+  (`get_stroke_operation`), não da ferramenta — além de **Draw e Tint** apontarem pro mesmo
+  `builtin.brush` (Tint nunca virava tint). Agora `_BRUSH_TABS` mapeia os tipos e
+  `nuclear.brush_tab` seta `brush.gpencil_brush_type` (+ garante `builtin.brush` ativo), o
+  mesmo mecanismo que o toggle de Smudge já usa. O **Lasso Fill** não perde mais o brush: além
+  da `NuclearLassoFillTool` da toolbar, há agora um **botão "Lasso Fill" na aba Brushes** que
+  roda o modal **sem trocar de ferramenta**, então o brush ativo e seus controles permanecem
+  (o fill em si já renderizava e já usava a cor do brush — confirmado ao vivo).
+  Só `scripts/startup/nuclear_paint_toolkit.py`.
+  (ver [ADR](decisions/2026-07-06-gp-paint-toolkit-remaining-fixes.md))
+
+### Added
+- **Tab Paint: grupo de ferramentas na toolbar + fill + fix das recentes (2026-07-06).** Grupo de
+  WorkSpaceTools na **coluna T** do viewport — **Draw / Erase / Fill / Tint / Smudge / Blur** +
+  **Lasso** — clicáveis enquanto desenha; cada uma seta o tipo do brush (síncrono, via o operador
+  `nuclear.gp_typed_stroke`, + o timer como reforço) e pinta. ⚠️ **Pegadinha-chave:** o poll do
+  `GREASE_PENCIL_OT_brush_stroke` exige `WM_toolsystem_active_tool_is_brush`, então cada tool
+  precisa de **`bl_options = {'USE_BRUSHES'}`** — sem isso pinta nada ("context is incorrect"). O
+  **Fill** usa `grease_pencil.fill` (balde), não `brush_stroke` (que só desenha as linhas-guia), e
+  a aba Brushes agora expõe os controles de fill (Precision/Dilate/Gaps/Gap Size/Layers). **Cores
+  recentes:** a palette "Nuclear Recent" agora fica **sempre** no slot `gpencil_paint.palette`
+  (antes uma palette avulsa no slot escondia as swatches). Só
+  `scripts/startup/nuclear_paint_toolkit.py`.
+  (ver [ADR](decisions/2026-07-06-gp-paint-toolkit-remaining-fixes.md))
+
+- **Tab Paint: modo Blur/Dissolve + raio e força do smudge (2026-07-06).** Segundo modo de
+  smudge — `GPAINT_BRUSH_TYPE_BLUR` (novo append em `eBrushGPaintType`, roteado a
+  `new_smooth_operation`) — que **dissolve/relaxa** traços existentes; botão "Blur / Dissolve
+  Mode" ao lado de "Smudge Mode" + slider **Strength**. Corrigido no mesmo esforço: (a) o
+  **raio** do smudge/blur não escalava porque as ops de sculpt leem o tamanho via
+  `BKE_brush_size_get` (unified-aware) e `use_unified_size` vinha ligado → agora o GP paint
+  desliga o unified size e `brush.size` (painel + cursor) passa a valer; (b) o **blur não fazia
+  nada** porque `SmoothOperation` só age sob `sculpt_mode_flag & APPLY_*` → o toggle liga
+  `use_edit_position`/`use_edit_strength` ao entrar em Blur; (c) o **cursor** (bolinha) de
+  SMUDGE/BLUR não aparecia (raio 0 em `paint_cursor.cc`) → agora usa `brush.size/2`. Seams C
+  (DNA + RNA + case + cursor) registradas no `NUCLEAR_DIVERGENCE.md`. Arquivos:
+  `DNA_brush_enums.h`, `rna_brush.cc`, `grease_pencil_draw_ops.cc`, `paint_cursor.cc`,
+  `nuclear_paint_toolkit.py`. Exige rebuild.
+  (ver [ADR](decisions/2026-07-06-gp-paint-toolkit-remaining-fixes.md))
+
+### Removed
+- **Tab Paint: grunge texture (2026-07-06).** Removida a pedido do usuário: sai a UI/operador
+  Python (`nuclear.gp_add_tip_texture` + botão "Grunge Texture") e reverte-se o fallback C
+  não commitado em `grease_pencil_paint.cc` (volta ao HEAD, que mantém a amostragem de
+  `brush->mtex.tex` — inerte, pois GP não expõe `mtex` via Python).
+  (ver [ADR](decisions/2026-07-06-gp-paint-toolkit-remaining-fixes.md))
+
 - **Peg Graph perdia o layout do rigger (2026-06-24).** O arranjo dos nós (posições e frames) se
   perdia ao dar **Sync**/Add Peg, ao criar **frames** com **F** (`node.join_named`) e — pior — ao
   **exportar o rig para outro arquivo**. Causas: `rebuild()` recriava a árvore lendo

@@ -798,6 +798,12 @@ void ui_hsvcircle_vals_from_pos(
  */
 void ui_hsvcircle_pos_from_vals(
     const ColorPicker *cpicker, const rcti *rect, const float *hsv, float *r_xpos, float *r_ypos);
+/**
+ * Nuclear: Krita-style ring+triangle picker. Saturation/value <-> position inside the triangle.
+ */
+void ui_hsvtriangle_pos_from_vals(const rcti *rect, const float *hsv, float *r_xpos, float *r_ypos);
+void ui_hsvtriangle_vals_from_pos(
+    const rcti *rect, float mx, float my, float *r_s, float *r_v);
 void ui_hsvcube_pos_from_vals(
     const uiButHSVCube *hsv_but, const rcti *rect, const float *hsv, float *r_xp, float *r_yp);
 

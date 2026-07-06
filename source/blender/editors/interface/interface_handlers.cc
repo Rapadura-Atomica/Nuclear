@@ -7185,6 +7185,35 @@ static bool ui_numedit_but_HSVCIRCLE(uiBut *but,
     }
   }
 
+  /* Nuclear: Krita-style ring+triangle. Ring band edits hue; triangle interior edits sat/value. */
+  if (but->drawflag & UI_BUT_HSV_TRIANGLE) {
+    const float centx = BLI_rcti_cent_x_fl(&rect);
+    const float centy = BLI_rcti_cent_y_fl(&rect);
+    const float radius = float(min_ii(BLI_rcti_size_x(&rect), BLI_rcti_size_y(&rect))) / 2.0f;
+    const float dx = mx_fl - centx, dy = my_fl - centy;
+    /* 0.90f must match HSV_TRI_RING_INNER in interface_widgets.cc. */
+    if (sqrtf(dx * dx + dy * dy) >= radius * 0.90f) {
+      hsv[0] = atan2f(dx, dy) / (2.0f * float(M_PI)) + 0.5f;
+    }
+    else {
+      ui_hsvtriangle_vals_from_pos(&rect, mx_fl, my_fl, &hsv[1], &hsv[2]);
+    }
+    if (snap != SNAP_OFF) {
+      ui_color_snap_hue(snap, &hsv[0]);
+    }
+    ui_color_picker_hsv_to_rgb(hsv, rgb);
+    if (cpicker->use_luminosity_lock) {
+      if (!is_zero_v3(rgb)) {
+        normalize_v3_length(rgb, cpicker->luminosity_lock_value);
+      }
+    }
+    ui_perceptual_to_scene_linear_space(but, rgb);
+    ui_but_v3_set(but, rgb);
+    data->draglastx = mx;
+    data->draglasty = my;
+    return changed;
+  }
+
   /* only apply the delta motion, not absolute */
   if (shift) {
     float xpos, ypos, hsvo[3], rgbo[3];
