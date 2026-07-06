@@ -214,17 +214,12 @@ bool BKE_appdir_folder_caches(char *path, const size_t path_maxncpy)
   }
 
 #ifdef WIN32
-  BLI_path_join(path,
-                path_maxncpy,
-                caches_root_path->c_str(),
-                "Blender Foundation",
-                "Blender",
-                "Cache",
-                SEP_STR);
+  BLI_path_join(
+      path, path_maxncpy, caches_root_path->c_str(), "Nuclear", "Cache", SEP_STR);
 #elif defined(__APPLE__)
-  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), "Blender", SEP_STR);
+  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), "Nuclear", SEP_STR);
 #else /* __linux__ */
-  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), "blender", SEP_STR);
+  BLI_path_join(path, path_maxncpy, caches_root_path->c_str(), "Nuclear", SEP_STR);
 #endif
 
   return true;

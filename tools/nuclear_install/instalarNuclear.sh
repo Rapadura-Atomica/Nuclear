@@ -129,8 +129,21 @@ update-mime-database "$HOME/.local/share/mime" >/dev/null 2>&1 || true
 
 # --- 5. addons externos ------------------------------------------------------
 
+# Rebrand: a pasta de config passou de 'blender' para 'Nuclear'. Migra os settings
+# de quem ja rodava o Nuclear para nao perder tema/keymaps/addons (idempotente:
+# so copia se a pasta nova ainda nao existir).
+CFG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
+LEGACY_CFG="$CFG_ROOT/blender/$VERSION"
+NUCLEAR_CFG="$CFG_ROOT/Nuclear/$VERSION"
+if [ -d "$LEGACY_CFG" ] && [ ! -e "$NUCLEAR_CFG" ]; then
+    mkdir -p "$CFG_ROOT/Nuclear"
+    if cp -a "$LEGACY_CFG" "$NUCLEAR_CFG" 2>/dev/null; then
+        echo "[OK] Config migrada: blender/$VERSION -> Nuclear/$VERSION"
+    fi
+fi
+
 echo "[5/5] Instalando addons externos"
-ADDONS_DIR="$HOME/.config/blender/$VERSION/scripts/addons"
+ADDONS_DIR="$NUCLEAR_CFG/scripts/addons"
 mkdir -p "$ADDONS_DIR"
 TMP_A="$(mktemp -d)"; trap 'rm -rf "$TMP_A"' EXIT
 if wget --show-progress -q -O "$TMP_A/addons.zip" "$ADDONS_DOWNLOAD_URL"; then

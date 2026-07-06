@@ -36,7 +36,7 @@ const char *GHOST_SystemPathsUnix::getSystemDir(int /*version*/, const char *ver
 {
   /* no prefix assumes a portable build which only uses bundled scripts */
   if (static_path) {
-    static string system_path = string(static_path) + "/blender/" + versionstr;
+    static string system_path = string(static_path) + "/Nuclear/" + versionstr;
     return system_path.c_str();
   }
 
@@ -85,12 +85,12 @@ const char *GHOST_SystemPathsUnix::getUserDir(int version, const char *versionst
     last_version = version;
 
     if (home) {
-      user_path = string(home) + "/blender/" + versionstr;
+      user_path = string(home) + "/Nuclear/" + versionstr;
     }
     else {
       home = home_dir_get();
       if (home) {
-        user_path = string(home) + "/.config/blender/" + versionstr;
+        user_path = string(home) + "/.config/Nuclear/" + versionstr;
       }
       else {
         return nullptr;
