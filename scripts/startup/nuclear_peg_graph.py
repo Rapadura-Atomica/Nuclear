@@ -593,22 +593,45 @@ def _apply_frames(tree, frames, node_by_key):
 
 
 # -------------------------------------------------------------------------------------------------
-# Auto-grouped layout: one labelled frame per body region (arms, legs, head), packed horizontally.
-# A region = the sub-tree of a "limb root" (a direct child of a root peg that has descendants or is
-# recognised as a limb). Everything else under the root (the root peg + leaf accessories) is the body
-# region; unbound drawings go to a "Soltos" region. The grouping is derived from the hierarchy, so it
-# works for any creature; the friendly labels come from the humanoid name ontology when it matches.
+# Vertical anatomical layout: riggers read a rig head-at-top ↔ feet-at-bottom, so frames are placed in
+# a body silhouette — head / torso / pelvis run down a CENTRE column; arms and legs flank it on the E
+# (esquerda, left) and D (direita, right) side columns; each region's own chain runs top→bottom. The
+# structural spine joints (pelvis/shoulder) stay in the central body, so limbs are found by descending
+# through them. Big gaps between frames. Grouping is derived from the hierarchy (works for any creature);
+# the friendly labels come from the humanoid name ontology when it matches.
 # -------------------------------------------------------------------------------------------------
 
-_REGION_COL = 320.0   # x per hierarchy depth inside a region
-_REGION_ROW = 210.0   # y per sibling row
-_REGION_GAP = 520.0   # x gap between region frames
+_COL = 300.0          # x between sibling pegs inside a region
+_ROW = 260.0          # y between depth levels inside a region (the chain runs downward)
+_TIER_GAP = 1500.0    # vertical gap between anatomical tiers (frame → frame) — kept wide on purpose
+_SIDE_GAP = 2100.0    # horizontal gap from the centre column out to the E/D limb columns
+
+_SPINE_ROLES = {"torso", "pelvis", "clavicle"}
 _LIMB_ROLES = {"neck", "head", "upperarm", "forearm", "hand", "thigh", "shin", "foot"}
 _REGION_BASE_LABEL = {
     "torso": "Tronco", "neck": "Cabeça", "head": "Cabeça",
-    "upperarm": "Braço", "forearm": "Braço", "hand": "Mão",
-    "thigh": "Perna", "shin": "Perna", "foot": "Pé",
+    "clavicle": "Ombro", "upperarm": "Braço", "forearm": "Braço", "hand": "Mão",
+    "pelvis": "Quadril", "thigh": "Perna", "shin": "Perna", "foot": "Pé",
 }
+# region root role -> (tier, column). tier grows downward; column 'C' = centre spine, 'S' = a side
+# column chosen by the region's .e/.d side. Head sits above the torso; arms flank at torso height;
+# legs flank below — so reading bottom→top is foot→head and top→bottom is head→foot.
+_ANAT_SLOT = {
+    "neck": (0, "C"), "head": (0, "C"), "torso": (1, "C"),
+    "upperarm": (1, "S"), "forearm": (1, "S"), "hand": (2, "S"),
+    "thigh": (2, "S"), "shin": (2, "S"), "foot": (3, "S"),
+}
+
+# Loose accessories (still unlinked after Auto-Build) are guessed into a body region by name — like a
+# rigger parks the eyes near the head and the cape near the torso — so the graph reads as a figure even
+# before the animator links them. Substring match against the normalised piece name; unmatched → Soltos.
+_ACC_HEAD = ("olho", "pupila", "iris", "cilio", "sobrance", "sob", "oculos", "nariz", "boca", "labio",
+             "dente", "lingua", "orelha", "cabelo", "coque", "franja", "bandana", "chapeu", "boina",
+             "bigode", "barba", "rosto", "sarda", "cabeca")
+_ACC_TORSO = ("capa", "capuz", "casaco", "camisa", "blusa", "colete", "cinto", "colar", "gravata",
+              "botao", "manga", "vestido", "saia", "mochila", "peito", "costas")
+_ACC_COL = 380.0      # x between family columns inside an accessory frame
+_ACC_ROW = 150.0      # y between items stacked in one family column
 
 
 def _region_label(peg_name):
@@ -628,7 +651,8 @@ def _region_label(peg_name):
 
 
 def compute_grouped_layout(rig):
-    """Write a body-region grouped, horizontally-packed layout to the rig's layout property."""
+    """Write a vertical, anatomically-ordered layout (head top → feet bottom) to the rig's layout
+    property: head/torso/pelvis down a centre column, limbs flanking on E/D side columns, wide gaps."""
     if rig is None or len(rig.pegs) == 0:
         return
     pegs = rig.pegs
@@ -643,6 +667,17 @@ def compute_grouped_layout(rig):
     for ob, peg_name in _bound_objects(rig):
         (draws_by_peg.setdefault(peg_name, []).append(ob.name) if peg_name else loose.append(ob.name))
 
+    def role_side(idx):
+        try:
+            import nuclear_rig_auto as _nra
+            return _nra._match_role(pegs[idx].name)
+        except Exception:
+            return None
+
+    def role_of(idx):
+        m = role_side(idx)
+        return m[0] if m else None
+
     def subtree(idx):
         out, stack = [], [idx]
         while stack:
@@ -652,93 +687,148 @@ def compute_grouped_layout(rig):
         return out
 
     def is_limb_root(c):
-        if children[c]:
-            return True
-        try:
-            import nuclear_rig_auto as _nra
-            m = _nra._match_role(pegs[c].name)
-            return m is not None and m[0] in _LIMB_ROLES
-        except Exception:
-            return False
+        return bool(children[c]) or (role_of(c) in _LIMB_ROLES)
 
-    def is_torso(idx):
-        try:
-            import nuclear_rig_auto as _nra
-            m = _nra._match_role(pegs[idx].name)
-            return m is not None and m[0] == "torso"
-        except Exception:
-            return False
+    # Limb region roots = the first non-spine, limb-ish peg on each branch, descending THROUGH the
+    # structural spine joints (pelvis/shoulder stay in the central body, not their own region).
+    def limb_roots_under(idx):
+        out = []
+        for c in children[idx]:
+            if role_of(c) in _SPINE_ROLES:
+                out.extend(limb_roots_under(c))
+            elif is_limb_root(c):
+                out.append(c)
+        return out
 
-    # Only a "spine root" (a root peg that is the torso or has descendants) anchors the skeleton
-    # regions. Accessory pieces — which now each carry their own root peg (studio standard: every
-    # piece has a peg) — are leaf roots and fall through to the single "Soltos" frame below, instead
-    # of each becoming its own region.
-    main_roots = [r for r in roots if children[r] or is_torso(r)]
-    regions = []          # (label, [peg_idx...], root_idx)
-    claimed_pegs = set()
+    main_roots = [r for r in roots if children[r] or role_of(r) == "torso"]
+    regions = []          # (label, [idx...], root_idx, tier, col, side)
+    claimed = set()
     for r in main_roots:
-        limb_children = [c for c in children[r] if is_limb_root(c)]
+        limbs = limb_roots_under(r)
         limb_set = set()
-        for c in limb_children:
+        for c in limbs:
             limb_set.update(subtree(c))
         body = [i for i in subtree(r) if i not in limb_set]
-        regions.append((_region_label(pegs[r].name), body, r))
-        claimed_pegs.update(subtree(r))
-        for c in limb_children:
-            regions.append((_region_label(pegs[c].name), subtree(c), c))
+        regions.append((_region_label(pegs[r].name), body, r, 1, "C", None))
+        claimed.update(subtree(r))
+        for c in limbs:
+            m = role_side(c)
+            role, side = (m[0], m[1]) if m else (None, None)
+            tier, col = _ANAT_SLOT.get(role, (2, "S"))
+            regions.append((_region_label(pegs[c].name), subtree(c), c, tier, col, side))
 
     pegs_pos, draws_pos, frames = {}, {}, []
-    x_cursor = 0.0
-    for label, idxs, root_idx in regions:
-        base_depth = _peg_depth(rig, root_idx)
-        col_rows, members, max_col = {}, [], 0
-        for idx in sorted(idxs, key=lambda j: _peg_depth(rig, j)):
-            d = _peg_depth(rig, idx) - base_depth
-            row = col_rows.get(d, 0)
-            col_rows[d] = row + 1
-            pegs_pos[pegs[idx].name] = [x_cursor + d * _REGION_COL, -row * _REGION_ROW]
-            members.append(["peg", pegs[idx].name])
-            max_col = max(max_col, d)
-            for obn in draws_by_peg.get(pegs[idx].name, []):
-                dc = d + 1
-                drow = col_rows.get(dc, 0)
-                col_rows[dc] = drow + 1
-                draws_pos[obn] = [x_cursor + dc * _REGION_COL, -drow * _REGION_ROW]
-                members.append(["draw", obn])
-                max_col = max(max_col, dc)
-        width = (max_col + 1) * _REGION_COL
-        frames.append({"label": label, "use_custom_color": False, "color": [0.3, 0.3, 0.3],
-                       "label_size": 26, "shrink": True, "loc": [x_cursor, 220.0],
-                       "width": width, "height": 0.0, "members": members})
-        x_cursor += width + _REGION_GAP
+    used = {"C": set(), "L": set(), "R": set()}
 
-    # Everything not claimed by a skeleton region -> one "Soltos" frame: accessory pegs (+ their
-    # drawings) and any peg-less loose drawings, flowed in a grid of peg|drawing cells.
-    leftover = [i for i in range(n) if i not in claimed_pegs]
-    if leftover or loose:
-        members, per_row, cell = [], 6, 0
-        for idx in leftover:
-            pname = pegs[idx].name
-            px = x_cursor + (cell % per_row) * (2 * _REGION_COL)
-            py = -(cell // per_row) * (2 * _REGION_ROW)
-            pegs_pos[pname] = [px, py]
-            members.append(["peg", pname])
-            for di, obn in enumerate(draws_by_peg.get(pname, [])):
-                draws_pos[obn] = [px + _REGION_COL, py - di * _REGION_ROW]
+    def free_tier(column, tier):
+        while tier in used[column]:
+            tier += 1
+        used[column].add(tier)
+        return tier
+
+    def place(idxs, root_idx, ox, oy, grow_left):
+        """Lay a region's chain out downward from (ox, oy); siblings spread on x. Returns
+        (members, left_x, width)."""
+        base = _peg_depth(rig, root_idx)
+        sib, members, xs = {}, [], []
+        s = -1.0 if grow_left else 1.0
+        for idx in sorted(idxs, key=lambda j: _peg_depth(rig, j)):
+            d = _peg_depth(rig, idx) - base
+            c = sib.get(d, 0)
+            sib[d] = c + 1
+            x = ox + s * c * _COL
+            y = oy - d * _ROW
+            pegs_pos[pegs[idx].name] = [x, y]
+            members.append(["peg", pegs[idx].name])
+            xs.append(x)
+            for k, obn in enumerate(draws_by_peg.get(pegs[idx].name, [])):
+                dx = x + s * (0.55 + k) * _COL
+                draws_pos[obn] = [dx, y]
                 members.append(["draw", obn])
-            cell += 1
-        for obn in loose:
-            px = x_cursor + (cell % per_row) * (2 * _REGION_COL)
-            py = -(cell // per_row) * (2 * _REGION_ROW)
-            draws_pos[obn] = [px, py]
-            members.append(["draw", obn])
-            cell += 1
-        frames.append({"label": "Soltos", "use_custom_color": False, "color": [0.3, 0.3, 0.3],
-                       "label_size": 26, "shrink": True, "loc": [x_cursor, 220.0],
-                       "width": per_row * 2 * _REGION_COL, "height": 0.0, "members": members})
+                xs.append(dx)
+        left = min(xs) if xs else ox
+        width = (max(xs) - min(xs) + _COL) if xs else _COL
+        return members, left, width
+
+    for label, idxs, root_idx, tier, col, side in regions:
+        column = "C" if (col == "C" or side is None) else ("L" if side == "L" else "R")
+        ox = 0.0 if column == "C" else (-_SIDE_GAP if column == "L" else _SIDE_GAP)
+        oy = -free_tier(column, tier) * _TIER_GAP
+        members, left, width = place(idxs, root_idx, ox, oy, column == "L")
+        frames.append({"label": label, "use_custom_color": False, "color": [0.3, 0.3, 0.3],
+                       "label_size": 26, "shrink": True, "loc": [left, oy + 200.0],
+                       "width": width, "height": 0.0, "members": members})
+
+    # Loose accessories (unclaimed by any skeleton region): bucket each into a body region by name,
+    # then group each bucket by name-family into tidy columns. Frames stack down a far-right column so
+    # the figure on the left stays clean. Buckets: head accessories on top, torso next, Soltos last.
+    def _norm_core(nm):
+        try:
+            import nuclear_rig_auto as _nra
+            return _nra._norm(nm)[0]
+        except Exception:
+            return nm.lower()
+
+    def acc_region(nm):
+        core = _norm_core(nm)
+        if any(t in core for t in _ACC_HEAD):
+            return "head"
+        if any(t in core for t in _ACC_TORSO):
+            return "torso"
+        return "loose"
+
+    leftover = [i for i in range(n) if i not in claimed]
+    buckets = {"head": [], "torso": [], "loose": []}   # region -> [(kind, peg_name_or_None, draw_name)]
+    for idx in leftover:
+        pname = pegs[idx].name
+        d0 = draws_by_peg.get(pname, [])
+        buckets[acc_region(d0[0] if d0 else pname)].append(("peg", pname, d0[0] if d0 else None))
+        for extra in d0[1:]:
+            buckets[acc_region(extra)].append(("draw", None, extra))
+    for obn in loose:
+        buckets[acc_region(obn)].append(("draw", None, obn))
+
+    acc_x = 2.4 * _SIDE_GAP
+    acc_top = 0.0
+    acc_meta = [("head", "Cabeça · acessórios"), ("torso", "Tronco · acessórios"), ("loose", "Soltos")]
+    for bkey, blabel in acc_meta:
+        items = buckets[bkey]
+        if not items:
+            continue
+        fams = {}                          # family core -> [items] (insertion-ordered)
+        for it in items:
+            fams.setdefault(_norm_core(it[2] or it[1]), []).append(it)
+        flat = [it for its in fams.values() for it in its]   # sorted so families stay contiguous
+        members, xs, ys = [], [], []
+        # compact vertical-major grid: fill a column top→down, then wrap to the next column. Same-family
+        # items stay adjacent because `flat` is family-ordered. ~10 rows keeps frames from getting tall.
+        rows = 10
+        cx, row = acc_x, 0
+        for kind, pname, dname in flat:
+            px, py = cx, acc_top - row * _ACC_ROW
+            if kind == "peg":
+                pegs_pos[pname] = [px, py]
+                members.append(["peg", pname])
+                if dname:
+                    draws_pos[dname] = [px + 0.5 * _ACC_COL, py]
+                    members.append(["draw", dname])
+                    xs.append(px + 0.5 * _ACC_COL)
+            else:
+                draws_pos[dname] = [px, py]
+                members.append(["draw", dname])
+            xs.append(px)
+            ys.append(py)
+            row += 1
+            if row >= rows:
+                row, cx = 0, cx + _ACC_COL
+        frames.append({"label": blabel, "use_custom_color": False, "color": [0.3, 0.3, 0.3],
+                       "label_size": 26, "shrink": True, "loc": [acc_x - 40, acc_top + 200.0],
+                       "width": (max(xs) - acc_x + _ACC_COL) if xs else _ACC_COL,
+                       "height": 0.0, "members": members})
+        acc_top = (min(ys) if ys else acc_top) - _TIER_GAP   # next bucket below, wide gap
 
     rig[_LAYOUT_KEY] = json.dumps({"pegs": pegs_pos, "draws": draws_pos,
-                                   "rig": [-_REGION_COL, 220.0], "frames": frames})
+                                   "rig": [0.0, 400.0], "frames": frames})
 
 
 # -------------------------------------------------------------------------------------------------
