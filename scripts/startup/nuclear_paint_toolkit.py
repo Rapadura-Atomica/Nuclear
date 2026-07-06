@@ -48,6 +48,9 @@ _last_stroke_count = [None]
 # Active object at the last tick — when it changes (or a file loads) the stroke baseline must
 # reset, else a switch to an object with fewer strokes stops recent-color capture.
 _last_object = [None]
+# Symmetry mirrors only AFTER a stroke finishes (its point count stops growing), never mid-stroke.
+_pending_mirror = [None]      # (start, end) stroke range awaiting a stable point count, or None
+_last_pointcount = [None]     # point count of the active drawing's last stroke at the last tick
 # Brushes already given the Krita-style pixel-size default this session (one-time per brush,
 # so the artist's later View/Scene toggle is respected).
 _px_defaulted = set()
@@ -101,6 +104,19 @@ def _drawn_stroke_count(context):
         return None
 
 
+def _last_stroke_pointcount(context):
+    """Point count of the active drawing's last stroke (to detect when a stroke stops growing)."""
+    ob = getattr(context, "object", None)
+    if not ob or ob.type != 'GREASEPENCIL':
+        return None
+    try:
+        frame = ob.data.layers.active.current_frame()
+        strokes = frame.drawing.strokes if frame and frame.drawing else None
+        return len(strokes[-1].points) if strokes and len(strokes) else 0
+    except Exception:
+        return None
+
+
 # -----------------------------------------------------------------------------
 # Symmetry — Krita-style live mirroring. Done by copying stroke DATA (never operators or
 # mode switches, which crash from paint context) across the object-local origin planes.
@@ -127,6 +143,8 @@ def _snapshot_stroke(src):
     return (
         src.material_index,
         src.cyclic,
+        tuple(src.fill_color),
+        src.fill_opacity,
         [(tuple(p.position), p.radius, p.opacity, tuple(p.vertex_color)) for p in src.points],
     )
 
@@ -140,12 +158,14 @@ def _mirror_new_strokes(context, start, end, combos):
         return
     strokes = drawing.strokes
     snaps = [_snapshot_stroke(strokes[i]) for i in range(start, min(end, len(strokes)))]
-    for mat, cyclic, pts in snaps:
+    for mat, cyclic, fcol, fop, pts in snaps:
         for sx, sy, sz in combos:
             drawing.add_strokes([len(pts)])
             dst = drawing.strokes[-1]
             dst.material_index = mat
             dst.cyclic = cyclic
+            dst.fill_color = fcol
+            dst.fill_opacity = fop
             for i, (pos, rad, op, vc) in enumerate(pts):
                 dp = dst.points[i]
                 dp.position = (pos[0] * sx, pos[1] * sy, pos[2] * sz)
@@ -231,18 +251,41 @@ def _color_poll_timer():
         if ob_key != _last_object[0]:          # object switched -> restart stroke tracking
             _last_object[0] = ob_key
             _last_stroke_count[0] = None
+            _pending_mirror[0] = None
+            _last_pointcount[0] = None
         cnt = _drawn_stroke_count(context)
+        wm = context.window_manager
         if cnt is not None:
             last = _last_stroke_count[0]
             if last is not None and cnt > last:
-                rgb = _effective_color(context)
-                if rgb is not None:
-                    _push_recent_color(context, rgb)
-                wm = context.window_manager
-                combos = _symmetry_signs(wm) if wm is not None else []
-                if combos:
-                    _mirror_new_strokes(context, last, cnt, combos)
-                    cnt = _drawn_stroke_count(context) or cnt  # count the mirrors too
+                # New stroke started: capture its color now (only for the Draw brush, so smudge
+                # and fill strokes don't pollute recents). A stroke pending from before is
+                # certainly finished, so mirror it; then queue the new one (mirrored on finish).
+                _b = _gp_paint_brush(context)
+                if _b is not None and _b.gpencil_brush_type == 'DRAW':
+                    rgb = _effective_color(context)
+                    if rgb is not None:
+                        _push_recent_color(context, rgb)
+                if _pending_mirror[0] is not None:
+                    ps, pe = _pending_mirror[0]
+                    combos = _symmetry_signs(wm) if wm is not None else []
+                    if combos:
+                        _mirror_new_strokes(context, ps, pe, combos)
+                _pending_mirror[0] = (last, cnt) if (wm is not None and _symmetry_signs(wm)) else None
+                _last_pointcount[0] = _last_stroke_pointcount(context)
+                cnt = _drawn_stroke_count(context) or cnt
+            elif _pending_mirror[0] is not None and last is not None and cnt == last:
+                # Same count: mirror once the last stroke's point count settles (stroke finished).
+                pc = _last_stroke_pointcount(context)
+                if pc is not None and pc == _last_pointcount[0]:
+                    start, end = _pending_mirror[0]
+                    _pending_mirror[0] = None
+                    combos = _symmetry_signs(wm) if wm is not None else []
+                    if combos:
+                        _mirror_new_strokes(context, start, end, combos)
+                        cnt = _drawn_stroke_count(context) or cnt
+                else:
+                    _last_pointcount[0] = pc
             _last_stroke_count[0] = cnt
         # One-time Krita-style pixel-size default per brush (respects later toggling).
         brush = _gp_paint_brush(context)
@@ -264,6 +307,8 @@ def _apply_paint_defaults(*_args):
     _px_defaulted.clear()  # re-apply the pixel-size default to the freshly loaded file's brushes
     _last_stroke_count[0] = None  # restart recent-color tracking for the new file
     _last_object[0] = None
+    _pending_mirror[0] = None
+    _last_pointcount[0] = None
     # Recents start EMPTY every file/session and only fill as colors are actually painted.
     pal = _recent_palette(create=False)
     if pal is not None:
@@ -312,6 +357,205 @@ class NUCLEAR_OT_smudge_toggle(Operator):
         return {'FINISHED'}
 
 
+class NUCLEAR_OT_add_tip_texture(Operator):
+    """Create a grunge tip texture (procedural noise, spatial 3D mapping) for textured strokes"""
+    bl_idname = "nuclear.gp_add_tip_texture"
+    bl_label = "Add Grunge Texture"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _gp_paint_brush(context) is not None
+
+    def execute(self, context):
+        import numpy as np
+        brush = _gp_paint_brush(context)
+        # GP brushes ship as linked library assets (read-only), so texture assignment is silently
+        # ignored. Make the brush local first, then a fresh local IMAGE texture sticks.
+        if brush.library is not None:
+            brush.make_local()
+            brush = _gp_paint_brush(context)
+        if brush is None:
+            return {'CANCELLED'}
+        img = bpy.data.images.get("Nuclear Grunge")
+        if img is None:
+            size = 256
+            rng = np.random.default_rng(5)
+            grey = np.clip((rng.random((size, size)).astype('float32') - 0.5) * 1.9 + 0.5, 0.0, 1.0)
+            rgba = np.empty((size, size, 4), 'float32')
+            rgba[..., 0] = grey
+            rgba[..., 1] = grey
+            rgba[..., 2] = grey
+            rgba[..., 3] = 1.0
+            img = bpy.data.images.new("Nuclear Grunge", size, size)
+            img.pixels.foreach_set(rgba.ravel())
+            img.pack()
+        tex = bpy.data.textures.new("Nuclear Grunge Tex", type='IMAGE')
+        tex.image = img
+        brush.texture = tex
+        # Spatial 3D mapping is what the paint-op sampler (world position) expects; a fine scale
+        # gives a visible grain along the stroke.
+        slot = brush.texture_slot
+        slot.map_mode = '3D'
+        slot.scale = (12.0, 12.0, 12.0)
+        self.report({'INFO'}, "Grunge tip texture added (brush made local)")
+        return {'FINISHED'}
+
+
+def _lasso_draw_px(op, context):
+    """Draw the in-progress lasso outline in the viewport (pixel space)."""
+    if not getattr(op, "_points", None) or len(op._points) < 2:
+        return
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    coords = [(float(x), float(y)) for (x, y) in op._points]
+    coords.append(coords[0])  # close the loop visually
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": coords})
+    gpu.state.line_width_set(1.5)
+    gpu.state.blend_set('ALPHA')
+    shader.bind()
+    shader.uniform_float("color", (0.9, 0.9, 0.2, 0.9))
+    batch.draw(shader)
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set('NONE')
+
+
+def _ensure_fill_material(ob, rgb):
+    """Index of a fill-enabled GP material on ``ob`` (reuse one, else create 'Lasso Fill')."""
+    for i, ms in enumerate(ob.material_slots):
+        m = ms.material
+        if m is not None and m.grease_pencil is not None and m.grease_pencil.show_fill:
+            return i
+    mat = bpy.data.materials.new("Lasso Fill")
+    bpy.data.materials.create_gpencil_data(mat)
+    gp = mat.grease_pencil
+    gp.show_fill = True
+    gp.show_stroke = False
+    gp.fill_color = (1.0, 1.0, 1.0, 1.0)  # white base; the per-stroke fill_color tints it
+    ob.data.materials.append(mat)
+    return len(ob.material_slots) - 1
+
+
+class NUCLEAR_OT_lasso_fill(Operator):
+    """Draw a lasso to enclose a region and fill it with a closed stroke"""
+    bl_idname = "nuclear.gp_lasso_fill"
+    bl_label = "Lasso Fill"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.object
+        return ob is not None and ob.type == 'GREASEPENCIL' and _is_gp_paint(context)
+
+    def invoke(self, context, event):
+        # Invoked from a Properties-panel button, so locate the 3D viewport explicitly.
+        area = next((a for a in context.screen.areas if a.type == 'VIEW_3D'), None)
+        region = next((r for r in area.regions if r.type == 'WINDOW'), None) if area else None
+        if area is None or region is None:
+            self.report({'WARNING'}, "Lasso Fill needs a 3D viewport open")
+            return {'CANCELLED'}
+        self._area = area
+        self._region = region
+        self._rv3d = area.spaces.active.region_3d
+        self._points = []
+        self._drawing = False
+        # When launched by the toolbar tool's LMB press, begin the lasso immediately.
+        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            self._drawing = True
+            self._points = [(event.mouse_x - region.x, event.mouse_y - region.y)]
+        self._handle = bpy.types.SpaceView3D.draw_handler_add(
+            _lasso_draw_px, (self, context), 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        context.workspace.status_text_set(
+            "Lasso Fill: drag to enclose a region, release to fill  |  RMB/Esc: cancel")
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+        except Exception:
+            pass
+        context.workspace.status_text_set(None)
+        if self._region:
+            self._region.tag_redraw()
+
+    def modal(self, context, event):
+        # Mouse events are window-absolute; convert to the viewport region we grabbed at invoke.
+        mx = event.mouse_x - self._region.x
+        my = event.mouse_y - self._region.y
+        if event.type == 'MOUSEMOVE':
+            if self._drawing:
+                self._points.append((mx, my))
+                self._region.tag_redraw()
+        elif event.type == 'LEFTMOUSE':
+            if event.value == 'PRESS':
+                self._drawing = True
+                self._points = [(mx, my)]
+            elif event.value == 'RELEASE' and self._drawing:
+                self._create_fill(context)
+                self._end(context)
+                return {'FINISHED'}
+        elif event.type in {'RIGHTMOUSE', 'ESC'}:
+            self._end(context)
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+    def _create_fill(self, context):
+        from bpy_extras.view3d_utils import region_2d_to_location_3d
+        if len(self._points) < 3:
+            return
+        ob = context.object
+        region = self._region
+        rv3d = self._rv3d
+        origin = ob.matrix_world.translation
+        mat_inv = ob.matrix_world.inverted()
+        pts = []
+        for (x, y) in self._points:
+            loc = region_2d_to_location_3d(region, rv3d, (float(x), float(y)), origin)
+            if loc is not None:
+                lp = mat_inv @ loc
+                pts.append((lp.x, lp.y, lp.z))
+        if len(pts) < 3:
+            return
+        try:
+            layer = ob.data.layers.active
+            frame = layer.current_frame() if layer else None
+            drawing = frame.drawing if frame else None
+        except Exception:
+            drawing = None
+        if drawing is None:
+            return
+        drawing.add_strokes([len(pts)])
+        s = drawing.strokes[-1]
+        s.cyclic = True
+        brush = _gp_paint_brush(context)
+        rgb = tuple(brush.color) if brush is not None else (0.5, 0.5, 0.5)
+        s.material_index = _ensure_fill_material(ob, rgb)
+        # Per-stroke fill color = the currently selected brush color (tints the white material fill).
+        s.fill_color = (rgb[0], rgb[1], rgb[2], 1.0)
+        s.fill_opacity = 1.0
+        for i, (px, py, pz) in enumerate(pts):
+            p = s.points[i]
+            p.position = (px, py, pz)
+            p.radius = 0.01
+            p.opacity = 1.0
+        # Mirror the fill immediately if symmetry is on (so the mirror keeps the fill color), and
+        # stop the color-capture timer from treating this fill as a painted stroke.
+        wm = context.window_manager
+        combos = _symmetry_signs(wm) if wm is not None else []
+        if combos:
+            idx = len(drawing.strokes) - 1
+            _mirror_new_strokes(context, idx, idx + 1, combos)
+        _last_stroke_count[0] = _drawn_stroke_count(context)
+        _pending_mirror[0] = None
+        try:
+            drawing.tag_positions_changed()
+            ob.data.update_tag()
+        except Exception:
+            pass
+
+
 # -----------------------------------------------------------------------------
 # UI — the "Paint" Properties tab (bl_context = "paint")
 # -----------------------------------------------------------------------------
@@ -343,13 +587,8 @@ class NUCLEAR_PT_paint_brushes(_NuclearPaintPanel, Panel):
             return
 
         from bl_ui.properties_paint_common import BrushAssetShelf
-        # Current brush shown large (preview + name), with the browse grid one click away.
-        box = layout.box()
-        prev = brush.preview
-        if prev and prev.icon_id:
-            box.template_icon(icon_value=prev.icon_id, scale=5.0)
-        box.label(text=brush.name, icon='BRUSH_DATA')
-        BrushAssetShelf.draw_popup_selector(box.row(), context, brush, show_name=False)
+        # Brush selector only — no large preview thumbnail.
+        BrushAssetShelf.draw_popup_selector(layout.row(), context, brush)
 
         # Smudge: toggles the active brush's type (smears strokes; click again to draw).
         layout.operator("nuclear.gp_smudge_toggle", text="Smudge Mode", icon='BRUSH_DATA',
@@ -359,7 +598,12 @@ class NUCLEAR_PT_paint_brushes(_NuclearPaintPanel, Panel):
         # giving textured/grungy strokes. Assign an image or procedural texture here.
         box = layout.box()
         box.label(text="Tip Texture (textured strokes):")
+        box.operator("nuclear.gp_add_tip_texture", icon='TEXTURE')
         box.template_ID(brush, "texture", new="texture.new")
+        if brush.texture is not None:
+            slot = brush.texture_slot
+            box.prop(slot, "map_mode", text="Mapping")
+            box.prop(slot, "scale", text="Scale")
 
 
 class NUCLEAR_PT_paint_size(_NuclearPaintPanel, Panel):
@@ -446,10 +690,37 @@ class NUCLEAR_PT_paint_symmetry(_NuclearPaintPanel, Panel):
         wm = context.window_manager
         layout.label(text="Live mirror while drawing:")
         row = layout.row(align=True)
-        row.prop(wm, "nuclear_mirror_x", text="X", toggle=True)
-        row.prop(wm, "nuclear_mirror_y", text="Y", toggle=True)
-        row.prop(wm, "nuclear_mirror_z", text="Z", toggle=True)
-        layout.label(text="Mirrors across the object origin.", icon='INFO')
+        row.prop(wm, "nuclear_mirror_x", text="Horizontal", toggle=True)
+        row.prop(wm, "nuclear_mirror_z", text="Vertical", toggle=True)
+        layout.label(text="Mirrors across the object origin (front-view plane).", icon='INFO')
+
+
+# -----------------------------------------------------------------------------
+# Toolbar tool + tool-header toggle
+# -----------------------------------------------------------------------------
+
+class NuclearLassoFillTool(bpy.types.WorkSpaceTool):
+    bl_space_type = 'VIEW_3D'
+    bl_context_mode = 'PAINT_GREASE_PENCIL'
+    bl_idname = "nuclear.lasso_fill_tool"
+    bl_label = "Lasso Fill"
+    bl_description = "Draw a lasso to enclose a region and fill it with a closed stroke"
+    bl_icon = "ops.generic.select_lasso"
+    bl_widget = None
+    bl_keymap = (
+        ("nuclear.gp_lasso_fill", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
+    )
+
+
+def _draw_symmetry_toolheader(self, context):
+    """Mirror toggles in the viewport tool header, so symmetry is reachable while drawing."""
+    if context.mode != 'PAINT_GREASE_PENCIL':
+        return
+    wm = context.window_manager
+    row = self.layout.row(align=True)
+    row.label(text="", icon='MOD_MIRROR')
+    row.prop(wm, "nuclear_mirror_x", text="H", toggle=True)
+    row.prop(wm, "nuclear_mirror_z", text="V", toggle=True)
 
 
 # -----------------------------------------------------------------------------
@@ -459,6 +730,8 @@ class NUCLEAR_PT_paint_symmetry(_NuclearPaintPanel, Panel):
 classes = (
     NUCLEAR_OT_brush_tab,
     NUCLEAR_OT_smudge_toggle,
+    NUCLEAR_OT_add_tip_texture,
+    NUCLEAR_OT_lasso_fill,
     NUCLEAR_PT_paint_brushes,
     NUCLEAR_PT_paint_size,
     NUCLEAR_PT_paint_stabilizer,
@@ -478,6 +751,15 @@ def register():
     if _apply_paint_defaults not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_apply_paint_defaults)
     try:
+        bpy.utils.register_tool(NuclearLassoFillTool, after={"builtin.brush"},
+                                separator=True, group=False)
+    except Exception:
+        pass
+    try:
+        bpy.types.VIEW3D_HT_tool_header.append(_draw_symmetry_toolheader)
+    except Exception:
+        pass
+    try:
         _apply_paint_defaults()  # apply to the already-open file
     except AttributeError:
         # bpy.data is restricted during startup registration; the load_post handler applies it
@@ -486,6 +768,14 @@ def register():
 
 
 def unregister():
+    try:
+        bpy.types.VIEW3D_HT_tool_header.remove(_draw_symmetry_toolheader)
+    except Exception:
+        pass
+    try:
+        bpy.utils.unregister_tool(NuclearLassoFillTool)
+    except Exception:
+        pass
     if _apply_paint_defaults in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_apply_paint_defaults)
     if bpy.app.timers.is_registered(_color_poll_timer):
