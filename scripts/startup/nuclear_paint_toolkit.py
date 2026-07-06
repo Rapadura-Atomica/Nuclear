@@ -11,7 +11,7 @@ match it with ``bl_context = "paint"``). This module fills that tab with the dra
 controls an artist reaches for constantly, gathered Krita-style into one native place
 instead of being scattered across sidebar popovers:
 
-- Brush category row (Draw / Erase / Fill / Tint) that activates the matching brush tool,
+- Brush category row (Draw / Erase / Fill / Tint) that switches the active brush's type,
   plus the stock brush-asset preview selector.
 - Precise brush size: an exact numeric pixel field beside the slider + the pixels/units lock.
 - Stabilizer (smooth stroke): radius + factor.
@@ -29,13 +29,16 @@ from bpy.types import Operator, Panel
 from bpy.props import BoolProperty
 from bpy.app.handlers import persistent
 
-# Brush "category" row -> (label, tool idname activated when clicked). Activating the tool is
-# what makes the native asset shelf show that category's brushes.
+# Brush "category" row -> (label, Grease Pencil brush type). Clicking one switches the active
+# brush's *type* directly. In 5.0 GP brushes are read-only linked assets and the paint operation
+# is chosen from the brush type, not the active tool (see grease_pencil_draw_ops.cc
+# get_stroke_operation) — so `wm.tool_set_by_id` alone doesn't change what a stroke does. Setting
+# `gpencil_brush_type` is the mechanism that works (the Smudge toggle already relies on it).
 _BRUSH_TABS = (
-    ("Draw", "builtin.brush"),
-    ("Erase", "builtin_brush.Erase"),
-    ("Fill", "builtin_brush.Fill"),
-    ("Tint", "builtin.brush"),
+    ("Draw", 'DRAW'),
+    ("Erase", 'ERASE'),
+    ("Fill", 'FILL'),
+    ("Tint", 'TINT'),
 )
 
 _MAX_RECENT_COLORS = 24
@@ -320,6 +323,16 @@ def _apply_paint_defaults(*_args):
                 gpp.color_mode = 'VERTEXCOLOR'
             except Exception:
                 pass
+            # The smudge/blur deform ops read their radius via BKE_brush_size_get, which returns
+            # the UNIFIED size when use_unified_size is on — but the rest of the GP toolkit (Size
+            # panel, brush cursor) drives brush.size directly. Turn unified size off so brush.size
+            # is authoritative everywhere and the deform radius tracks the Size slider.
+            ups = getattr(gpp, "unified_paint_settings", None)
+            if ups is not None:
+                try:
+                    ups.use_unified_size = False
+                except Exception:
+                    pass
 
 
 # -----------------------------------------------------------------------------
@@ -327,25 +340,36 @@ def _apply_paint_defaults(*_args):
 # -----------------------------------------------------------------------------
 
 class NUCLEAR_OT_brush_tab(Operator):
-    """Switch brush category and show its brushes"""
+    """Switch the active brush's type (Draw / Erase / Fill / Tint)"""
     bl_idname = "nuclear.brush_tab"
     bl_label = "Brush Category"
 
-    tool_id: bpy.props.StringProperty()
+    brush_type: bpy.props.StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _gp_paint_brush(context) is not None
 
     def execute(self, context):
+        brush = _gp_paint_brush(context)
+        # Make sure the generic paint-brush tool is active so the type change paints right away
+        # (a select/lasso tool wouldn't), then switch the type on the active brush.
         try:
-            bpy.ops.wm.tool_set_by_id(name=self.tool_id)
+            bpy.ops.wm.tool_set_by_id(name="builtin.brush")
         except RuntimeError as ex:
             self.report({'WARNING'}, str(ex))
-            return {'CANCELLED'}
+        brush.gpencil_brush_type = self.brush_type
         return {'FINISHED'}
 
 
 class NUCLEAR_OT_smudge_toggle(Operator):
-    """Toggle the active brush between Draw and Smudge (smear/blur existing strokes)"""
+    """Toggle the active brush between Draw and a deform mode that reshapes existing strokes:
+    Smudge (smear/drag) or Blur (dissolve/relax). Both use the brush Size as the affected area."""
     bl_idname = "nuclear.gp_smudge_toggle"
-    bl_label = "Smudge"
+    bl_label = "Deform Mode"
+
+    # Which deform type this button toggles. SMUDGE smears (grab), BLUR dissolves (smooth).
+    brush_type: bpy.props.StringProperty(default='SMUDGE')
 
     @classmethod
     def poll(cls, context):
@@ -353,52 +377,20 @@ class NUCLEAR_OT_smudge_toggle(Operator):
 
     def execute(self, context):
         brush = _gp_paint_brush(context)
-        brush.gpencil_brush_type = 'DRAW' if brush.gpencil_brush_type == 'SMUDGE' else 'SMUDGE'
-        return {'FINISHED'}
-
-
-class NUCLEAR_OT_add_tip_texture(Operator):
-    """Create a grunge tip texture (procedural noise, spatial 3D mapping) for textured strokes"""
-    bl_idname = "nuclear.gp_add_tip_texture"
-    bl_label = "Add Grunge Texture"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        return _gp_paint_brush(context) is not None
-
-    def execute(self, context):
-        import numpy as np
-        brush = _gp_paint_brush(context)
-        # GP brushes ship as linked library assets (read-only), so texture assignment is silently
-        # ignored. Make the brush local first, then a fresh local IMAGE texture sticks.
-        if brush.library is not None:
-            brush.make_local()
-            brush = _gp_paint_brush(context)
-        if brush is None:
-            return {'CANCELLED'}
-        img = bpy.data.images.get("Nuclear Grunge")
-        if img is None:
-            size = 256
-            rng = np.random.default_rng(5)
-            grey = np.clip((rng.random((size, size)).astype('float32') - 0.5) * 1.9 + 0.5, 0.0, 1.0)
-            rgba = np.empty((size, size, 4), 'float32')
-            rgba[..., 0] = grey
-            rgba[..., 1] = grey
-            rgba[..., 2] = grey
-            rgba[..., 3] = 1.0
-            img = bpy.data.images.new("Nuclear Grunge", size, size)
-            img.pixels.foreach_set(rgba.ravel())
-            img.pack()
-        tex = bpy.data.textures.new("Nuclear Grunge Tex", type='IMAGE')
-        tex.image = img
-        brush.texture = tex
-        # Spatial 3D mapping is what the paint-op sampler (world position) expects; a fine scale
-        # gives a visible grain along the stroke.
-        slot = brush.texture_slot
-        slot.map_mode = '3D'
-        slot.scale = (12.0, 12.0, 12.0)
-        self.report({'INFO'}, "Grunge tip texture added (brush made local)")
+        target = self.brush_type if self.brush_type in {'SMUDGE', 'BLUR'} else 'SMUDGE'
+        new_type = 'DRAW' if brush.gpencil_brush_type == target else target
+        brush.gpencil_brush_type = new_type
+        # Blur reuses the sculpt Smooth operation, which only does anything when the brush's
+        # sculpt_mode_flag enables an attribute. A paint brush leaves those off, so smoothing
+        # would be a no-op — enable position (relax the shape) and strength (fade opacity) so the
+        # dissolve/blur actually happens.
+        if new_type == 'BLUR':
+            gp = brush.gpencil_settings
+            try:
+                gp.use_edit_position = True
+                gp.use_edit_strength = True
+            except Exception:
+                pass
         return {'FINISHED'}
 
 
@@ -578,10 +570,12 @@ class NUCLEAR_PT_paint_brushes(_NuclearPaintPanel, Panel):
         layout = self.layout
         brush = _gp_paint_brush(context)
 
-        # Category row (Krita-style): each button activates that brush tool.
+        # Category row (Krita-style): each button switches the active brush's type.
         row = layout.row(align=True)
-        for label, tool_id in _BRUSH_TABS:
-            row.operator("nuclear.brush_tab", text=label).tool_id = tool_id
+        for label, btype in _BRUSH_TABS:
+            op = row.operator("nuclear.brush_tab", text=label,
+                              depress=(brush is not None and brush.gpencil_brush_type == btype))
+            op.brush_type = btype
 
         if brush is None:
             return
@@ -590,20 +584,24 @@ class NUCLEAR_PT_paint_brushes(_NuclearPaintPanel, Panel):
         # Brush selector only — no large preview thumbnail.
         BrushAssetShelf.draw_popup_selector(layout.row(), context, brush)
 
-        # Smudge: toggles the active brush's type (smears strokes; click again to draw).
-        layout.operator("nuclear.gp_smudge_toggle", text="Smudge Mode", icon='BRUSH_DATA',
-                        depress=(brush.gpencil_brush_type == 'SMUDGE'))
+        # Deform modes: reshape existing strokes with the brush (Size = affected radius). Smudge
+        # smears/drags; Blur dissolves/relaxes. Click again to return to Draw.
+        col = layout.column(align=True)
+        op = col.operator("nuclear.gp_smudge_toggle", text="Smudge Mode", icon='BRUSH_DATA',
+                          depress=(brush.gpencil_brush_type == 'SMUDGE'))
+        op.brush_type = 'SMUDGE'
+        op = col.operator("nuclear.gp_smudge_toggle", text="Blur / Dissolve Mode", icon='BRUSH_DATA',
+                          depress=(brush.gpencil_brush_type == 'BLUR'))
+        op.brush_type = 'BLUR'
 
-        # Tip texture: Nuclear samples brush.texture per stroke sample and modulates opacity,
-        # giving textured/grungy strokes. Assign an image or procedural texture here.
-        box = layout.box()
-        box.label(text="Tip Texture (textured strokes):")
-        box.operator("nuclear.gp_add_tip_texture", icon='TEXTURE')
-        box.template_ID(brush, "texture", new="texture.new")
-        if brush.texture is not None:
-            slot = brush.texture_slot
-            box.prop(slot, "map_mode", text="Mapping")
-            box.prop(slot, "scale", text="Scale")
+        # While in a deform mode, expose Strength (how hard each drag smears/dissolves). Size (the
+        # affected radius) lives in the Size panel and is shared with drawing.
+        if brush.gpencil_brush_type in {'SMUDGE', 'BLUR'}:
+            col.prop(brush, "strength", text="Strength", slider=True)
+
+        # Lasso fill reachable WITHOUT leaving the brush tool, so the active brush/settings stay
+        # put (the toolbar WorkSpaceTool version drops the brush controls from the header).
+        layout.operator("nuclear.gp_lasso_fill", text="Lasso Fill", icon='MOD_MASK')
 
 
 class NUCLEAR_PT_paint_size(_NuclearPaintPanel, Panel):
@@ -711,16 +709,37 @@ class NuclearLassoFillTool(bpy.types.WorkSpaceTool):
         ("nuclear.gp_lasso_fill", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
     )
 
+    def draw_settings(context, layout, tool):
+        # This is not a brush tool, so the tool header would otherwise drop every brush control
+        # and the artist perceives "the brush disappeared". Keep the active brush's color and size
+        # visible here (the fill uses brush.color) so switching to Lasso Fill never loses it.
+        brush = _gp_paint_brush(context)
+        if brush is None:
+            return
+        row = layout.row(align=True)
+        from bl_ui.properties_paint_common import brush_basic__draw_color_selector
+        brush_basic__draw_color_selector(context, row, brush, brush.gpencil_settings)
+        px = brush.use_locked_size != 'SCENE'
+        row.prop(brush, "size" if px else "unprojected_size", text="Size", slider=True)
+
 
 def _draw_symmetry_toolheader(self, context):
-    """Mirror toggles in the viewport tool header, so symmetry is reachable while drawing."""
+    """Mirror + stabilizer toggles in the viewport tool header, reachable while drawing."""
     if context.mode != 'PAINT_GREASE_PENCIL':
         return
     wm = context.window_manager
-    row = self.layout.row(align=True)
+    layout = self.layout
+    row = layout.row(align=True)
     row.label(text="", icon='MOD_MIRROR')
     row.prop(wm, "nuclear_mirror_x", text="H", toggle=True)
     row.prop(wm, "nuclear_mirror_z", text="V", toggle=True)
+    brush = _gp_paint_brush(context)
+    if brush is not None:
+        row2 = layout.row(align=True)
+        row2.prop(brush, "use_smooth_stroke", text="Stabilizer", toggle=True, icon='MOD_SMOOTH')
+        if brush.use_smooth_stroke:
+            row2.prop(brush, "smooth_stroke_radius", text="R")
+            row2.prop(brush, "smooth_stroke_factor", text="F")
 
 
 # -----------------------------------------------------------------------------
@@ -730,7 +749,6 @@ def _draw_symmetry_toolheader(self, context):
 classes = (
     NUCLEAR_OT_brush_tab,
     NUCLEAR_OT_smudge_toggle,
-    NUCLEAR_OT_add_tip_texture,
     NUCLEAR_OT_lasso_fill,
     NUCLEAR_PT_paint_brushes,
     NUCLEAR_PT_paint_size,
