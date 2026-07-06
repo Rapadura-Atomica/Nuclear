@@ -35,14 +35,26 @@ _PARENT_ROLE = {
     "torso": None,
     "neck": "torso",
     "head": "neck",
-    "upperarm": "torso",
+    "clavicle": "torso",
+    "upperarm": "clavicle",
     "forearm": "upperarm",
     "hand": "forearm",
-    "thigh": "torso",
+    "pelvis": "torso",
+    "thigh": "pelvis",
     "shin": "thigh",
     "foot": "shin",
 }
-_SIDED = {"upperarm", "forearm", "hand", "thigh", "shin", "foot"}
+_SIDED = {"clavicle", "upperarm", "forearm", "hand", "thigh", "shin", "foot"}
+
+# Structural joints: pegs with NO drawing (pure articulation), synthesised between a limb and the spine
+# even when the artist drew no piece for them — the studio standard (legs hang off a pelvis, not the
+# torso; arms off a shoulder). Materialised only when a descendant limb piece routes through them; the
+# pivot is the mean of their matched children's sockets. If the artist DID draw a matching piece (e.g.
+# "quadril"/"ombro"), it binds to this joint like any other skeleton piece (two-peg pattern).
+_STRUCT_JOINTS = {
+    "pelvis":   {"label": "Quadril", "sided": False},
+    "clavicle": {"label": "Ombro",   "sided": True},
+}
 
 # Studio pattern: a skeleton piece has a structural JOINT peg (the articulation, in the chain) AND
 # its own DRAWING peg (this suffix) that the drawing binds to, so the piece keeps an independent
@@ -51,12 +63,14 @@ _DRAW_PEG_SUFFIX = " (ctrl)"
 
 # Exact (normalised) base name -> role. PT first, plus a few EN/ES synonyms.
 _ROLE_SYNONYMS = {
-    "torso": ["tronco", "torso", "corpo", "peito", "quadril", "pelvis", "hip", "body"],
+    "torso": ["tronco", "torso", "corpo", "peito", "body"],
     "neck": ["pescoco", "neck", "cuello"],
     "head": ["cabeca", "head", "cabeza"],
+    "clavicle": ["clavicula", "ombro", "shoulder", "hombro"],
     "upperarm": ["braco", "brazo", "upperarm", "arm", "umero"],
     "forearm": ["antebraco", "antebrazo", "forearm"],
     "hand": ["mao", "mano", "hand"],
+    "pelvis": ["quadril", "pelvis", "hip", "bacia", "cadera"],
     "thigh": ["coxa", "thigh", "muslo", "femur"],
     "shin": ["canela", "shin", "tibia", "espinilla"],
     "foot": ["pe", "pie", "foot"],
@@ -287,37 +301,87 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
             self.report({"ERROR"}, "No skeleton pieces recognised by name (torso/arm/leg/…)")
             return {"CANCELLED"}
 
-        def ancestor_ob(role, side):
-            pr = _PARENT_ROLE[role]
-            ps = side if pr in _SIDED else None
-            while pr is not None:
-                if (pr, ps) in keymap:
-                    return keymap[(pr, ps)]
-                nr = _PARENT_ROLE[pr]
-                ps = ps if nr in _SIDED else None
-                pr = nr
-            return None
+        # --- Resolve the joint nodes: one per matched piece, PLUS structural joints (pelvis/shoulder)
+        #     synthesised on demand when a limb routes through them. A non-structural role with no
+        #     drawn piece collapses (head parents straight to the torso if the neck wasn't drawn); a
+        #     structural role does NOT collapse — it materialises as a drawing-less articulation peg. ---
+        nodes = {}                        # (role, side) -> {"ob", "role", "side", "parent"}
 
-        # 1) Joint chain: one structural peg per matched piece, parented via the collapsed ontology.
-        #    These carry the articulation pivots (hip/knee/…); no drawing binds to them.
-        pegs = []
-        parent_ob_of = {}
-        for ob, (role, side) in matched.items():
-            par = ancestor_ob(role, side)
-            parent_ob_of[ob] = par
-            pegs.append({"name": ob.name, "parent": par.name if par else None, "pivot": (0, 0, 0)})
+        def ensure_node(role, side):
+            side = side if role in _SIDED else None
+            ob = keymap.get((role, side))
+            if ob is None and role not in _STRUCT_JOINTS:
+                pr = _PARENT_ROLE[role]           # collapse past an undrawn, non-structural role
+                return ensure_node(pr, side) if pr is not None else None
+            key = (role, side)
+            if key not in nodes:
+                pr = _PARENT_ROLE[role]
+                nodes[key] = {"ob": ob, "role": role, "side": side,
+                              "parent": ensure_node(pr, side) if pr is not None else None}
+            return key
+
+        for role_side in list(keymap):
+            ensure_node(*role_side)
+
+        def node_name(key):
+            n = nodes[key]
+            if n["ob"] is not None:
+                return n["ob"].name
+            lbl = _STRUCT_JOINTS[n["role"]]["label"]
+            return f"{lbl}.{'e' if n['side'] == 'L' else 'd'}" if n["side"] else lbl
+
+        # 1) Joint chain: one structural peg per node, parented via the resolved ontology. Drawn nodes
+        #    carry the articulation pivots (hip/knee/…); no drawing binds to a structural joint.
+        pegs = [{"name": node_name(k),
+                 "parent": node_name(nodes[k]["parent"]) if nodes[k]["parent"] is not None else None,
+                 "pivot": (0, 0, 0)} for k in nodes]
         spec = {"rig_name": context.scene.nuclear_rig_name or "PegRig", "pegs": pegs}
         rig, j_idx = build_rig_from_spec(spec)
-        for ob in matched:
-            par = parent_ob_of[ob]
-            _set_pivot_world(rig, j_idx[ob.name],
-                             _joint_world(ob, par, planar) if par else _center_world(ob))
 
-        # 2) Each matched piece also gets its OWN drawing peg (independent T/R/S), a child of its
-        #    joint; the drawing binds to THIS peg, not to the shared joint. Pivot = the piece centre.
-        for ob in matched:
+        # Joint pivots. A drawn piece pivots on its articulation with the nearest DRAWN ancestor (skip
+        # structural joints — they have no geometry). A structural joint sits at the mean of its direct
+        # children's sockets (the hip = midpoint of the two thigh sockets).
+        def drawn_ancestor_ob(key):
+            p = nodes[key]["parent"]
+            while p is not None:
+                if nodes[p]["ob"] is not None:
+                    return nodes[p]["ob"]
+                p = nodes[p]["parent"]
+            return None
+
+        pivot_world, children_of = {}, {}
+        for key, n in nodes.items():
+            if n["parent"] is not None:
+                children_of.setdefault(n["parent"], []).append(key)
+            if n["ob"] is not None:
+                ref = drawn_ancestor_ob(key)
+                pivot_world[key] = _joint_world(n["ob"], ref, planar) if ref else _center_world(n["ob"])
+
+        def _depth(key):
+            d, p = 0, nodes[key]["parent"]
+            while p is not None:
+                d, p = d + 1, nodes[p]["parent"]
+            return d
+
+        for key in sorted((k for k, nn in nodes.items() if nn["ob"] is None), key=_depth, reverse=True):
+            pts = [pivot_world[c] for c in children_of.get(key, []) if c in pivot_world]
+            acc = mathutils.Vector((0, 0, 0))
+            for pt in pts:
+                acc = acc + pt
+            pivot_world[key] = acc / len(pts) if pts else acc
+        for key in nodes:
+            _set_pivot_world(rig, j_idx[node_name(key)], pivot_world[key])
+
+        # 2) Each DRAWN piece also gets its OWN drawing peg (independent T/R/S), a child of its joint;
+        #    the drawing binds to THIS peg. Structural joints stay drawing-less.
+        n_struct = 0
+        for key, n in nodes.items():
+            if n["ob"] is None:
+                n_struct += 1
+                continue
+            ob = n["ob"]
             dname = ob.name + _DRAW_PEG_SUFFIX
-            rig.pegs.new(dname, parent_index=j_idx[ob.name])
+            rig.pegs.new(dname, parent_index=j_idx[node_name(key)])
             dpeg_idx = len(rig.pegs) - 1
             _bind(ob, rig, dname)
             _set_pivot_world(rig, dpeg_idx, _center_world(ob))
@@ -337,9 +401,11 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
         rig.active_peg_index = rig.pegs.find(keymap[("torso", None)].name) if ("torso", None) in keymap else 0
         _grouped_layout(rig)
         context.view_layer.update()
+        n_drawn = len(matched)
         self.report({"INFO"},
-                    f"Rig '{rig.name}': {len(matched)} joints + {len(matched)} drawing pegs + "
-                    f"{extra} loose pegs (every piece has its own peg) — select a cluster + a parent and Link")
+                    f"Rig '{rig.name}': {n_drawn} drawn joints + {n_struct} structural joints "
+                    f"(pelvis/shoulder) + {n_drawn} drawing pegs + {extra} loose — select a cluster "
+                    f"+ a parent and Link")
         return {"FINISHED"}
 
 

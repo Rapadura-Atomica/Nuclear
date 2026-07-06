@@ -1,0 +1,13 @@
+[Desktop Entry]
+# Atalho de TESTE do wizard de instalacao. O Exec precisa de caminho ABSOLUTO;
+# a copia instalada em ~/.local/share/applications tem o caminho desta maquina
+# preenchido pelo install-test-launcher.sh. Este arquivo e so a referencia.
+Name=Nuclear — Testar Wizard
+GenericName=Teste do instalador guiado
+Comment=Abre o wizard de instalacao com um pacote falso e servidor local (nao toca no Nuclear real)
+Exec=bash REPO_ABS_PATH/tools/nuclear_install/test/run-wizard-test.sh
+Icon=system-software-install
+Type=Application
+Categories=Development;Graphics;
+Terminal=false
+StartupNotify=true
