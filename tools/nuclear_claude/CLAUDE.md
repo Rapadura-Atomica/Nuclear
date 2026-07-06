@@ -254,6 +254,7 @@ dessas defines. Edite os números aqui e em mais lugar nenhum.
 | `scripts/startup/nuclear_update.py` | cliente embutido (notifica + baixa + aplica) |
 | `tools/nuclear_release.py` | gera `nuclear_version.json` e `version.json` a partir das defines |
 | `tools/nuclear_install/instalarNuclear.sh` | instalador (layout versionado + symlink + .desktop) |
+| `tools/nuclear_install/instalarNuclear-wizard.sh` | instalador guiado GUI-first (kdialog→zenity→whiptail→texto/`/dev/tty`) por cima da mesma lógica versionada; pré-checagem (ferramentas/espaço/`$HOME`), barra de progresso via `manifest.size`, consentimento de telemetria (opt-out = prefixo `env NUCLEAR_TELEMETRY_OFF=1` no `Exec` do `.desktop`). Overrides p/ teste: `NUCLEAR_INSTALLER_UI`, `NUCLEAR_MANIFEST_URL`, `NUCLEAR_ADDONS_URL` |
 | `tools/nuclear_telemetry/server/version.json` | espelho do manifesto (referência) |
 | `tools/nuclear_telemetry/server/ping.php` | espelho do endpoint de telemetria (eco do manifesto) |
 | `tools/nuclear_claude/CLAUDE.md` | **este arquivo** |
