@@ -1616,6 +1616,12 @@ static void grease_pencil_brush_cursor_draw(PaintCursorContext &pcontext)
       pcontext.pixel_radius = std::max(int(brush->size / 2.0f), 1);
     }
 
+    /* Nuclear: the smudge (grab) and blur (smooth) deform modes drive their affected area from
+     * the brush size; without this the cursor radius stays 0 and no ring is drawn. */
+    if (ELEM(brush->gpencil_brush_type, GPAINT_BRUSH_TYPE_SMUDGE, GPAINT_BRUSH_TYPE_BLUR)) {
+      pcontext.pixel_radius = std::max(int(brush->size / 2.0f), 1);
+    }
+
     if (brush->gpencil_brush_type == GPAINT_BRUSH_TYPE_DRAW) {
       if ((brush->flag & BRUSH_LOCK_SIZE) != 0) {
         const bke::greasepencil::Layer *layer = grease_pencil->get_active_layer();

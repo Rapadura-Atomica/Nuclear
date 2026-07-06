@@ -224,6 +224,11 @@ const EnumPropertyItem rna_enum_brush_gpencil_types_items[] = {
      ICON_BRUSH_DATA,
      "Smudge",
      "The brush smears and blurs existing strokes"},
+    {GPAINT_BRUSH_TYPE_BLUR,
+     "BLUR",
+     ICON_BRUSH_DATA,
+     "Blur",
+     "The brush dissolves and blurs existing strokes by relaxing their shape"},
     {0, nullptr, 0, nullptr, nullptr},
 };
 
