@@ -257,7 +257,7 @@ de filtro em `rna_space.cc` ("Filter Blender"/"Show .blend files") **devem ir pe
 tradução** no template Nuclear (`_TRANSLATIONS`), não por edição em C — fecha o item pendente
 do §3 sem virar ponto quente.
 
-### Ferramentas de pintura GP (tab Paint + picker Krita + brush Smudge)
+### Ferramentas de pintura GP (tab Paint + picker Krita + brushes Smudge/Blur)
 
 Suporte C para o `nuclear_paint_toolkit.py` (§1). Nenhum mexe em DNA de struct nem exige
 versionamento — só **append de enums** e um **drawflag runtime**; rebase = re-aplicar cada seam.
@@ -274,9 +274,10 @@ versionamento — só **append de enums** e um **drawflag runtime**; rebase = re
 | `source/blender/editors/interface/interface_handlers.cc` | branch em `ui_numedit_but_HSVCIRCLE` (banda do anel→hue, interior→sat/val baricêntrico) |
 | `source/blender/editors/interface/regions/interface_region_color_picker.cc` | `ui_colorpicker_circle`: OR do flag quando `U.color_picker_type == USER_CP_CIRCLE_HSV` |
 | `source/blender/editors/interface/templates/interface_template_color_picker.cc` | idem no picker inline + `WHEEL_SIZE` 5→7 (picker maior) |
-| `source/blender/makesdna/DNA_brush_enums.h` | `GPAINT_BRUSH_TYPE_SMUDGE = 4` (append em `eBrushGPaintType`) |
-| `source/blender/makesrna/intern/rna_brush.cc` | item `SMUDGE` em `rna_enum_brush_gpencil_types_items` |
-| `source/blender/editors/sculpt_paint/grease_pencil_draw_ops.cc` | `get_stroke_operation`: `case GPAINT_BRUSH_TYPE_SMUDGE → greasepencil::new_grab_operation(stroke_mode)` (reusa o grab do sculpt no modo paint) |
+| `source/blender/makesdna/DNA_brush_enums.h` | `GPAINT_BRUSH_TYPE_SMUDGE = 4` **e `GPAINT_BRUSH_TYPE_BLUR = 5`** (appends em `eBrushGPaintType`) |
+| `source/blender/makesrna/intern/rna_brush.cc` | itens `SMUDGE` **e `BLUR`** em `rna_enum_brush_gpencil_types_items` |
+| `source/blender/editors/sculpt_paint/grease_pencil_draw_ops.cc` | `get_stroke_operation`: `case GPAINT_BRUSH_TYPE_SMUDGE → greasepencil::new_grab_operation(stroke_mode)` (reusa o grab do sculpt) **e `case GPAINT_BRUSH_TYPE_BLUR → greasepencil::new_smooth_operation(stroke_mode)` (reusa o smooth do sculpt p/ dissolver/borrar no modo paint)** |
+| `source/blender/editors/sculpt_paint/paint_cursor.cc` | `grease_pencil_brush_cursor_draw`: seta `pixel_radius = brush->size/2` p/ `GPAINT_BRUSH_TYPE_SMUDGE`/`_BLUR` (senão o anel do cursor fica raio 0 = invisível) |
 | `source/blender/editors/sculpt_paint/grease_pencil_paint.cc` | `PaintOperationExecutor` (~690): quando `brush->mtex.tex` existe, `BKE_brush_sample_tex_3d` na posição em world-space modula `opacity` → traços texturizados (textura de bico) |
 
 ---
