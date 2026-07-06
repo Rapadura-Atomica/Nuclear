@@ -53,6 +53,7 @@ import platform
 import shutil
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import urllib.request
@@ -558,6 +559,63 @@ def _check_free_space(path, needed_bytes):
         pass  # se não conseguiu checar, deixa prosseguir
 
 
+def _config_roots():
+    """Return (legacy_root, nuclear_root) for the user config dir, mirroring GHOST.
+
+    The org folder was renamed "blender" -> "Nuclear" (product rebrand). On Linux the
+    root is $XDG_CONFIG_HOME/<org> or ~/.config/<org>; Windows/macOS mirror their GHOST
+    paths. Returns (None, None) when the home/config root can't be resolved.
+    """
+    if os.name == "nt":
+        base = os.environ.get("APPDATA")
+        if not base:
+            return None, None
+        # GHOST_SystemPathsWin32: <APPDATA>\<org>\  (was "Blender Foundation\Blender")
+        return os.path.join(base, "Blender Foundation", "Blender"), os.path.join(base, "Nuclear")
+    if sys.platform == "darwin":
+        home = os.path.expanduser("~")
+        base = os.path.join(home, "Library", "Application Support")
+        return os.path.join(base, "Blender"), os.path.join(base, "Nuclear")
+    # Linux / other POSIX
+    base = os.environ.get("XDG_CONFIG_HOME")
+    if not base:
+        home = os.environ.get("HOME") or os.path.expanduser("~")
+        if not home or home == "~":
+            return None, None
+        base = os.path.join(home, ".config")
+    return os.path.join(base, "blender"), os.path.join(base, "Nuclear")
+
+
+def _migrate_legacy_config(log_path=None):
+    """Copy per-version settings from the legacy `blender` config dir to `Nuclear`.
+
+    One-time, idempotent: for each `<version>` folder under the legacy root, if the
+    matching folder under the Nuclear root does not exist yet, copy it over. Existing
+    users keep their theme/keymaps/add-on prefs/startup after the rename. Never raises
+    into the apply flow.
+    """
+    try:
+        legacy_root, nuclear_root = _config_roots()
+        if not legacy_root or not nuclear_root or not os.path.isdir(legacy_root):
+            return
+        migrated = []
+        for name in os.listdir(legacy_root):
+            src = os.path.join(legacy_root, name)
+            if not os.path.isdir(src):
+                continue
+            dst = os.path.join(nuclear_root, name)
+            if os.path.exists(dst):
+                continue  # already migrated or fresh config present; don't clobber
+            os.makedirs(nuclear_root, exist_ok=True)
+            shutil.copytree(src, dst, symlinks=True)
+            migrated.append(name)
+        if migrated and log_path:
+            _apply_log(log_path, "config migrado (blender -> Nuclear): %s" % ", ".join(migrated))
+    except Exception as ex:
+        if log_path:
+            _apply_log(log_path, "aviso: migracao de config falhou: %s" % ex)
+
+
 def _run_apply(manifest, layout):
     """Full download -> verify -> extract -> swap -> prune. Sets the _apply_* globals."""
     global _apply_state, _apply_progress, _apply_message, _apply_target
@@ -623,6 +681,9 @@ def _run_apply(manifest, layout):
         dest = _apply_extracted(extract_dir, layout, manifest)
         _apply_log(log_path, "versao instalada em: %s" % dest)
         _apply_target = dest
+        # Product rebrand: the config org folder moved blender -> Nuclear. Carry existing
+        # users' settings across so an auto-update doesn't reset them (idempotent).
+        _migrate_legacy_config(log_path)
         _refresh_desktop(layout)
         # Keep the new build and the still-running one (locked on Windows).
         _prune_versions(layout["versions"], [dest, layout["install_root"]])
