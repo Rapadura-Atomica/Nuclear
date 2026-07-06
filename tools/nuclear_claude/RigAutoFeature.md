@@ -23,6 +23,19 @@ cadeia. As peças não reconhecidas (acessórios, folhas) ganham uma peg própri
 composite (já é a independente delas). O **Link** prende a peça na **junta** do alvo. Na
 montagem manual o rigger tem liberdade total.
 
+**Juntas estruturais (pelve / ombro) — sempre criadas, mesmo sem desenho.** A cadeia dos
+membros não pendura direto no tronco: as pernas passam por uma **pelve** (`Quadril`) e os
+braços por um **ombro/clavícula** (`Ombro.e`/`Ombro.d`). Essas juntas são **pegs sem
+desenho** (articulação pura, estilo os 37 joints estruturais da `Carolina.blend`),
+**sintetizadas automaticamente** quando um membro passa por elas — não exigem que o artista
+desenhe uma peça "quadril"/"ombro". Cadeia resultante:
+`pé → canela → coxa → Quadril → TRONCO` e `mão → antebraço → braço → Ombro.e/d → TRONCO`.
+O pivô da junta estrutural = **média dos encaixes dos filhos** (o quadril fica no ponto médio
+dos dois encaixes de coxa; cada coxa continua pivotando no seu próprio encaixe com o tronco).
+Em repouso a matriz local de cada peg é identidade, então inserir a pelve **não move** nada.
+Se o artista *desenhar* uma peça "quadril"/"ombro" (sinônimos abaixo), ela vira o desenho
+dessa junta como qualquer outra peça (padrão de duas pegs). Configuração em `_STRUCT_JOINTS`.
+
 ## Fluxo (painel "Rig" na barra-N do viewport)
 
 1. **Object Mode** → selecione as peças (ou nada = todas) → **Auto-Build Skeleton**.
@@ -34,12 +47,22 @@ montagem manual o rigger tem liberdade total.
 4. Refine no **Peg Graph** (arraste links). Botão **Auto Layout** reagrupa o grafo.
 5. **Peg Pose** para animar.
 
-## Visualização — Peg Graph agrupado
+## Visualização — Peg Graph vertical anatômico
 
-O grafo se organiza em **frames rotulados por região, na horizontal**: `Tronco · Braço E ·
-Braço D · Cabeça · Perna E · Perna D · Soltos`. Cada membro é a sua sub-árvore; os
-acessórios-peg ficam em "Soltos" até serem ligados. Roda automático ao montar/ligar e pelo
-botão **Auto Layout**.
+O grafo se organiza numa **silhueta corporal vertical** (a convenção dos riggers: lê-se de
+**baixo pra cima = pé → cabeça** e de **cima pra baixo = cabeça → pé**):
+
+- **Coluna central** (x≈0): `Cabeça` no topo, `Tronco` abaixo (a pelve/ombros ficam *dentro*
+  do corpo central, não viram região própria).
+- **Coluna esquerda (E, x<0):** `Braço E` na altura do tronco, `Perna E` abaixo.
+- **Coluna direita (D, x>0):** `Braço D`, `Perna D`.
+- **Soltos:** frame à direita com os acessórios ainda não ligados.
+
+Cada região desce em cadeia (profundidade → pra baixo). Os frames ficam **bem espaçados**
+(`_TIER_GAP` vertical, `_SIDE_GAP` horizontal). Roda automático ao montar/ligar e pelo botão
+**Auto Layout**. As juntas estruturais (pelve/ombro) são reconhecidas pelo nome
+(`Quadril`/`Ombro.*` → sinônimos) e tratadas como espinha, então os membros são achados
+descendo *através* delas.
 
 ---
 
@@ -52,16 +75,20 @@ o sufixo de lado) e o **núcleo** resultante precisa ser **exatamente** um token
 
 | Parte | Canônico (recomendado) | Também aceitos |
 | --- | --- | --- |
-| Tronco (raiz) | `TRONCO` | torso, corpo, peito, quadril, pelvis, hip, body |
+| Tronco (raiz) | `TRONCO` | torso, corpo, peito, body |
 | Pescoço | `PESCOCO` | neck, cuello |
 | Cabeça | `CABECA` | head, cabeza |
+| Ombro/clavícula¹ | `ombro` | clavicula, shoulder, hombro |
 | Braço | `braco` | brazo, arm, upperarm, umero |
 | Antebraço | `antebraco` | antebrazo, forearm |
 | Mão | `mao` | mano, hand |
+| Quadril/pelve¹ | `quadril` | pelvis, hip, bacia, cadera |
 | Coxa | `coxa` | thigh, muslo, femur |
 | Canela | `canela` | shin, tibia, espinilla |
 | Pé | `pe` | pie, foot |
 
+¹ **Ombro e quadril são juntas estruturais**: são criados automaticamente mesmo sem peça
+desenhada (ver acima). Desenhá-los é **opcional** — se existir a peça, ela vincula na junta.
 Acento é ignorado (`CABEÇA` = `CABECA`, `pé` = `pe`).
 
 ### Sufixo de lado (membros)
@@ -112,17 +139,22 @@ pe.e        pe.d
 
 `scripts/startup/nuclear_rig_auto.py`:
 - `OBJECT_OT_nuclear_rig_auto_skeleton` (`object.nuclear_rig_auto_skeleton`) — matcher
-  (`_match_role` + `_ROLE_SYNONYMS`/`_PARENT_ROLE`/`_SIDED`) → cadeia de **juntas** +
-  **pegs `(ctrl)`** (`_DRAW_PEG_SUFFIX`) + acessórios; pivô por `_joint_world` (sobreposição
-  AABB no plano do personagem) com fallback pro centro (`_center_world`).
+  (`_match_role` + `_ROLE_SYNONYMS`/`_PARENT_ROLE`/`_SIDED`) → **nós de junta** resolvidos por
+  `ensure_node` (uma junta por peça casada + **juntas estruturais** de `_STRUCT_JOINTS`,
+  pelve/ombro, materializadas quando um membro passa por elas; papéis não-estruturais sem peça
+  colapsam) → cadeia + **pegs `(ctrl)`** (`_DRAW_PEG_SUFFIX`) + acessórios. Pivô da peça por
+  `_joint_world` contra o ancestral **desenhado** mais próximo (pula estruturais); pivô da
+  junta estrutural = média dos encaixes dos filhos; fallback pro centro (`_center_world`).
 - `OBJECT_OT_nuclear_rig_link_to_parent` (`object.nuclear_rig_link_to_parent`) — lote
   parent-to-active; prende na **junta** do ativo (pai da peg `(ctrl)`).
 - Pivô gravado no frame do peg-pai via `_set_pivot_world` (mesma matemática do Peg Graph).
 
 `scripts/startup/nuclear_peg_graph.py`:
 - `compute_grouped_layout(rig)` + `NODE_OT_nuclear_peg_auto_layout` (`node.nuclear_peg_auto_layout`,
-  botão **Auto Layout**) — agrupa em frames por região (sub-árvore de cada "limb root");
-  rótulos via `_region_label`; espaçamento em `_REGION_COL` / `_REGION_ROW` / `_REGION_GAP`.
+  botão **Auto Layout**) — **layout vertical anatômico**: coluna central (`_ANAT_SLOT` C) para
+  cabeça/tronco/espinha, colunas laterais E/D para os membros (achados descendo *através* das
+  juntas estruturais via `_SPINE_ROLES` / `limb_roots_under`); rótulos via `_region_label`;
+  espaçamento em `_COL` / `_ROW` / `_TIER_GAP` / `_SIDE_GAP`.
 
 Tudo Python sobre a API de PegRig (`bpy.data.pegrigs.new`, `rig.pegs.new(name, parent_index=…)`
 — `parent_index` **tem** que ser keyword arg —, `ob.constraints.new('FOLLOW_PEG')`). Sem C.
