@@ -2,6 +2,13 @@
 # SPDX-FileCopyrightText: 2026 Blender Authors
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
+# ====================================================================
+# Nuclear-Installer — instalador de clique unico (auto-contido).
+# Copie este ARQUIVO UNICO para qualquer Linux e execute. Nao precisa do
+# repositorio, nem de FUSE, nem de instalar nada: usa so ferramentas de
+# sistema (bash/python3/unzip/wget|curl) e abre um wizard grafico.
+# ====================================================================
+#
 # Instalador guiado (wizard) do Nuclear para Linux.
 #
 # Este script e uma CAMADA DE EXPERIENCIA por cima da mesma logica de instalacao
