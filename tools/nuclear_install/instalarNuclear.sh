@@ -27,6 +27,14 @@ MANIFEST_URL="https://rapaduraatomica.com.br/estacao/version.json"
 ADDONS_DOWNLOAD_URL="https://rapaduraatomica.com.br/estacao/addons.zip"
 DESKTOP_FILE="$HOME/.local/share/applications/Nuclear.desktop"
 
+# same_origin URL_A URL_B -> exit 0 se compartilham esquema+host+porta.
+# Pina downloads a origem do manifesto confiavel (python3 ja e dependencia).
+same_origin() {
+    python3 -c 'import sys,urllib.parse as u
+a=u.urlsplit(sys.argv[1]); b=u.urlsplit(sys.argv[2])
+sys.exit(0 if (a.scheme and a.hostname and a.scheme.lower()==b.scheme.lower() and a.hostname.lower()==b.hostname.lower() and (a.port or 0)==(b.port or 0)) else 1)' "$1" "$2"
+}
+
 echo "[INFO] Instalacao do Nuclear (layout versionado)"
 echo "========================================"
 
@@ -37,8 +45,9 @@ MANIFEST="$(curl -fsSL -A 'Nuclear-Installer/1.0' "$MANIFEST_URL")" || {
     echo "[ERRO] Nao foi possivel baixar o manifesto"; exit 1; }
 
 # Extrai campos do JSON sem depender de jq (usa python3, que o sistema tem).
-read -r BUILD VERSION URL SHA256 <<EOF
-$(printf '%s' "$MANIFEST" | python3 -c 'import sys,json; m=json.load(sys.stdin); print(m["build"], m["version"], m["url"], m.get("sha256",""))')
+# Campos de addons sao opcionais (so presentes se a release os publicou).
+read -r BUILD VERSION URL SHA256 ADDONS_URL_M ADDONS_SHA256 <<EOF
+$(printf '%s' "$MANIFEST" | python3 -c 'import sys,json; m=json.load(sys.stdin); print(m["build"], m["version"], m["url"], m.get("sha256",""), m.get("addons_url",""), m.get("addons_sha256",""))')
 EOF
 
 # Seguranca (fail-closed): o zip TEM que vir da MESMA origem (esquema+host+porta)
@@ -48,9 +57,7 @@ EOF
 if [ -z "$SHA256" ]; then
     echo "[ERRO] Manifesto sem sha256 - instalacao recusada por seguranca"; exit 1
 fi
-if ! python3 -c 'import sys,urllib.parse as u
-a=u.urlsplit(sys.argv[1]); b=u.urlsplit(sys.argv[2])
-sys.exit(0 if (a.scheme and a.hostname and a.scheme.lower()==b.scheme.lower() and a.hostname.lower()==b.hostname.lower() and (a.port or 0)==(b.port or 0)) else 1)' "$URL" "$MANIFEST_URL"; then
+if ! same_origin "$URL" "$MANIFEST_URL"; then
     echo "[ERRO] URL de download recusada por seguranca (origem difere do manifesto): $URL"; exit 1
 fi
 
@@ -157,11 +164,21 @@ echo "[5/5] Instalando addons externos"
 ADDONS_DIR="$NUCLEAR_CFG/scripts/addons"
 mkdir -p "$ADDONS_DIR"
 TMP_A="$(mktemp -d)"; trap 'rm -rf "$TMP_A"' EXIT
-if wget --show-progress -q -O "$TMP_A/addons.zip" "$ADDONS_DOWNLOAD_URL"; then
+# URL efetiva: a do manifesto (se publicada) ou o default. Addons sao codigo, entao
+# se o manifesto trouxer addons_sha256 ele e OBRIGATORIO; sem hash, cai no modo
+# legado (best-effort, sem verificacao). Origem sempre pinada ao manifesto quando
+# a URL vem dele. Falha aqui nunca aborta a instalacao (addons sao opcionais).
+ADDONS_EFF_URL="$ADDONS_DOWNLOAD_URL"
+[ -n "$ADDONS_URL_M" ] && ADDONS_EFF_URL="$ADDONS_URL_M"
+if [ -n "$ADDONS_URL_M" ] && ! same_origin "$ADDONS_EFF_URL" "$MANIFEST_URL"; then
+    echo "[AVISO] URL de addons recusada por seguranca (origem difere do manifesto); pulando addons"
+elif ! wget --show-progress -q -O "$TMP_A/addons.zip" "$ADDONS_EFF_URL"; then
+    echo "[AVISO] Nao foi possivel baixar os addons (seguindo sem eles)"
+elif [ -n "$ADDONS_SHA256" ] && [ "$(sha256sum "$TMP_A/addons.zip" | awk '{print $1}')" != "$ADDONS_SHA256" ]; then
+    echo "[AVISO] Checksum dos addons nao confere; NAO instalando addons (o app segue normal)"
+else
     unzip -q "$TMP_A/addons.zip" -d "$TMP_A/x" && cp -r "$TMP_A/x"/* "$ADDONS_DIR/" 2>/dev/null
     echo "[OK] Addons instalados em $ADDONS_DIR"
-else
-    echo "[AVISO] Nao foi possivel baixar os addons (seguindo sem eles)"
 fi
 rm -rf "$TMP_A"; trap - EXIT
 
