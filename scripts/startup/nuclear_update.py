@@ -31,6 +31,14 @@ Applying the update (Linux, phase 2):
   restart. Because the swap is a single rename, the install is never left half-written, and
   rolling back is just pointing `current` at the previous directory.
 
+  Integrity gate (fail-closed, enforced before any install proceeds): the download URL must
+  share the manifest's exact origin (same scheme+host+port), and the manifest must carry a
+  sha256 that the downloaded zip matches. A tampered manifest therefore cannot redirect the
+  download to another host, downgrade it to plain http, or omit the checksum to slip an
+  unverified payload past the check. This is defense-in-depth on top of the verified-HTTPS
+  manifest fetch; it is NOT a code signature (the sha256 still comes from the manifest), so
+  it does not defend against a fully compromised web host.
+
   A flat install (a freshly-unzipped folder with the binary sitting directly in it, no
   `current`/`versions` yet) is migrated in place: the new build lands in `<folder>/versions/`
   and `<folder>/current` is created pointing at it, all WITHIN the user's own Nuclear folder.
@@ -56,6 +64,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -295,7 +304,9 @@ def _extract_zip(zip_path, dest):
         for info in zf.infolist():
             out = zf.extract(info, dest)
             if os.name != "nt":
-                mode = (info.external_attr >> 16) & 0o7777
+                # Mask to 0o777: preserve the read/write/exec bits but NEVER carry
+                # setuid/setgid/sticky from a downloaded archive (0o7000).
+                mode = (info.external_attr >> 16) & 0o0777
                 if mode:
                     try:
                         os.chmod(out, mode)
@@ -336,6 +347,27 @@ def _sha256_file(path, progress_cb=None, size_hint=0):
             if progress_cb and size_hint:
                 progress_cb(min(1.0, done / size_hint))
     return h.hexdigest()
+
+
+def _same_origin(url_a, url_b):
+    """True when both URLs share scheme, host and port (a same-origin check).
+
+    Used to pin the update download to the exact origin of the trusted manifest: the
+    zip must come from the same scheme+host+port the user configured for the manifest,
+    so a tampered manifest cannot redirect the download to another host or downgrade it
+    to plain http. Comparison is case-insensitive on scheme/host; fail-closed on any
+    parse error or missing scheme/host.
+    """
+    try:
+        a = urllib.parse.urlsplit(url_a or "")
+        b = urllib.parse.urlsplit(url_b or "")
+    except Exception:
+        return False
+    if not a.scheme or not a.hostname or not b.scheme or not b.hostname:
+        return False
+    return (a.scheme.lower() == b.scheme.lower()
+            and a.hostname.lower() == b.hostname.lower()
+            and (a.port or 0) == (b.port or 0))
 
 
 def _download(url, dest, progress_cb=None):
@@ -641,27 +673,39 @@ def _run_apply(manifest, layout):
         _apply_log(log_path, "work dir: %s" % work)
         zip_path = os.path.join(work, "nuclear.zip")
 
+        # Security gate (fail-closed) BEFORE touching the network: the zip must come
+        # from the SAME origin as the trusted manifest, and the manifest MUST carry a
+        # sha256. Otherwise a tampered manifest could point the download at another
+        # host / plain http, or omit the checksum so a swapped payload installs
+        # unverified - and the downloaded binary runs on the next launch. Refuse.
+        download_url = manifest.get("url") or ""
+        if not _same_origin(download_url, _config_url()):
+            raise RuntimeError(
+                "URL de download recusada por segurança (origem difere do manifesto): %s"
+                % (download_url or "(vazia)"))
+        expected = (manifest.get("sha256") or "").lower().strip()
+        if not expected:
+            raise RuntimeError("manifesto sem sha256 - atualização recusada por segurança")
+
         _apply_state = "downloading"
         _apply_progress = 0.0
-        _apply_log(log_path, "iniciando download: %s" % manifest.get("url", "?"))
+        _apply_log(log_path, "iniciando download: %s" % download_url)
 
         def on_dl(p):
             global _apply_progress
             _apply_progress = p
-        _download(manifest["url"], zip_path, on_dl)
+        _download(download_url, zip_path, on_dl)
         _apply_log(log_path, "download concluido: %d bytes" % os.path.getsize(zip_path))
 
-        expected = (manifest.get("sha256") or "").lower().strip()
-        if expected:
-            _apply_state = "verifying"
-            _apply_progress = 0.0
-            _apply_log(log_path, "verificando sha256 (esperado: %s)" % expected)
-            got = _sha256_file(zip_path, lambda p: _set_progress(p),
-                               size_hint=manifest.get("size", 0))
-            _apply_log(log_path, "sha256 obtido:   %s" % got)
-            if got.lower() != expected:
-                raise RuntimeError("checksum não confere - download corrompido")
-            _apply_log(log_path, "checksum OK")
+        _apply_state = "verifying"
+        _apply_progress = 0.0
+        _apply_log(log_path, "verificando sha256 (esperado: %s)" % expected)
+        got = _sha256_file(zip_path, lambda p: _set_progress(p),
+                           size_hint=manifest.get("size", 0))
+        _apply_log(log_path, "sha256 obtido:   %s" % got)
+        if got.lower() != expected:
+            raise RuntimeError("checksum não confere - download corrompido")
+        _apply_log(log_path, "checksum OK")
 
         _apply_state = "extracting"
         extract_dir = os.path.join(work, "x")
