@@ -44,7 +44,22 @@ PegRig (peg-based cut-out rig), Follow Peg constraint, Grease Pencil "Curve" mod
 - **Upstream sync = rebase per release** (stay on 5.0; move to 5.1/5.2 as concentrated
   merges). `origin` is the fork; `lfs-fallback` is upstream Blender.
 - **3D = hide in the UI only** — never remove 3D/object/depsgraph code (Grease Pencil v3
-  depends on it).
+  depends on it). Since 2026-07-07 the heavy 3D subsystems are also **compiled out of
+  official releases** via the `build_files/cmake/config/nuclear_2d.cmake` preset (−21%
+  binary; Cycles/Bullet/Mantaflow/Freestyle/USD/etc. OFF, everything the 2D/GP pipeline
+  needs stays ON — see the preset's comments). The preset also enables ccache + mold.
+  Release builds should configure with `-C build_files/cmake/config/nuclear_2d.cmake`;
+  regression gate = `tools/smoke_nuclear2d.py` (headless, 14 checks). Physical source
+  removal remains forbidden (Fase 2 da demanda #6 teve ROI ruim; ver
+  `~/relatorios/demanda-6.md`).
+- **Commercial model = hybrid, GPL kept in full** (ADR
+  `docs/decisions/2026-07-07-modelo-comercial-hibrido.md`): (1) in-process Python addons
+  are always GPL, monetized by paid access/updates/support (Blender Market model);
+  (2) high-value features live in **separate proprietary executables** talking to Nuclear
+  via IPC/files (Entremeio pattern) with only a thin GPL bridge inside Nuclear — paid code
+  NEVER imports `bpy` or links against the binary; (3) services/support/assets under
+  contract. Brand protection via `TRADEMARK.md` (GPL covers code, not the "Nuclear"
+  name/logo).
 - **Minimize and isolate C divergence.** New Nuclear features should live in *new files*
   (e.g. `*_pegrig.*`, `nuclear_*.py`, new modifiers), not as edits scattered across
   upstream-maintained files. Where touching an upstream file is unavoidable, keep it to a
