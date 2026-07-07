@@ -362,6 +362,18 @@ EOF
     M_VERSTRING="$(printf '%s' "$MANIFEST" | python3 -c \
         'import sys,json; m=json.load(sys.stdin); print(m.get("version_string") or ("Nuclear "+str(m.get("version",""))))' 2>/dev/null)"
     [ -n "$M_VERSTRING" ] || M_VERSTRING="Nuclear $M_VERSION"
+
+    # Seguranca (fail-closed): o zip TEM que vir da MESMA origem (esquema+host+porta)
+    # do manifesto, e o manifesto TEM que trazer sha256. Senao, um manifesto
+    # adulterado poderia apontar o download para outro host / http:// ou pular a
+    # verificacao de integridade - e o binario baixado roda no proximo boot.
+    [ -n "$M_SHA256" ] || fatal "Manifesto sem sha256 - instalacao recusada por seguranca."
+    python3 -c 'import sys,urllib.parse as u
+a=u.urlsplit(sys.argv[1]); b=u.urlsplit(sys.argv[2])
+sys.exit(0 if (a.scheme and a.hostname and a.scheme.lower()==b.scheme.lower() and a.hostname.lower()==b.hostname.lower() and (a.port or 0)==(b.port or 0)) else 1)' \
+        "$M_URL" "$MANIFEST_URL" \
+        || fatal "URL de download recusada por seguranca (origem difere do manifesto):
+$M_URL"
 }
 
 # Faz o download + verificacao + extracao + move para versions/. Ecoa (via
@@ -394,14 +406,12 @@ Reinstalar (baixar de novo)?"; then
 Verifique sua conexao e tente novamente."
     fi
 
-    if [ -n "$M_SHA256" ]; then
-        local got
-        got="$(sha256sum "$tmp/nuclear.zip" | awk '{print $1}')"
-        if [ "$got" != "$M_SHA256" ]; then
-            fatal "O arquivo baixado esta corrompido (checksum nao confere).
+    local got
+    got="$(sha256sum "$tmp/nuclear.zip" | awk '{print $1}')"
+    if [ "$got" != "$M_SHA256" ]; then
+        fatal "O arquivo baixado esta corrompido (checksum nao confere).
 
 Rode o instalador de novo; se persistir, avise o suporte."
-        fi
     fi
 
     unzip -q "$tmp/nuclear.zip" -d "$tmp/x" || fatal "Falha ao extrair o pacote."
