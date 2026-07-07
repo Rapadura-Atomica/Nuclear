@@ -76,10 +76,23 @@ $version  = isset($data['version'])  ? substr($data['version'], 0, 100)  : '';
 $event    = isset($data['event'])    ? substr($data['event'], 0, 50)     : '';
 $ts = gmdate('c'); // ISO 8601 em UTC, ex: 2026-06-09T22:00:00+00:00
 
-// Garante a pasta data/.
+// Garante a pasta data/ E nega seu acesso pela web. O SQLite guarda machine_id,
+// hostname, usuario do SO, versao e regiao de cada maquina - nao pode ser servido
+// pelo navegador (ex.: baixar .../data/telemetry.sqlite). Defesa em profundidade:
+// o .htaccess e criado no primeiro ping (idempotente), igual ao crash.php.
 $data_dir = __DIR__ . '/data';
 if (!is_dir($data_dir)) {
     @mkdir($data_dir, 0755, true);
+}
+$data_htaccess = $data_dir . '/.htaccess';
+if (!file_exists($data_htaccess)) {
+    // Compativel com Apache 2.4 (mod_authz_core) e 2.2, sem dar 500 num servidor
+    // estrito que nao tenha o mod_access_compat.
+    @file_put_contents(
+        $data_htaccess,
+        "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n"
+        . "<IfModule !mod_authz_core.c>\n  Deny from all\n</IfModule>\n"
+    );
 }
 
 // Le o manifesto de atualizacao (se existir) para devolver na resposta.

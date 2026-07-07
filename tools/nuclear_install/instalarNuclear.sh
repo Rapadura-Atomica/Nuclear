@@ -41,6 +41,19 @@ read -r BUILD VERSION URL SHA256 <<EOF
 $(printf '%s' "$MANIFEST" | python3 -c 'import sys,json; m=json.load(sys.stdin); print(m["build"], m["version"], m["url"], m.get("sha256",""))')
 EOF
 
+# Seguranca (fail-closed): o zip TEM que vir da MESMA origem (esquema+host+porta)
+# do manifesto, e o manifesto TEM que trazer sha256. Senao, um manifesto adulterado
+# poderia apontar o download para outro host / http:// ou pular a verificacao de
+# integridade - e o binario baixado roda no proximo boot.
+if [ -z "$SHA256" ]; then
+    echo "[ERRO] Manifesto sem sha256 - instalacao recusada por seguranca"; exit 1
+fi
+if ! python3 -c 'import sys,urllib.parse as u
+a=u.urlsplit(sys.argv[1]); b=u.urlsplit(sys.argv[2])
+sys.exit(0 if (a.scheme and a.hostname and a.scheme.lower()==b.scheme.lower() and a.hostname.lower()==b.hostname.lower() and (a.port or 0)==(b.port or 0)) else 1)' "$URL" "$MANIFEST_URL"; then
+    echo "[ERRO] URL de download recusada por seguranca (origem difere do manifesto): $URL"; exit 1
+fi
+
 VERSION_DIRNAME="${VERSION}-b${BUILD}"
 INSTALL_DIR="$VERSIONS_DIR/$VERSION_DIRNAME"
 echo "       versao $VERSION (build $BUILD) -> $INSTALL_DIR"
@@ -60,12 +73,10 @@ if [ ! -d "$INSTALL_DIR" ]; then
     trap 'rm -rf "$TMP"' EXIT
     wget --show-progress -q -O "$TMP/nuclear.zip" "$URL" || { echo "[ERRO] Falha no download"; exit 1; }
 
-    if [ -n "$SHA256" ]; then
-        echo "       verificando checksum..."
-        GOT="$(sha256sum "$TMP/nuclear.zip" | awk '{print $1}')"
-        if [ "$GOT" != "$SHA256" ]; then
-            echo "[ERRO] Checksum nao confere (download corrompido)"; exit 1
-        fi
+    echo "       verificando checksum..."
+    GOT="$(sha256sum "$TMP/nuclear.zip" | awk '{print $1}')"
+    if [ "$GOT" != "$SHA256" ]; then
+        echo "[ERRO] Checksum nao confere (download corrompido)"; exit 1
     fi
 
     echo "       extraindo..."
