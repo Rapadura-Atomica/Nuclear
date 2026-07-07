@@ -299,6 +299,15 @@ ui_download() {  # url, out, total, titulo
 
 # Preenchidos por read_manifest():
 MANIFEST=""; M_BUILD=""; M_VERSION=""; M_URL=""; M_SHA256=""; M_SIZE=0; M_VERSTRING=""
+M_ADDONS_URL=""; M_ADDONS_SHA256=""
+
+# _same_origin URL_A URL_B -> exit 0 se compartilham esquema+host+porta. Pina
+# downloads a origem do manifesto confiavel (python3 ja checado no preflight).
+_same_origin() {
+    python3 -c 'import sys,urllib.parse as u
+a=u.urlsplit(sys.argv[1]); b=u.urlsplit(sys.argv[2])
+sys.exit(0 if (a.scheme and a.hostname and a.scheme.lower()==b.scheme.lower() and a.hostname.lower()==b.hostname.lower() and (a.port or 0)==(b.port or 0)) else 1)' "$1" "$2"
+}
 
 fatal() { ui_error "$APP_TITLE" "$1"; exit 1; }
 
@@ -352,9 +361,9 @@ Verifique sua conexao com a internet e tente de novo."
     # Extrai campos sem depender de jq (python3 ja foi checado no preflight).
     local parsed
     parsed="$(printf '%s' "$MANIFEST" | python3 -c \
-        'import sys,json; m=json.load(sys.stdin); print(m["build"], m["version"], m["url"], m.get("sha256",""), m.get("size","0"))' 2>/dev/null)" \
+        'import sys,json; m=json.load(sys.stdin); print(m["build"], m["version"], m["url"], m.get("sha256",""), m.get("size","0"), m.get("addons_url",""), m.get("addons_sha256",""))' 2>/dev/null)" \
         || fatal "O manifesto de versao esta corrompido ou em formato inesperado."
-    read -r M_BUILD M_VERSION M_URL M_SHA256 M_SIZE <<EOF
+    read -r M_BUILD M_VERSION M_URL M_SHA256 M_SIZE M_ADDONS_URL M_ADDONS_SHA256 <<EOF
 $parsed
 EOF
     case "$M_SIZE" in ''|*[!0-9]*) M_SIZE=0 ;; esac
@@ -368,10 +377,7 @@ EOF
     # adulterado poderia apontar o download para outro host / http:// ou pular a
     # verificacao de integridade - e o binario baixado roda no proximo boot.
     [ -n "$M_SHA256" ] || fatal "Manifesto sem sha256 - instalacao recusada por seguranca."
-    python3 -c 'import sys,urllib.parse as u
-a=u.urlsplit(sys.argv[1]); b=u.urlsplit(sys.argv[2])
-sys.exit(0 if (a.scheme and a.hostname and a.scheme.lower()==b.scheme.lower() and a.hostname.lower()==b.hostname.lower() and (a.port or 0)==(b.port or 0)) else 1)' \
-        "$M_URL" "$MANIFEST_URL" \
+    _same_origin "$M_URL" "$MANIFEST_URL" \
         || fatal "URL de download recusada por seguranca (origem difere do manifesto):
 $M_URL"
 }
@@ -475,8 +481,22 @@ install_addons() {
     local addons_dir="$HOME/.config/blender/$M_VERSION/scripts/addons"
     mkdir -p "$addons_dir"
     local tmp_a; tmp_a="$(mktemp -d)"
-    if _downloader "$ADDONS_DOWNLOAD_URL" "$tmp_a/addons.zip"; then
-        if unzip -q "$tmp_a/addons.zip" -d "$tmp_a/x" 2>/dev/null; then
+    # URL efetiva: a do manifesto (se publicada) ou o default. Se o manifesto
+    # trouxer addons_sha256, ele e OBRIGATORIO; sem hash, modo legado best-effort.
+    # Origem pinada ao manifesto quando a URL vem dele. Addons sao opcionais: uma
+    # falha aqui nunca aborta a instalacao.
+    local addons_url="$ADDONS_DOWNLOAD_URL"
+    [ -n "$M_ADDONS_URL" ] && addons_url="$M_ADDONS_URL"
+    if [ -n "$M_ADDONS_URL" ] && ! _same_origin "$addons_url" "$MANIFEST_URL"; then
+        rm -rf "$tmp_a"; return 0   # origem suspeita: pula os addons.
+    fi
+    if _downloader "$addons_url" "$tmp_a/addons.zip"; then
+        local ok=1
+        if [ -n "$M_ADDONS_SHA256" ]; then
+            local got; got="$(sha256sum "$tmp_a/addons.zip" | awk '{print $1}')"
+            [ "$got" = "$M_ADDONS_SHA256" ] || ok=0   # nao instala addons nao verificados.
+        fi
+        if [ "$ok" = 1 ] && unzip -q "$tmp_a/addons.zip" -d "$tmp_a/x" 2>/dev/null; then
             cp -r "$tmp_a/x"/* "$addons_dir/" 2>/dev/null || true
         fi
     fi
