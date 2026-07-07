@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Headless smoke check for the Nuclear 2D stripped build.
+# Exits non-zero on any failure so it can gate the release flow.
+import sys
+
 import bpy
 
 bo = bpy.app.build_options
@@ -48,3 +51,6 @@ print(f"engines available: {engines}")
 print(f"build_options ON: {[a for a in dir(bo) if not a.startswith('__') and getattr(bo,a) is True]}")
 print(f"RESULT: {'ALL PASS' if allok else 'HAS FAILURES'}")
 print("============================\n")
+
+if not allok:
+    sys.exit(1)

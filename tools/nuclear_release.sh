@@ -11,10 +11,17 @@
 #   tools/nuclear_release.sh minor --dry-run            # preview only, nothing runs
 #   tools/nuclear_release.sh --no-bump --notes "..."     # version already bumped by hand
 #
-# What it does, in order: bump version -> optional rebuild (only with --build) ->
+# What it does, in order: bump version -> optional rebuild (only with --build; configures
+# with the nuclear_2d preset + ccache/mold) -> 2D smoke gate on the binary (always) ->
 # package the portable zip -> verify golden rules #3/#4 -> generate + check the
 # manifest -> publish zip+manifest together to estacao/ (asks to confirm) -> reminds you
 # to update CLAUDE.md -> offers to commit.
+#
+# Official releases build with build_files/cmake/config/nuclear_2d.cmake (2026-07-07
+# decision, see docs/decisions/2026-07-07-modelo-comercial-hibrido.md): 3D subsystems
+# compiled out (-21% binary), ccache + mold on. The smoke gate
+# (tools/smoke_nuclear2d.py) aborts the release if the binary still carries 3D or lost
+# a 2D-pipeline capability. Use --no-smoke only to package a deliberate full build.
 #
 # What it deliberately never touches: ping.php / instalarNuclear.sh (overwriting
 # production CODE is out of scope here, same restriction as the Claude agent -- those
@@ -29,14 +36,17 @@ TELEMETRY_MIRROR="$REPO_ROOT/tools/nuclear_telemetry/server/version.json"
 KIND=""
 DO_BUMP=true
 DO_BUILD=false
+DO_SMOKE=true
 DRY_RUN=false
 ASSUME_YES=false
-BUILD_DIR="$(dirname "$REPO_ROOT")/build_nuclear_full"
+BUILD_DIR="$(dirname "$(dirname "$REPO_ROOT")")/build_nuclear_2d"
+CONTAINER="blender"
+PRESET="$REPO_ROOT/build_files/cmake/config/nuclear_2d.cmake"
 NOTES=""
 REMOTE="araga286:~/public_html/addon/rapaduraatomica/estacao/"
 
 usage() {
-  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while [[ $# -gt 0 ]]; do
@@ -44,9 +54,11 @@ while [[ $# -gt 0 ]]; do
     patch|minor|major) KIND="$1"; shift ;;
     --no-bump) DO_BUMP=false; shift ;;
     --build) DO_BUILD=true; shift ;;
+    --no-smoke) DO_SMOKE=false; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --yes|-y) ASSUME_YES=true; shift ;;
     --build-dir) BUILD_DIR="$2"; shift 2 ;;
+    --container) CONTAINER="$2"; shift 2 ;;
     --notes) NOTES="$2"; shift 2 ;;
     --remote) REMOTE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -98,15 +110,35 @@ echo ">> versao: $BEFORE -> $AFTER"
 echo
 
 # 2. Rebuild (only with --build, never silently) ---------------------------
+# Configures with the nuclear_2d preset (idempotent when the dir is already
+# preset-configured; on a full-featured dir it correctly converts it to the 2D
+# feature set). /usr/bin/cmake|ninja on purpose: the PATH cmake can be a broken
+# pip shim (2026-07-07 gotcha).
 if $DO_BUILD; then
-  if confirm "Build via distrobox 'blenderdev' agora (pode haver build concorrente, ~20min incremental)?"; then
-    run distrobox enter blenderdev -- env BUILD_DIR="$BUILD_DIR" bash -lc 'cd "$BUILD_DIR" && ninja && ninja install'
+  if confirm "Build via distrobox '$CONTAINER' agora (ccache quente ~1min; frio ~30min)?"; then
+    run distrobox enter "$CONTAINER" -- env BUILD_DIR="$BUILD_DIR" REPO_ROOT="$REPO_ROOT" PRESET="$PRESET" bash -lc '
+      /usr/bin/cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release -C "$PRESET" &&
+      nice /usr/bin/ninja -C "$BUILD_DIR" -j3 && nice /usr/bin/ninja -C "$BUILD_DIR" install'
   else
     echo "build cancelado pelo usuario. Abortando -- nada foi publicado." >&2
     exit 1
   fi
 else
   echo "-- rebuild pulado (use --build para compilar via distrobox antes de empacotar)"
+fi
+echo
+
+# 2.5. 2D smoke gate (always, even without --build: gates whatever binary is
+# about to be packaged; fails if 3D came back or a 2D capability was lost) ----
+if $DO_SMOKE; then
+  if [[ ! -x "$BUILD_DIR/bin/blender" ]] && ! $DRY_RUN; then
+    echo "erro: binario nao encontrado em $BUILD_DIR/bin/blender (rode com --build ou ajuste --build-dir)." >&2
+    exit 1
+  fi
+  run "$BUILD_DIR/bin/blender" -b --factory-startup --python "$REPO_ROOT/tools/smoke_nuclear2d.py"
+  echo ">> smoke 2D: ALL PASS"
+else
+  echo "-- smoke gate pulado (--no-smoke): empacotando build sem verificacao 2D"
 fi
 echo
 
