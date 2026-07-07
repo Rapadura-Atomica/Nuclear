@@ -5,8 +5,8 @@
   "stage": "Beta",
   "version_string": "Nuclear 1.5.0 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1",
-  "size": 646626577,
+  "sha256": "22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25",
+  "size": 646600712,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
   "notes": "Novo kit de pintura Grease Pencil: aba Paint no Properties com color picker estilo Krita (roda de matiz + triangulo saturacao/valor), pinceis Smudge e Blur/Dissolve, Lasso Fill, balde e cores recentes. Rebrand da pasta de config: .config/blender vira .config/Nuclear (idem cache), com migracao automatica dos settings existentes no updater e no instalador."

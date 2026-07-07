@@ -442,6 +442,25 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-07-06.
 
+- **Refresh do zip 1.5.0/b10 — fix cosmético do banner do updater (2026-07-06, mesmo
+  dia).** Bug: `_draw_statusbar` montava `"Nuclear %s disponível" % _latest_label()`, mas
+  `_latest_label()` já retorna o `version_string` completo (que já começa com "Nuclear") →
+  renderizava "Nuclear Nuclear 1.5.0 (Beta) disponível" na status bar. Fix em
+  `scripts/startup/nuclear_update.py` (commit `9c2e3217f62`, branch `Nuclear`): removido o
+  prefixo redundante, agora só `"%s disponível" % _latest_label()`. **NÃO bumpou** `NUCLEAR_BUILD`
+  (fix cosmético, não vale forçar re-download de quem já está no b10) — segue **1.5.0 / build
+  10**. Re-injeção cirúrgica de 1 arquivo no zip já publicado, sem rebuild: backup do zip anterior
+  como `nuclear.zip.bak-pre-1.5.0-updaterfix` no servidor, removido o `.pyc` obsoleto do
+  `__pycache__` do zip (`zip -d`, pra não deixar bytecode velho ao lado da fonte corrigida) e
+  injetado o `nuclear_update.py` corrigido via `zip -g` no caminho interno
+  `Nuclear/5.0/scripts/startup/nuclear_update.py`. `verify-zip` OK (updater + scipy). Manifesto
+  regerado com **mesmo build/version/notes**, só `sha256`/`size` mudaram: novo sha256
+  `22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25`, 646.600.712 bytes (era
+  `8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1`, 646.626.577 bytes).
+  Conferido: sha256/size do zip live no servidor == manifesto live == resposta pública de
+  `https://rapaduraatomica.com.br/estacao/version.json` e `content-length` do
+  `estacao/nuclear.zip`. `ping.php` / `instalarNuclear.sh` não tocados.
+
 - **Nuclear 1.5.0 (Beta) — `NUCLEAR_BUILD = 10` — PUBLICADO (2026-07-06).** Minor a partir da
   branch `Nuclear` (bump/build já feitos e testados no commit `8bbcfde3b5b`, este agente só
   empacotou/publicou). **Destaque 1 — kit de pintura Grease Pencil:** nova aba "Paint" no
@@ -576,10 +595,13 @@ Atualizado em 2026-07-06.
   build ≤ 9 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
   1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → **1.5.0/b10 (2026-07-06)**.
-- **nuclear.zip (b10, em produção):** 646.626.577 bytes, sha256
-  `8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1`. Auto-contido por construção
-  (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes do publish.
-  Backups no servidor: `nuclear.zip.bak-pre-1.5.0` (zip 1.4.4/b9 anterior),
+- **nuclear.zip (b10, em produção):** 646.600.712 bytes, sha256
+  `22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25` — **refresh do banner do
+  updater (2026-07-06), mesmo build/version**; o zip inicial da 1.5.0 (646.626.577 bytes, sha256
+  `8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1`) foi substituído sem bump.
+  Auto-contido por construção (updater + deps Python do fork no `bin`); verify-zip + check-manifest
+  OK antes de cada publish. Backups no servidor: `nuclear.zip.bak-pre-1.5.0-updaterfix` (zip
+  1.5.0/b10 inicial), `nuclear.zip.bak-pre-1.5.0` (zip 1.4.4/b9 anterior),
   `nuclear.zip.bak-pre-1.4.4` (zip 1.4.3/b8), `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7),
   `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6), `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
 - **Build dir:** `Nuclear/build` nesta máquina (checkout `Nuclear-git/Nuclear`), ou
