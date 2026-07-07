@@ -227,6 +227,18 @@ def cmd_manifest(args):
         "notes": notes,
     })
 
+    # Optional: publish the external add-ons pack's integrity in the SAME manifest
+    # (the trust root the installer already fetches over verified HTTPS), so the
+    # installer can verify addons.zip instead of extracting it unverified. Only
+    # emitted when --addons-zip is given; older installers ignore unknown fields.
+    if args.addons_zip:
+        a_sha, a_size = _sha256_and_size(args.addons_zip)
+        manifest.update({
+            "addons_url": args.addons_url,
+            "addons_sha256": a_sha,
+            "addons_size": a_size,
+        })
+
     text = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
     if args.output and args.output != "-":
         with open(args.output, "w", encoding="utf-8") as fh:
@@ -308,6 +320,10 @@ def main(argv=None):
     sp.add_argument("--notes-file", default=None, help="read release notes from a file")
     sp.add_argument("--notes-url", default="https://github.com/Rapadura-Atomica/Nuclear/releases",
                     help="URL for full release notes")
+    sp.add_argument("--addons-zip", default=None,
+                    help="optional: path to addons.zip to publish its sha256/size in the manifest")
+    sp.add_argument("--addons-url", default="https://rapaduraatomica.com.br/estacao/addons.zip",
+                    help="public URL of the addons pack (used only with --addons-zip)")
     sp.add_argument("--min-build", type=int, default=0,
                     help="oldest build that may upgrade directly to this one")
     sp.add_argument("-o", "--output", default="-", help="output file (default: stdout)")

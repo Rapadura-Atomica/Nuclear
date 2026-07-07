@@ -339,6 +339,11 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
    python tools/nuclear_release.py manifest --zip <nuclear.zip> \
      --notes "o que mudou" -o version.json
    ```
+   > 🔐 Se for **republicar o `addons.zip`**, passe `--addons-zip <addons.zip>` no
+   > mesmo comando: ele grava `addons_url`/`addons_sha256`/`addons_size` no manifesto
+   > e os instaladores passam a **verificar o hash do addons.zip** antes de extraí-lo
+   > (sem o campo, cai no modo legado sem verificação). Como qualquer artefato, se
+   > mexer no `addons.zip` regere o manifesto no mesmo par (regra de ouro nº2).
 6. **Subir os dois juntos** pra `estacao/`: `nuclear.zip` **e** `version.json`.
 7. **Conferir que o zip contém o updater** (passo 4.1, regra de ouro nº3 abaixo).
 8. **Atualizar ESTE CLAUDE.md** (a tabela de versão atual, a data, o que mudou).
