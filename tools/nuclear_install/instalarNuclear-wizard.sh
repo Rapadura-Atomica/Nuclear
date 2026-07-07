@@ -15,9 +15,9 @@
 #   - Pre-checagem: ferramentas, espaco em disco (a partir de manifest.size), $HOME
 #     gravavel, deteccao de SO.
 #   - Barra de progresso real no download (determinada por manifest.size).
-#   - Passo de consentimento de dados de diagnostico (LGPD): telemetria de presenca
-#     + relatorio automatico de falha. Recusa = opt-out honesto via as env vars
-#     NUCLEAR_TELEMETRY_OFF=1 e NUCLEAR_CRASH_OFF=1 no Exec do .desktop.
+#   - Telemetria de presenca + relatorio de falha ficam LIGADAS por padrao, SEM
+#     tela de consentimento. Opt-out via --no-telemetry (ou removendo o prefixo
+#     'env NUCLEAR_TELEMETRY_OFF=1 NUCLEAR_CRASH_OFF=1' do Exec do .desktop).
 #   - Oferecer abrir o Nuclear ao final.
 #
 # Uso:
@@ -25,7 +25,7 @@
 #     --yes           nao-interativo: aceita padroes (telemetria fica LIGADA, a menos
 #                     que --no-telemetry acompanhe; uso interno/automacao).
 #     --dir CAMINHO   diretorio base (padrao: ~/Nuclear).
-#     --no-telemetry  ja instala com telemetria + crash report desligados (pula a tela).
+#     --no-telemetry  ja instala com telemetria + crash report desligados.
 #     --help          mostra este resumo.
 
 set -u
@@ -534,32 +534,15 @@ main() {
 
 Instalar agora?" || { ui_info "$APP_TITLE" "Instalacao cancelada."; exit 0; }
 
-    # 3.5. Consentimento de dados de diagnostico (LGPD). Cobre a telemetria de
-    #      presenca (nuclear_telemetry.py) E o relatorio automatico de falha
-    #      (nuclear_crash_report.py). Recusar nao muda nada da instalacao: as duas
-    #      camadas sao desligadas via env vars no Exec do .desktop.
-    #      --no-telemetry pula a pergunta (ja recusado); --yes aceita o padrao (ligado).
-    if [ "$TELEMETRY_OFF" != "1" ]; then
-        if ! ui_confirm "$APP_TITLE - Dados de diagnostico" "Para o suporte, o Nuclear pode enviar a Rapadura Atomica:
-
-  - Presenca: nome da maquina, usuario do sistema e versao
-    (mostra no painel do estudio quem esta online).
-  - Relatorio de falha: detalhes tecnicos do erro quando o
-    Nuclear fecha inesperadamente.
-
-Nenhum arquivo, cena ou desenho seu e enviado. Voce pode
-desligar depois removendo o prefixo 'env NUCLEAR_...' do
-atalho, ou reinstalando com --no-telemetry.
-
-Permitir o envio?"; then
-            TELEMETRY_OFF=1
-        fi
-    fi
+    # 3.5. Telemetria de presenca + relatorio de falha ficam LIGADAS por padrao,
+    #      sem tela de consentimento (a pergunta foi retirada). O opt-out honesto
+    #      continua: instalar com --no-telemetry (ou tirar o prefixo 'env NUCLEAR_...'
+    #      do atalho depois) desliga as duas camadas via env vars no Exec do .desktop.
 
     # 4. Download + verificacao + extracao + layout versionado.
     do_install
 
-    # 5. Symlink 'current' + atalho + MIME (com o resultado do consentimento).
+    # 5. Symlink 'current' + atalho + MIME (telemetria on, salvo --no-telemetry).
     local exec_prefix=""
     [ "$TELEMETRY_OFF" = "1" ] && exec_prefix="env NUCLEAR_TELEMETRY_OFF=1 NUCLEAR_CRASH_OFF=1 "
     finalize_desktop "$exec_prefix"
