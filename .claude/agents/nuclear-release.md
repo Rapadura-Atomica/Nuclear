@@ -66,13 +66,23 @@ verify-zip --zip <nuclear.zip>` (falha alto e claro se faltar o updater ou as de
 2. Bump: `python tools/nuclear_release.py bump {patch|minor|major}` — ajusta
    MAJOR/MINOR/PATCH conforme o tipo e **sempre +1 no NUCLEAR_BUILD** (o subcomando já
    cuida disso sozinho, sem precisar editar o header à mão).
-3. Rebuild: você **pode** compilar nesta máquina via o container distrobox `blenderdev`
-   (blocker de ownership do `build/` resolvido em 2026-06-08):
-   `distrobox enter blenderdev -- bash -lc 'cd <repo>/Nuclear/build && ninja && ninja install'`
-   (`ninja install` sincroniza os scripts no `bin/5.0`). É demorado (~20min incremental,
-   mais para full) e pode haver build concorrente — então **confirme com o usuário antes de
+3. Rebuild: você **pode** compilar nesta máquina via o container distrobox `blender`
+   (fallback `blenderdev` se o `blender` corromper). **Desde 2026-07-07 releases oficiais
+   compilam com o preset 2D** (Cycles/Bullet/etc. fora, −21% de binário, ccache+mold):
+   ```
+   distrobox enter blender -- bash -lc '/usr/bin/cmake -S <repo> -B <builddir> -G Ninja \
+     -DCMAKE_BUILD_TYPE=Release -C <repo>/build_files/cmake/config/nuclear_2d.cmake &&
+     nice /usr/bin/ninja -C <builddir> -j3 && nice /usr/bin/ninja -C <builddir> install'
+   ```
+   Build dir vigente: `~/Documentos/GitHub/build_nuclear_2d`. Com ccache quente o rebuild
+   limpo leva ~1min (frio ~30min); use `/usr/bin/cmake`/`/usr/bin/ninja` (o do PATH pode ser
+   shim quebrado). Pode haver build concorrente — **confirme com o usuário antes de
    disparar**, não builde por conta própria. Se a tarefa exige um zip novo e o build não foi
    autorizado/feito, deixe isso claro no relatório e pare no ponto que depende do build.
+3.5. **Smoke gate 2D (obrigatório antes de empacotar):**
+   `<builddir>/bin/blender -b --factory-startup --python tools/smoke_nuclear2d.py`
+   — sai com RC≠0 se o binário ainda carrega 3D ou perdeu capacidade do pipeline 2D
+   (o `nuclear_release.sh` já roda isso sozinho; `--no-smoke` só p/ full build deliberado).
 4. Carimbar: `python tools/nuclear_release.py stamp <pasta-do-build>`.
 5. Gerar manifesto do zip empacotado:
    `python tools/nuclear_release.py manifest --zip <nuclear.zip> --notes "..." -o version.json`.
@@ -81,7 +91,8 @@ verify-zip --zip <nuclear.zip>` (falha alto e claro se faltar o updater ou as de
    "checksum não confere"); `verify-zip` (passo das regras nº3/nº4) já deve ter passado.
 7. Publicar zip + manifesto juntos em `estacao/`.
 8. Atualizar `tools/nuclear_claude/CLAUDE.md` e o espelho `tools/nuclear_telemetry/server/version.json`.
-9. Commit no repo (mensagem clara; termine com a linha Co-Authored-By padrão do projeto).
+9. Commit no repo (mensagem clara em inglês, Conventional-Commit; **sem** linha
+   Co-Authored-By — convenção do israel).
 
 # Servidor e deploy
 
