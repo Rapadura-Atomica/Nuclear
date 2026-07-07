@@ -59,6 +59,12 @@ set(WITH_DRACO               OFF CACHE BOOL "" FORCE)  # glTF mesh compression
 # --- VR / XR ---
 set(WITH_XR_OPENXR           OFF CACHE BOOL "" FORCE)  # VR headset support
 
+# --- Build accelerators (safe: both degrade gracefully when the tool is
+# missing — ccache prints a warning and turns itself off, mold falls back to
+# the system linker; see platform_unix.cmake) ---
+set(WITH_COMPILER_CCACHE     ON  CACHE BOOL "" FORCE)  # compiler cache for rebuilds
+set(WITH_LINKER_MOLD         ON  CACHE BOOL "" FORCE)  # much faster link step
+
 # -----------------------------------------------------------------------------
 # DELIBERATELY LEFT AT UPSTREAM DEFAULT (ON) — do NOT disable, the 2D/GP
 # pipeline depends on these (documented here so future edits don't "clean" them):
