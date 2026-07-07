@@ -1,0 +1,9 @@
+# Sobe como estacao/paid/.htaccess — NADA dentro de paid/ e servido direto;
+# todo acesso passa pelo paid.php (que valida o token).
+# Apache 2.4 (HostGator):
+Require all denied
+# Fallback Apache 2.2:
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>
