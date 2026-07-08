@@ -57,12 +57,12 @@ BLENDER_DIR = ""
 # -----------------------------------------------------------------------------
 # Path Constants
 
-# These files are included along side a portable Blender installation.
-BLENDER_DESKTOP = "blender.desktop"
+# These files are included along side a portable Nuclear installation.
+BLENDER_DESKTOP = "Nuclear.desktop"
 # The target binary.
-BLENDER_FILENAME = "blender"
+BLENDER_FILENAME = "nuclear"
 # The target binary (thumbnailer).
-BLENDER_THUMBNAILER_FILENAME = "blender-thumbnailer"
+BLENDER_THUMBNAILER_FILENAME = "nuclear-thumbnailer"
 
 
 # -----------------------------------------------------------------------------
@@ -202,7 +202,10 @@ def handle_desktop_file(do_register: bool, all_users: bool) -> str | None:
     with open(filepath_desktop_src, "r", encoding="utf-8") as fh:
         data = fh.read()
 
-    data = data.replace("\nExec=blender %f\n", "\nExec={:s} %f\n".format(BLENDER_BIN))
+    data = data.replace(
+        "\nExec=nuclear --app-template Nuclear %f\n",
+        "\nExec={:s} --app-template Nuclear %f\n".format(BLENDER_BIN),
+    )
 
     with open(filepath_desktop_dst, "w", encoding="utf-8") as fh:
         fh.write(data)
@@ -210,7 +213,7 @@ def handle_desktop_file(do_register: bool, all_users: bool) -> str | None:
 
 
 def handle_thumbnailer(do_register: bool, all_users: bool) -> str | None:
-    filename = "blender.thumbnailer"
+    filename = "nuclear.thumbnailer"
 
     if all_users:
         base_dir = os.path.join(SYSTEM_PREFIX, "share")

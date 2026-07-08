@@ -1117,22 +1117,22 @@ class WM_OT_url_open_preset(Operator):
           tip_("Report a bug with pre-filled version information")),
          _url_from_bug),
         (('RELEASE_NOTES', iface_("Release Notes"),
-          tip_("Read about what's new in this version of Blender")),
+          tip_("Read about what's new in this version of Nuclear")),
          _url_from_release_notes),
         (('MANUAL', iface_("User Manual"),
-          tip_("The reference manual for this version of Blender")),
+          tip_("The reference manual for this version of Nuclear")),
          _url_from_manual),
         (('API', iface_("Python API Reference"),
-          tip_("The API reference manual for this version of Blender")),
+          tip_("The API reference manual for this version of Nuclear")),
          _url_from_api),
 
         # Static URL's.
         (('FUND', iface_("Development Fund"),
           tip_("The donation program to support maintenance and improvements")),
          "https://fund.blender.org"),
-        (('BLENDER', "blender.org",
-          tip_("Blender's official web-site")),
-         "https://www.blender.org"),
+        (('BLENDER', "rapaduraatomica.com.br",
+          tip_("Nuclear's official web-site")),
+         "https://rapaduraatomica.com.br"),
         (('CREDITS', iface_("Credits"),
           tip_("Lists committers to Blender's source code")),
          "https://www.blender.org/about/credits/"),
@@ -3374,7 +3374,7 @@ class WM_MT_splash_quick_setup(Menu):
         sub = col.column(heading="Theme")
         label = bpy.types.USERPREF_MT_interface_theme_presets.bl_label
         if label == "Presets":
-            label = "Blender Dark"
+            label = "Nuclear Dark"
         sub.menu("USERPREF_MT_interface_theme_presets", text=label)
 
         col.separator()
@@ -3386,7 +3386,7 @@ class WM_MT_splash_quick_setup(Menu):
         sub = col.column(heading="Keymap")
         text = bpy.path.display_name(kc.name)
         if not text:
-            text = "Blender"
+            text = "Nuclear"
         sub.menu("USERPREF_MT_keyconfigs", text=text)
 
         if hasattr(kc_prefs, "select_mouse"):
@@ -3441,10 +3441,7 @@ class WM_MT_splash(Menu):
             col2_title.label(text="Getting Started")
 
             col2.operator("wm.url_open_preset", text="Manual", icon='URL').type = 'MANUAL'
-            col2.operator("wm.url_open", text="Support", icon='URL').url = "https://www.blender.org/support/"
-            col2.operator("wm.url_open", text="User Communities", icon='URL').url = "https://www.blender.org/community/"
-            col2.operator("wm.url_open", text="Get Involved", icon='URL').url = "https://www.blender.org/get-involved/"
-            col2.operator("wm.url_open_preset", text="Blender Website", icon='URL').type = 'BLENDER'
+            col2.operator("wm.url_open_preset", text="Nuclear Website", icon='URL').type = 'BLENDER'
 
         col_sep = layout.column()
         col_sep.separator()
@@ -3461,8 +3458,9 @@ class WM_MT_splash(Menu):
 
         col2 = split.column()
 
-        col2.operator("wm.url_open_preset", text="What's New", icon='URL').type = 'RELEASE_NOTES'
-        col2.operator("wm.url_open_preset", text="Donate to Blender", icon='FUND').type = 'FUND'
+        col2.operator(
+            "wm.url_open", text="What's New", icon='URL',
+        ).url = "https://github.com/Rapadura-Atomica/Nuclear/releases"
 
         layout.separator()
 

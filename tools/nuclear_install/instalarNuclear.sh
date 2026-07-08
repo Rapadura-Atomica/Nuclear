@@ -89,9 +89,12 @@ if [ ! -d "$INSTALL_DIR" ]; then
     echo "       extraindo..."
     unzip -q "$TMP/nuclear.zip" -d "$TMP/x" || { echo "[ERRO] Falha ao extrair"; exit 1; }
 
-    # Acha a pasta que contem o binario 'blender' dentro do zip.
-    SRC="$(dirname "$(find "$TMP/x" -name blender -type f | head -n1)")"
-    [ -z "$SRC" ] && { echo "[ERRO] binario 'blender' nao encontrado no pacote"; exit 1; }
+    # Acha a pasta que contem o binario 'nuclear' (novo nome) ou 'blender' (legado).
+    SRC="$(dirname "$(find "$TMP/x" -name nuclear -type f | head -n1)")"
+    [ "$SRC" = "." ] && SRC=""
+    [ -z "$SRC" ] && SRC="$(dirname "$(find "$TMP/x" -name blender -type f | head -n1)")"
+    [ "$SRC" = "." ] && SRC=""
+    [ -z "$SRC" ] && { echo "[ERRO] binario 'nuclear' (ou 'blender') nao encontrado no pacote"; exit 1; }
 
     mv "$SRC" "$INSTALL_DIR" || { echo "[ERRO] Falha ao instalar"; exit 1; }
 
@@ -112,13 +115,16 @@ ln -sfn "$INSTALL_DIR" "$CURRENT_LINK"
 
 echo "[4/5] Criando atalho: $DESKTOP_FILE"
 mkdir -p "$(dirname "$DESKTOP_FILE")"
-ICON="$CURRENT_LINK/blender.svg"
-[ -f "$ICON" ] || ICON="blender"
+NUCLEAR_EXEC="$CURRENT_LINK/nuclear"
+[ -x "$INSTALL_DIR/nuclear" ] || NUCLEAR_EXEC="$CURRENT_LINK/blender"
+ICON="$CURRENT_LINK/nuclear.svg"
+[ -f "$ICON" ] || ICON="$CURRENT_LINK/blender.svg"
+[ -f "$ICON" ] || ICON="nuclear"
 cat > "$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Name=Nuclear
 GenericName=2D Animation
-Exec=$CURRENT_LINK/blender --app-template Nuclear %F
+Exec=$NUCLEAR_EXEC --app-template Nuclear %F
 Icon=$ICON
 Type=Application
 Categories=Graphics;2DGraphics;

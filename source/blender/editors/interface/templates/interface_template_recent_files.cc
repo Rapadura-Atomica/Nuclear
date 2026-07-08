@@ -73,7 +73,7 @@ static void uiTemplateRecentFiles_tooltip_func(bContext & /*C*/,
 
   if (version_str[0]) {
     UI_tooltip_text_field_add(
-        tip, fmt::format("Blender {}", version_str), {}, UI_TIP_STYLE_NORMAL, UI_TIP_LC_NORMAL);
+        tip, fmt::format("Nuclear {}", version_str), {}, UI_TIP_STYLE_NORMAL, UI_TIP_LC_NORMAL);
     UI_tooltip_text_field_add(tip, {}, {}, UI_TIP_STYLE_SPACER, UI_TIP_LC_NORMAL);
   }
 

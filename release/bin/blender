@@ -1,0 +1,11 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Nuclear authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# Compatibility shim: the Nuclear executable was renamed "blender" -> "nuclear".
+# Older auto-updaters, .desktop entries and pipeline scripts still invoke a file
+# named "blender" next to the install root; keep them working by forwarding to
+# the real binary. Do not remove while any machine may still run a pre-rename
+# build (the old nuclear_update.py looks for this exact file inside the zip).
+exec "$(dirname "$(readlink -f "$0")")/nuclear" "$@"

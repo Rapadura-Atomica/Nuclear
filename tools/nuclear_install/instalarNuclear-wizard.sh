@@ -422,10 +422,15 @@ Rode o instalador de novo; se persistir, avise o suporte."
 
     unzip -q "$tmp/nuclear.zip" -d "$tmp/x" || fatal "Falha ao extrair o pacote."
 
-    # Acha a pasta que contem o binario 'blender' dentro do zip.
+    # Acha a pasta que contem o binario 'nuclear' (novo nome) ou 'blender' (legado).
     local src
-    src="$(dirname "$(find "$tmp/x" -name blender -type f | head -n1)")"
-    [ -n "$src" ] && [ -d "$src" ] || fatal "Pacote invalido: binario 'blender' nao encontrado."
+    src="$(dirname "$(find "$tmp/x" -name nuclear -type f | head -n1)")"
+    [ "$src" = "." ] && src=""
+    if [ -z "$src" ] || [ ! -d "$src" ]; then
+        src="$(dirname "$(find "$tmp/x" -name blender -type f | head -n1)")"
+        [ "$src" = "." ] && src=""
+    fi
+    [ -n "$src" ] && [ -d "$src" ] || fatal "Pacote invalido: binario 'nuclear' (ou 'blender') nao encontrado."
 
     mv "$src" "$INSTALL_DIR" || fatal "Falha ao mover a instalacao para $INSTALL_DIR"
 
@@ -444,13 +449,16 @@ finalize_desktop() {  # exec_prefix
 
     local desktop_file="$HOME/.local/share/applications/Nuclear.desktop"
     mkdir -p "$(dirname "$desktop_file")"
-    local icon="$current_link/blender.svg"
-    [ -f "$icon" ] || icon="blender"
+    local icon="$current_link/nuclear.svg"
+    [ -f "$icon" ] || icon="$current_link/blender.svg"
+    [ -f "$icon" ] || icon="nuclear"
+    local exec_bin="$current_link/nuclear"
+    [ -x "$INSTALL_DIR/nuclear" ] || exec_bin="$current_link/blender"
     cat > "$desktop_file" <<EOF
 [Desktop Entry]
 Name=Nuclear
 GenericName=2D Animation
-Exec=${exec_prefix}$current_link/blender %F
+Exec=${exec_prefix}$exec_bin --app-template Nuclear %F
 Icon=$icon
 Type=Application
 Categories=Graphics;2DGraphics;

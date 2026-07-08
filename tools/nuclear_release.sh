@@ -134,11 +134,14 @@ echo
 # 2.5. 2D smoke gate (always, even without --build: gates whatever binary is
 # about to be packaged; fails if 3D came back or a 2D capability was lost) ----
 if $DO_SMOKE; then
-  if [[ ! -x "$BUILD_DIR/bin/blender" ]] && ! $DRY_RUN; then
-    echo "erro: binario nao encontrado em $BUILD_DIR/bin/blender (rode com --build ou ajuste --build-dir)." >&2
+  # Binario renomeado blender -> nuclear no rebrand; aceita os dois nomes.
+  SMOKE_BIN="$BUILD_DIR/bin/nuclear"
+  [[ -x "$SMOKE_BIN" ]] || SMOKE_BIN="$BUILD_DIR/bin/blender"
+  if [[ ! -x "$SMOKE_BIN" ]] && ! $DRY_RUN; then
+    echo "erro: binario nao encontrado em $BUILD_DIR/bin/nuclear (rode com --build ou ajuste --build-dir)." >&2
     exit 1
   fi
-  run "$BUILD_DIR/bin/blender" -b --factory-startup --python "$REPO_ROOT/tools/smoke_nuclear2d.py"
+  run "$SMOKE_BIN" -b --factory-startup --python "$REPO_ROOT/tools/smoke_nuclear2d.py"
   echo ">> smoke 2D: ALL PASS"
 else
   echo "-- smoke gate pulado (--no-smoke): empacotando build sem verificacao 2D"

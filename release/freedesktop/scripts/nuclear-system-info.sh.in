@@ -11,6 +11,6 @@ fi
 
 echo "ERROR: Failed to find Python executable at: $PYTHON_BIN"
 echo "Possible causes include:"
-echo "- Your Blender installation is corrupt or missing python."
+echo "- Your Nuclear installation is corrupt or missing python."
 echo "- The location or name of the python executable has changed."
 exit 1

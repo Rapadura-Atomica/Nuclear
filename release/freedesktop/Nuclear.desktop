@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=Nuclear
+GenericName=2D Animation
+GenericName[pt_BR]=Animação 2D
+Comment=2D cut-out animation
+Comment[pt_BR]=Animação 2D estilo cut-out
+Keywords=2d;cutout;cut-out;animation;grease pencil;drawing;rigging;pegs;toon;
+Exec=nuclear --app-template Nuclear %f
+Icon=nuclear
+Terminal=false
+Type=Application
+PrefersNonDefaultGPU=true
+Categories=Graphics;2DGraphics;
+MimeType=application/x-nuclear;application/x-blender;
+StartupWMClass=Nuclear
