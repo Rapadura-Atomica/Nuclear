@@ -99,7 +99,8 @@ const UserDef U_default = {
     .autoexec_paths = {NULL},
     .user_menus = {NULL},
 
-    .keyconfigstr = "Blender",
+    /* Nuclear rebrand: must match WM_KEYCONFIG_STR_DEFAULT / the Nuclear.py preset. */
+    .keyconfigstr = "Nuclear",
 
     .network_timeout = 10,
     .network_connection_limit = 5,

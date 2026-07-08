@@ -149,7 +149,10 @@ enum {
   (WM_OUTLINER_SYNC_SELECT_FROM_OBJECT | WM_OUTLINER_SYNC_SELECT_FROM_EDIT_BONE | \
    WM_OUTLINER_SYNC_SELECT_FROM_POSE_BONE | WM_OUTLINER_SYNC_SELECT_FROM_SEQUENCE)
 
-#define WM_KEYCONFIG_STR_DEFAULT "Blender"
+/* Nuclear rebrand: the default key-configuration is named after the product. Must match
+ * the preset filename `scripts/presets/keyconfig/Nuclear.py` and the default in
+ * `bpy.utils.keyconfig_init`; stored prefs are migrated in `versioning_userdef.cc`. */
+#define WM_KEYCONFIG_STR_DEFAULT "Nuclear"
 
 /* IME is win32 and apple only! */
 #if !(defined(WIN32) || defined(__APPLE__)) && !defined(DNA_DEPRECATED)
