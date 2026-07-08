@@ -821,8 +821,12 @@ def preset_find(name, preset_path, *, display_name=False, ext=".py"):
 def keyconfig_init():
     # Key configuration initialization and refresh, called from the Blender
     # window manager on startup and refresh.
-    default_config = "Blender"
+    default_config = "Nuclear"
     active_config = _preferences.keymap.active_keyconfig
+    # Nuclear rebrand: prefs saved by pre-rename builds stored the old preset names.
+    # Normally migrated by userdef versioning; kept here as belt-and-suspenders.
+    active_config = {"Blender": "Nuclear", "Blender_27x": "Legacy_27x"}.get(
+        active_config, active_config)
 
     # Load the default key configuration.
     filepath = preset_find(default_config, "keyconfig")

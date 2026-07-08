@@ -1742,6 +1742,26 @@ void blo_do_versions_userdef(UserDef *userdef)
    * \note Keep this message at the bottom of the function.
    */
 
+  {
+    /* Nuclear rebrand: key-config presets were renamed ("Blender" -> "Nuclear",
+     * "Blender_27x" -> "Legacy_27x"). Runs unconditionally (the fork cannot burn
+     * upstream subversions); the exact-match replace is idempotent, so re-running
+     * on every load is harmless. Keeps the active keymap and its per-keyconfig
+     * preferences (select mouse, spacebar action, ...) across the rename. */
+    const char *replace_table[][2] = {
+        {"Blender", "Nuclear"},
+        {"Blender_27x", "Legacy_27x"},
+    };
+    const int replace_table_len = ARRAY_SIZE(replace_table);
+
+    BLI_string_replace_table_exact(
+        userdef->keyconfigstr, sizeof(userdef->keyconfigstr), replace_table, replace_table_len);
+    LISTBASE_FOREACH (wmKeyConfigPref *, kpt, &userdef->user_keyconfig_prefs) {
+      BLI_string_replace_table_exact(
+          kpt->idname, sizeof(kpt->idname), replace_table, replace_table_len);
+    }
+  }
+
   LISTBASE_FOREACH (bTheme *, btheme, &userdef->themes) {
     do_versions_theme(userdef, btheme);
   }
