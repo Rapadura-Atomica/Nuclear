@@ -90,6 +90,24 @@ _TRANSLATIONS = {
         ("*", "Load Factory Blender Preferences"): "Load Factory Nuclear Preferences",
         ("*", "Blender File View"): "Nuclear File View",
         ("*", "Blender Preferences"): "Nuclear Preferences",
+        # Save/load dialogs (wm_files.cc).
+        ("*", "Blender will start next time as it is now."):
+            "Nuclear will start next time as it is now.",
+        ("*", "This file was saved by a newer version of Blender (%s)."):
+            "This file was saved by a newer version of Nuclear (%s).",
+        ("*", "Saving it with this Blender (%s) may cause loss of data."):
+            "Saving it with this Nuclear (%s) may cause loss of data.",
+        ("*", "This file is managed by the Blender asset system. It can only be"):
+            "This file is managed by the Nuclear asset system. It can only be",
+        ("*", "with an older Blender version?"): "with an older Nuclear version?",
+        ("*", "Overwrite file with an older Blender version?"):
+            "Overwrite file with an older Nuclear version?",
+        # File browser filters (rna_space.cc / space_filebrowser.py).
+        ("*", "Filter Blender"): "Filter Nuclear",
+        ("*", "Filter Blender Backup Files"): "Filter Nuclear Backup Files",
+        ("*", "Filter Blender IDs"): "Filter Nuclear IDs",
+        ("*", "Blender IDs"): "Nuclear IDs",
+        ("*", "Blender File"): "Nuclear File",
     },
 }
 
