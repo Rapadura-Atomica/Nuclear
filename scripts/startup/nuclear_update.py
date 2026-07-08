@@ -246,13 +246,27 @@ def _start_fetch():
 
 # --- install layout & apply (pure helpers, no bpy) ---------------------------
 
+# Executable names, in preference order. The binary was renamed "blender" -> "nuclear"
+# in the product rebrand; older packages (and the compat shim shipped since the rename)
+# still provide a "blender" file, so both names stay accepted.
+_EXE_NAMES = ("nuclear.exe", "blender.exe") if os.name == "nt" else ("nuclear", "blender")
+
+
+def _exe_in(dirpath):
+    """Path of the Nuclear executable inside `dirpath` (new name first), or None."""
+    for name in _EXE_NAMES:
+        path = os.path.join(dirpath, name)
+        if os.path.isfile(path):
+            return path
+    return None
+
 
 def _detect_layout(binary_path):
-    """Map a blender binary path to the versioned-install directories.
+    """Map a Nuclear binary path to the versioned-install directories.
 
     Returns {base, versions, current, install_root} or None. Handles both the new
-    versioned layout (`<base>/versions/<v>/blender`) and a legacy flat layout
-    (`<base>/<v>/blender`), in both cases placing new versions under `<base>/versions`.
+    versioned layout (`<base>/versions/<v>/nuclear`) and a legacy flat layout
+    (`<base>/<v>/nuclear`), in both cases placing new versions under `<base>/versions`.
     """
     if not binary_path:
         return None
@@ -282,12 +296,11 @@ def _version_dirname(manifest):
 
 
 def _find_binary_root(tree):
-    """Directory inside an extracted tree that holds the `blender` executable."""
-    for exe in ("blender", "blender.exe"):
-        if os.path.isfile(os.path.join(tree, exe)):
-            return tree
+    """Directory inside an extracted tree that holds the Nuclear executable."""
+    if _exe_in(tree):
+        return tree
     for root, _dirs, files in os.walk(tree):
-        if "blender" in files or "blender.exe" in files:
+        if any(name in files for name in _EXE_NAMES):
             return root
     return None
 
@@ -319,7 +332,7 @@ def _ensure_executable(install_dir):
     executable, even if the zip carried no mode bits (e.g. built on Windows)."""
     if os.name == "nt":
         return
-    targets = [os.path.join(install_dir, "blender")]
+    targets = [os.path.join(install_dir, name) for name in _EXE_NAMES]
     py_bin = os.path.join(install_dir, "5.0", "python", "bin")
     try:
         if os.path.isdir(py_bin):
@@ -452,7 +465,7 @@ def _apply_extracted(extract_tree, layout, manifest):
     """Move an extracted build into versions/ and flip `current` to it. Returns its path."""
     src = _find_binary_root(extract_tree)
     if src is None:
-        raise RuntimeError("nenhum binário 'blender' encontrado no pacote baixado")
+        raise RuntimeError("nenhum binário 'nuclear' (ou 'blender') encontrado no pacote baixado")
 
     os.makedirs(layout["versions"], exist_ok=True)
     dest = os.path.join(layout["versions"], _version_dirname(manifest))
@@ -468,7 +481,7 @@ def _apply_extracted(extract_tree, layout, manifest):
 
 
 def _refresh_desktop(layout):
-    """Best-effort: repoint a Nuclear.desktop launcher at `current/blender` after an update.
+    """Best-effort: repoint a Nuclear.desktop launcher at the `current` binary after an update.
 
     Existing machines were installed with a flat layout and a launcher that names a specific
     version directory; once we move to the versioned `current` symlink, the launcher must
@@ -481,7 +494,7 @@ def _refresh_desktop(layout):
     """
     if os.name == "nt":
         return
-    target_exec = os.path.join(layout["current"], "blender")
+    target_exec = _exe_in(layout["current"]) or os.path.join(layout["current"], "nuclear")
     base_real = os.path.realpath(layout["base"])
     candidates = [
         os.path.expanduser("~/.local/share/applications/Nuclear.desktop"),
@@ -756,8 +769,7 @@ def _set_progress(p):
 
 def _restart_into_current(layout):
     """Spawn the freshly-installed build (via the `current` pointer) detached, then quit."""
-    exe_name = "blender.exe" if os.name == "nt" else "blender"
-    exe = os.path.join(layout["current"], exe_name)
+    exe = _exe_in(layout["current"]) or os.path.join(layout["current"], _EXE_NAMES[0])
     try:
         if os.name == "nt":
             flags = getattr(subprocess, "DETACHED_PROCESS", 0) | \

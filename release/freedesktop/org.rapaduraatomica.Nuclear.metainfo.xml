@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+    <id>org.rapaduraatomica.Nuclear</id>
+    <launchable type="desktop-id">Nuclear.desktop</launchable>
+    <name>Nuclear</name>
+    <summary>2D cut-out animation studio</summary>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0</project_license>
+    <description>
+        <p>
+            Nuclear is a free and open source 2D cut-out animation application
+            built on Grease Pencil, proudly derived from Blender. It focuses on
+            the traditional cut-out workflow: drawing, rigging with pegs,
+            deformers and 2D compositing.
+        </p>
+        <p>
+            Nuclear is developed by Rapadura Atômica. It is licensed under the
+            GNU General Public License; the full corresponding source code is
+            available in the project repository.
+        </p>
+    </description>
+    <url type="homepage">https://rapaduraatomica.com.br</url>
+    <url type="bugtracker">https://github.com/Rapadura-Atomica/Nuclear/issues</url>
+    <url type="vcs-browser">https://github.com/Rapadura-Atomica/Nuclear</url>
+    <update_contact>claude@rapaduraatomica.com.br</update_contact>
+    <content_rating type="oars-1.1" />
+    <releases>
+        <release version="1.5.0" date="2026-07-06" />
+    </releases>
+</component>

@@ -64,7 +64,8 @@ echo "poda: ${n_lib} libs de feature-OFF + ${n_tool} ferramentas de build"
 echo "staging: ${before} MB -> ${after} MB (economia: $((before - after)) MB)"
 
 # 3. sanity: o binário do staging ainda sobe?
-BIN="$STAGING/blender"
+BIN="$STAGING/nuclear"
+[ -x "$BIN" ] || BIN="$STAGING/blender"
 if [ -x "$BIN" ]; then
   if v="$("$BIN" --version 2>/dev/null | head -1)"; then
     echo "sanity OK: $v"

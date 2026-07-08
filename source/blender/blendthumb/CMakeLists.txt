@@ -100,6 +100,8 @@ elseif(UNIX)
   )
 
   add_executable(blender-thumbnailer ${SRC} ${SRC_CMD})
+  # Nuclear rebrand: ship the thumbnailer under the product name.
+  set_target_properties(blender-thumbnailer PROPERTIES OUTPUT_NAME nuclear-thumbnailer)
   setup_platform_linker_flags(blender-thumbnailer)
   setup_platform_linker_libs(blender-thumbnailer)
   target_link_libraries(blender-thumbnailer PRIVATE bf_blenlib bf_blenloader_core)
