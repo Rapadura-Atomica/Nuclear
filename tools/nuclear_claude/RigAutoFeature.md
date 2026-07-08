@@ -10,10 +10,13 @@
 O animador "só desenha e anima". O rig se divide numa fronteira **não-uniforme**:
 
 - **Membros e espinha = previsíveis** → montados automaticamente por nome.
-- **Face / cabeça / acessórios = leque denso** → ligados em lote pelo animador (seleciona o
-  monte, ativa o pai, um clique).
+- **Rosto e cabelo = leque denso, mas reconhecível** → casados por nome contra a ontologia
+  facial (`_FACE_SYNONYMS`) e auto-parentados na junta da **cabeça**, sem clique nenhum.
+- **Guarda-roupa / acessórios (óculos, roupa, props) = ainda em lote** → ligados pelo
+  animador (seleciona o monte, ativa o pai, um clique) — o pai varia por figurino, não só
+  por anatomia, então fica de fora do reconhecimento automático por ora.
 - **Junta / pivô = sempre geométrica** (centróide da sobreposição peça∩pai). O animador
-  **nunca** posiciona uma junta na mão.
+  **nunca** posiciona uma junta na mão — vale também pro rosto.
 
 **Padrão do estúdio — toda peça tem sua própria peg independente.** Cada peça do esqueleto
 recebe **duas** pegs: uma **junta** (estrutural, na cadeia, com o pivô da articulação —
@@ -36,14 +39,29 @@ Em repouso a matriz local de cada peg é identidade, então inserir a pelve **n�
 Se o artista *desenhar* uma peça "quadril"/"ombro" (sinônimos abaixo), ela vira o desenho
 dessa junta como qualquer outra peça (padrão de duas pegs). Configuração em `_STRUCT_JOINTS`.
 
+**Rosto (Tier 2) — o leque da cabeça também é automático.** Peças reconhecidas pela
+ontologia facial (`_FACE_SYNONYMS`: olho, sobrancelha, pupila, boca, nariz, orelha, cabelo,
+franja, trança, bochecha, queixo, barba/bigode, dente, língua, pálpebra, cílio — PT + poucos
+sinônimos EN/ES) **auto-parentam na junta da CABEÇA** — sem passar por "Soltos" nem precisar
+de `Link Selected to Active`. Como é um leque (não uma cadeia), cada peça ganha **uma única
+peg** (sem o sufixo `(ctrl)` — já é folha, já é independente), com pivô geométrico contra a
+peça de cabeça mais próxima. Se o artista não desenhou "CABECA", a âncora recua pro ancestral
+desenhado mais próximo (pescoço, depois tronco) usando o mesmo mecanismo de colapso das
+juntas não-estruturais — se nada da espinha foi desenhado, a peça de rosto cai solta como
+antes. Guarda-roupa/acessórios (óculos, roupa, props) **não** entram aqui — o pai varia por
+figurino, então continuam em `Link Selected to Active`. Validado headless contra
+`Carolina_strokes.blend`: 19 peças (`olho.*`, `sob.*`, `pupila.*`, `boca`, `NARIZ`,
+`orelha.*`, `cabelo`) casaram e auto-parentaram em CABECA; guarda-roupa (`oculos`, `bandana`,
+`manga.*`...) seguiu solto como antes.
+
 ## Fluxo (painel "Rig" na barra-N do viewport)
 
 1. **Object Mode** → selecione as peças (ou nada = todas) → **Auto-Build Skeleton**.
-   Monta tronco·pescoço·cabeça + braços/pernas espelhados num clique; cada peça restante
-   ganha sua peg na raiz.
-2. Selecione um leque (ex.: olhos, sobrancelhas, boca, cabelo) e por último **clique na peça
-   pai** (ex.: CABECA, que vira a ativa) → **Link Selected to Active**.
-3. Repita para acessórios do tronco com **TRONCO** ativo.
+   Monta tronco·pescoço·cabeça + braços/pernas espelhados num clique; o leque de rosto/cabelo
+   auto-parenta na cabeça; cada peça restante (guarda-roupa/acessórios) ganha sua peg na raiz.
+2. Selecione um leque de guarda-roupa (ex.: óculos, chapéu, roupa) e por último **clique na
+   peça pai** (ex.: CABECA ou TRONCO, que vira a ativa) → **Link Selected to Active**.
+3. Repita para outros acessórios.
 4. Refine no **Peg Graph** (arraste links). Botão **Auto Layout** reagrupa o grafo.
 5. **Peg Pose** para animar.
 
@@ -91,6 +109,34 @@ o sufixo de lado) e o **núcleo** resultante precisa ser **exatamente** um token
 desenhada (ver acima). Desenhá-los é **opcional** — se existir a peça, ela vincula na junta.
 Acento é ignorado (`CABEÇA` = `CABECA`, `pé` = `pe`).
 
+### Tokens do rosto e cabelo (Tier 2 — auto-parentam em CABECA)
+
+| Parte | Canônico | Também aceitos | Lado? |
+| --- | --- | --- | --- |
+| Sobrancelha | `sobrancelha` | sob, eyebrow, ceja | sim |
+| Olho | `olho` | eye, ojo, globo | sim |
+| Pupila/íris | `pupila` | pupil, iris | sim |
+| Pálpebra | `palpebra` | eyelid, parpado | sim |
+| Cílio | `cilio` | eyelash, cilios, pestana | sim |
+| Nariz | `nariz` | nose | não |
+| Boca | `boca` | mouth | não |
+| Lábio | `labio` | lip, labios | não |
+| Dente | `dente` | tooth, teeth, dentes | não |
+| Língua | `lingua` | tongue, lengua | não |
+| Orelha | `orelha` | ear, oreja | sim |
+| Bochecha | `bochecha` | cheek, mejilla | sim |
+| Queixo | `queixo` | chin, menton | não |
+| Bigode | `bigode` | mustache, bigote | não |
+| Barba | `barba` | beard | não |
+| Cabelo | `cabelo` | hair, pelo, cabello | não |
+| Franja | `franja` | bangs, fleco | não |
+| Trança | `tranca` | braid, trenza | sim |
+
+Mesma regra de núcleo exato + separador de lado do esqueleto. Sinônimos em `_FACE_SYNONYMS`
+(`nuclear_rig_auto.py`). Guarda-roupa/acessórios (óculos, chapéu, roupa, props) **não** estão
+nesta tabela de propósito — o pai varia por figurino, então continuam pelo
+`Link Selected to Active`.
+
 ### Sufixo de lado (membros)
 
 Precisa de um **separador** (`.`, `_`, `-` ou espaço) + a marca:
@@ -126,12 +172,14 @@ pe.e        pe.d
    **primeiro** vira osso; o resto ganha peg própria (ligue na mão). Peça multi-camada deve
    ser **um** objeto GP (com as layers dentro).
 4. **Números são ignorados.** `coxa.e.001`, `pe1` funcionam.
-5. **Resto = acessório.** Qualquer nome fora da tabela (cabelo, óculos, capa, olho, boca,
-   sobrancelha, orelha, nariz…) não some — ganha peg própria e fica em "Soltos", pronto pro
-   Link em lote.
+5. **Rosto casado = auto-parenta em CABECA, sem restrição de "um por encaixe".** Diferente
+   do esqueleto, o rosto não é cadeia — `olho.d`, `olho.d.001`, `olho.d.002`… todos casam e
+   viram pegs próprias sob a cabeça (não existe "só o primeiro vira osso" aqui).
+6. **Resto = acessório.** Qualquer nome fora das duas tabelas (óculos, capa, roupa, props…)
+   não some — ganha peg própria e fica em "Soltos", pronto pro Link em lote.
 
-> Para estender o dicionário (casar com os nomes reais do estúdio), edite `_ROLE_SYNONYMS`
-> em `scripts/startup/nuclear_rig_auto.py`.
+> Para estender o dicionário do esqueleto edite `_ROLE_SYNONYMS`; para o rosto,
+> `_FACE_SYNONYMS` — ambos em `scripts/startup/nuclear_rig_auto.py`.
 
 ---
 
@@ -142,9 +190,14 @@ pe.e        pe.d
   (`_match_role` + `_ROLE_SYNONYMS`/`_PARENT_ROLE`/`_SIDED`) → **nós de junta** resolvidos por
   `ensure_node` (uma junta por peça casada + **juntas estruturais** de `_STRUCT_JOINTS`,
   pelve/ombro, materializadas quando um membro passa por elas; papéis não-estruturais sem peça
-  colapsam) → cadeia + **pegs `(ctrl)`** (`_DRAW_PEG_SUFFIX`) + acessórios. Pivô da peça por
-  `_joint_world` contra o ancestral **desenhado** mais próximo (pula estruturais); pivô da
-  junta estrutural = média dos encaixes dos filhos; fallback pro centro (`_center_world`).
+  colapsam) → cadeia + **pegs `(ctrl)`** (`_DRAW_PEG_SUFFIX`) + **leque de rosto** (Tier 2) +
+  acessórios. Pivô da peça por `_joint_world` contra o ancestral **desenhado** mais próximo
+  (pula estruturais); pivô da junta estrutural = média dos encaixes dos filhos; fallback pro
+  centro (`_center_world`).
+- **Leque de rosto (Tier 2):** `_match_face_role` + `_FACE_SYNONYMS`/`_FACE_SIDED` — sem
+  `_PARENT_ROLE` próprio, é sempre filho direto da âncora `face_anchor_key = ensure_node("head",
+  None)` (reusa o colapso da cadeia: cabeça → pescoço → tronco → solto). Cada peça casada vira
+  **uma peg só** (sem `(ctrl)`), pivô por `_joint_world` contra o objeto da âncora.
 - `OBJECT_OT_nuclear_rig_link_to_parent` (`object.nuclear_rig_link_to_parent`) — lote
   parent-to-active; prende na **junta** do ativo (pai da peg `(ctrl)`).
 - Pivô gravado no frame do peg-pai via `_set_pivot_world` (mesma matemática do Peg Graph).

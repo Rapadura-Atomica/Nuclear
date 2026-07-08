@@ -9,8 +9,10 @@ split along a non-uniform automation boundary:
 * **Auto-Build Skeleton** — the predictable spine + limbs (torso·neck·head and the mirrored
   arms/legs) are matched by name against a humanoid ontology and built in one click. Pieces
   the matcher is unsure about stay as *loose members* of the rig, ready to be linked.
-* **Link Selected to Active** — the dense face/accessory "fans" (eyes, brows, hair, glasses,
-  cape…) are attached in batches: select the cluster, make the parent piece active, click.
+* **Face fan (auto)** — head-fan pieces recognised by name (eyes, brows, mouth, nose, ears,
+  hair…) auto-parent under the head joint, no manual link needed.
+* **Link Selected to Active** — anything still unrecognised (accessories, wardrobe, props) is
+  attached in batches: select the cluster, make the parent piece active, click.
 
 In every case the joint/pivot is **computed from geometry** (the overlap between a piece and
 its parent), so the animator never places a joint by hand. Refinement happens in the existing
@@ -104,6 +106,46 @@ def _match_role(name):
     if role is None:
         return None
     if role not in _SIDED:
+        side = None
+    return role, side
+
+
+# --------------------------------------------------------------------------- #
+# Face ontology (Tier 2) — the dense head fan (eyes, brows, mouth, hair…). Unlike the
+# skeleton, this is not a chain: every matched piece auto-parents straight onto the head
+# joint, so it's a single leaf peg (no "(ctrl)" split — a leaf peg is already independent).
+# --------------------------------------------------------------------------- #
+_FACE_SIDED = {"eyebrow", "eye", "eyelid", "eyelash", "ear", "cheek", "braid", "pupil"}
+_FACE_SYNONYMS = {
+    "eyebrow": ["sobrancelha", "sob", "eyebrow", "ceja"],
+    "eye": ["olho", "eye", "ojo", "globo"],
+    "eyelid": ["palpebra", "eyelid", "parpado"],
+    "pupil": ["pupila", "pupil", "iris"],
+    "eyelash": ["cilio", "eyelash", "cilios", "pestana"],
+    "nose": ["nariz", "nose"],
+    "mouth": ["boca", "mouth"],
+    "lip": ["labio", "lip", "labios"],
+    "tooth": ["dente", "tooth", "teeth", "dentes"],
+    "tongue": ["lingua", "tongue", "lengua"],
+    "ear": ["orelha", "ear", "oreja"],
+    "cheek": ["bochecha", "cheek", "mejilla"],
+    "chin": ["queixo", "chin", "menton"],
+    "mustache": ["bigode", "mustache", "bigote"],
+    "beard": ["barba", "beard"],
+    "hair": ["cabelo", "hair", "pelo", "cabello"],
+    "bangs": ["franja", "bangs", "fleco"],
+    "braid": ["tranca", "braid", "trenza"],
+}
+_FACE_CORE_TO_ROLE = {syn: role for role, syns in _FACE_SYNONYMS.items() for syn in syns}
+
+
+def _match_face_role(name):
+    """Exact-core match against the head-fan ontology -> (role, side) or None."""
+    core, side = _norm(name)
+    role = _FACE_CORE_TO_ROLE.get(core)
+    if role is None:
+        return None
+    if role not in _FACE_SIDED:
         side = None
     return role, side
 
@@ -276,7 +318,8 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
     bl_idname = "object.nuclear_rig_auto_skeleton"
     bl_label = "Auto-Build Skeleton"
     bl_description = ("Match the drawing pieces to a humanoid skeleton by name and build the "
-                      "spine + limbs in one click; unmatched pieces stay loose to be linked")
+                      "spine + limbs in one click; head-fan pieces (eyes/brows/mouth/hair) "
+                      "auto-parent under the head; anything else stays loose to be linked")
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -322,6 +365,10 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
 
         for role_side in list(keymap):
             ensure_node(*role_side)
+
+        # Anchor for the face fan (Tier 2): the head joint, or its nearest DRAWN ancestor
+        # (neck, then torso) if no "cabeca" piece exists — same collapse rule as the chain.
+        face_anchor_key = ensure_node("head", None)
 
         def node_name(key):
             n = nodes[key]
@@ -386,11 +433,27 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
             _bind(ob, rig, dname)
             _set_pivot_world(rig, dpeg_idx, _center_world(ob))
 
-        # 3) Unmatched pieces: each gets its own peg on the composite (root). A leaf, so a single peg
-        #    is already its independent controller; linkable later.
+        # 3) Face fan: pieces recognised by the head-fan ontology (eyes, brows, mouth, hair…)
+        #    auto-parent onto the head joint (or its nearest drawn ancestor) instead of falling
+        #    loose. Geometric pivot against that anchor, same as everywhere else.
+        anchor_ob = nodes[face_anchor_key]["ob"] if face_anchor_key is not None else None
+        anchor_peg_idx = j_idx[node_name(face_anchor_key)] if face_anchor_key is not None else -1
+        face_matched = set()
+        if anchor_ob is not None:
+            for ob in objs:
+                if ob in matched or _match_face_role(ob.name) is None:
+                    continue
+                rig.pegs.new(ob.name, parent_index=anchor_peg_idx)
+                peg_idx = len(rig.pegs) - 1
+                _bind(ob, rig, ob.name)
+                _set_pivot_world(rig, peg_idx, _joint_world(ob, anchor_ob, planar))
+                face_matched.add(ob)
+
+        # 4) Anything still unmatched: its own peg on the composite (root). A leaf, so a single
+        #    peg is already its independent controller; linkable later.
         extra = 0
         for ob in objs:
-            if ob in matched:
+            if ob in matched or ob in face_matched:
                 continue
             rig.pegs.new(ob.name, parent_index=-1)
             peg_idx = len(rig.pegs) - 1
@@ -402,10 +465,11 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
         _grouped_layout(rig)
         context.view_layer.update()
         n_drawn = len(matched)
+        n_face = len(face_matched)
         self.report({"INFO"},
                     f"Rig '{rig.name}': {n_drawn} drawn joints + {n_struct} structural joints "
-                    f"(pelvis/shoulder) + {n_drawn} drawing pegs + {extra} loose — select a cluster "
-                    f"+ a parent and Link")
+                    f"(pelvis/shoulder) + {n_drawn} drawing pegs + {n_face} face pieces + "
+                    f"{extra} loose — select a cluster + a parent and Link")
         return {"FINISHED"}
 
 
