@@ -482,16 +482,28 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-07-08.
 
-- **Rename do executável `blender` → `nuclear` (2026-07-08) — COMMITADO na branch
-  `Nuclear`, AINDA NÃO PUBLICADO.** Completa o rebrand da 1.5.0: binário `nuclear`,
-  auxiliares `nuclear-launcher`/`nuclear-softwaregl`/`nuclear-thumbnailer`/
-  `nuclear-system-info.sh`, `Nuclear.desktop`, ícones `nuclear*.svg`, man `nuclear.1`,
-  metainfo/readme reescritos, strings user-facing do `--help`/splash/Help menu, temas
-  `Nuclear_Dark/Light`. **Shim de compat `blender`** instalado junto (regra de ouro nº5).
-  Updater/instaladores/release-tooling aceitam os dois nomes. Build 2D + smoke ALL PASS
-  nesta máquina; instalação local `~/Nuclear/versions/1.5.0-b10` já renomeada no lugar
-  (com shim). Detalhe completo das seams no `NUCLEAR_DIVERGENCE.md` (entrada 2026-07-08).
-  **O próximo release (b11) leva isso pros usuários** — nada a fazer no servidor até lá.
+- **Nuclear 1.6.0 (Beta) — `NUCLEAR_BUILD = 12` — PUBLICADO (2026-07-08).** Empacota o
+  **rebrand completo** (rename `blender`→`nuclear` do executável e de TODOS os artefatos:
+  auxiliares, `Nuclear.desktop`, ícones `nuclear*.svg`, man `nuclear.1`, keyconfig
+  "Nuclear" com migração de prefs, metainfo/readme, strings de `--help`/splash/Help, temas
+  `Nuclear_Dark/Light`) **mais o Auto Rig da 1.5.1** (a branch puxou aqueles commits, então
+  1.6.0 é superset). **Shim de compat `blender`** no zip (regra de ouro nº5 — o updater das
+  máquinas em build ≤11 procura um arquivo `blender`). **⚠️ Colisão de build resolvida:** o
+  servidor tinha uma **1.5.1/b11** publicada por sessão PARALELA (2026-07-08 18:07, auto-rig,
+  390MB, sha `80cf187a…`, notes "auto rig: novas peças implementadas") que este doc não
+  registrava; por isso o bump foi **MINOR → 1.6.0 / build 12** (não reusar o b11 já gasto —
+  regra de ouro nº1). Backup da 1.5.1 no servidor: `nuclear.zip.bak-pre-1.6.0`.
+  **Otimização:** pacote podado com `nuclear_prune_package.sh` (−310MB: 34 libs 3D mortas
+  USD/OSL/OpenVDB/Embree/HIP-RT + 5 ferramentas de build) → zip de **340MB** (356.983.335
+  bytes, sha256 `3c1a1d0e561c12c8f038aba35e0efc51ddc07b66b9b923574be2ad9eb73a71c5`).
+  **Testado antes de publicar (bateria no pacote JÁ PODADO):** smoke 2D ALL PASS + GUI
+  (janela/splash/Help desenham, zero "Blender") + render GP pesado (28.800 pts × 6 frames,
+  ~0,19s/frame estável) + shim + keyconfig/migração. **Pegadinha achada e corrigida:** o
+  `ninja install` deixou presets órfãos do rename (`Blender.py`/`Blender_27x.py`,
+  `Blender_Dark/Light.xml`) que iriam duplicados pro zip — removidos do build antes de
+  empacotar (ver [[nuclear-bin-stale-files-ship-in-release]]; renomear preset exige limpar
+  os antigos do `bin/`). Compilado em `build_nuclear_2d` (container `blender`), verify-zip +
+  check-manifest OK. `ping.php`/`instalarNuclear.sh` não tocados.
 
 - **Refresh do zip 1.5.0/b10 — fix cosmético do banner do updater (2026-07-06, mesmo
   dia).** Bug: `_draw_statusbar` montava `"Nuclear %s disponível" % _latest_label()`, mas
