@@ -68,7 +68,7 @@ def blender_extract_info(blender_bin: str) -> Dict[str, str]:
     blender_version_text = ""
 
     for l in blender_version_output.split("\n"):
-        if l.startswith("Blender "):
+        if l.startswith(("Nuclear ", "Blender ")):
             if blender_version_text == "":
                 blender_version_text = l
             # Remove `Blender` prefix.
@@ -106,31 +106,28 @@ def man_page_from_blender_help(fh: TextIO, blender_bin: str, verbose: bool) -> N
 
     # Header Content.
     fh.write(
-        '.TH "BLENDER" "1" "{:s}" "Blender {:s}"\n'.format(
+        '.TH "NUCLEAR" "1" "{:s}" "Nuclear {:s}"\n'.format(
             blender_info["date"], blender_info["version"].replace(".", "\\&.")
         )
     )
 
     fh.write(r"""
 .SH NAME
-blender \- a full-featured 3D application""")
+nuclear \- a 2D cut-out animation application""")
 
     fh.write(r"""
 .SH SYNOPSIS
-.B blender [args ...] [file] [args ...]""")
+.B nuclear [args ...] [file] [args ...]""")
 
     fh.write(r"""
 .br
 .SH DESCRIPTION
 .PP
-.B blender
-is a full-featured 3D application. It supports the entirety of the 3D pipeline - """
-             """modeling, rigging, animation, simulation, rendering, compositing, motion tracking, and video editing.
+.B nuclear
+is a 2D cut-out animation application built on Grease Pencil, """
+             """proudly derived from Blender - drawing, rigging with pegs, deformers and 2D compositing.
 
-Use Blender to create 3D images and animations, films and commercials, content for games, """
-             r"""architectural and industrial visualizations, and scientific visualizations.
-
-https://www.blender.org""")
+https://rapaduraatomica.com.br""")
 
     fh.write(r"""
 .SH OPTIONS""")

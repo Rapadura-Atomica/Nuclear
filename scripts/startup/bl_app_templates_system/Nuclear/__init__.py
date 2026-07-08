@@ -88,6 +88,26 @@ _TRANSLATIONS = {
         ("*", "Blender Drivers Editor"): "Nuclear Drivers Editor",
         ("*", "Blender Info Log"): "Nuclear Info Log",
         ("*", "Load Factory Blender Preferences"): "Load Factory Nuclear Preferences",
+        ("*", "Blender File View"): "Nuclear File View",
+        ("*", "Blender Preferences"): "Nuclear Preferences",
+        # Save/load dialogs (wm_files.cc).
+        ("*", "Blender will start next time as it is now."):
+            "Nuclear will start next time as it is now.",
+        ("*", "This file was saved by a newer version of Blender (%s)."):
+            "This file was saved by a newer version of Nuclear (%s).",
+        ("*", "Saving it with this Blender (%s) may cause loss of data."):
+            "Saving it with this Nuclear (%s) may cause loss of data.",
+        ("*", "This file is managed by the Blender asset system. It can only be"):
+            "This file is managed by the Nuclear asset system. It can only be",
+        ("*", "with an older Blender version?"): "with an older Nuclear version?",
+        ("*", "Overwrite file with an older Blender version?"):
+            "Overwrite file with an older Nuclear version?",
+        # File browser filters (rna_space.cc / space_filebrowser.py).
+        ("*", "Filter Blender"): "Filter Nuclear",
+        ("*", "Filter Blender Backup Files"): "Filter Nuclear Backup Files",
+        ("*", "Filter Blender IDs"): "Filter Nuclear IDs",
+        ("*", "Blender IDs"): "Nuclear IDs",
+        ("*", "Blender File"): "Nuclear File",
     },
 }
 
@@ -843,11 +863,33 @@ def _make_tabbed_header_draw(cls_name):
     return draw
 
 
+def _nuclear_help_menu_draw(self, context):
+    # Curated Help menu: keeps the useful references, drops the blender.org community
+    # links (branding). Manual/API presets still point at the upstream documentation on
+    # purpose — that is the real reference for the engine. Bugs go to the Nuclear tracker.
+    layout = self.layout
+    layout.operator("wm.url_open_preset", text="Manual", icon='URL').type = 'MANUAL'
+    layout.operator("wm.url_open", text="Nuclear Website").url = "https://rapaduraatomica.com.br"
+    layout.operator(
+        "wm.url_open", text="What's New",
+    ).url = "https://github.com/Rapadura-Atomica/Nuclear/releases"
+    layout.separator()
+    if context.preferences.view.show_developer_ui:
+        layout.operator("wm.url_open_preset", text="Python API Reference").type = 'API'
+        layout.operator("wm.operator_cheat_sheet", icon='TEXT')
+        layout.separator()
+    layout.operator(
+        "wm.url_open", text="Report a Bug", icon='URL',
+    ).url = "https://github.com/Rapadura-Atomica/Nuclear/issues"
+    layout.operator("wm.sysinfo")
+
+
 # Overrides applied while the template is active: (bpy.types class name, attr, Nuclear fn).
 # Generalized to any method (not just "draw") so headers that dispatch (e.g. draw_left)
 # can be curated too.
 _HEADER_OVERRIDES = [
     ("TOPBAR_MT_editor_menus", "draw", _nuclear_editor_menus_draw),
+    ("TOPBAR_MT_help", "draw", _nuclear_help_menu_draw),
     ("TOPBAR_HT_upper_bar", "draw_left", _nuclear_topbar_draw_left),
     ("VIEW3D_HT_header", "draw", _nuclear_view3d_header_draw),
     ("VIEW3D_HT_tool_header", "draw", _nuclear_tool_header_draw),  # Phase E — ADDONS bar
