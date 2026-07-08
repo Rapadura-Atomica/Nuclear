@@ -13,9 +13,10 @@
 #
 # What it does, in order: bump version -> optional rebuild (only with --build; configures
 # with the nuclear_2d preset + ccache/mold) -> 2D smoke gate on the binary (always) ->
-# package the portable zip -> verify golden rules #3/#4 -> generate + check the
-# manifest -> publish zip+manifest together to estacao/ (asks to confirm) -> reminds you
-# to update CLAUDE.md -> offers to commit.
+# package the portable zip (prunes dead 3D libs + build tools; --no-prune to skip) ->
+# verify golden rules #3/#4 -> generate + check the manifest -> publish zip+manifest
+# together to estacao/ (asks to confirm) -> reminds you to update CLAUDE.md -> offers
+# to commit.
 #
 # Official releases build with build_files/cmake/config/nuclear_2d.cmake (2026-07-07
 # decision, see docs/decisions/2026-07-07-modelo-comercial-hibrido.md): 3D subsystems
@@ -37,6 +38,7 @@ KIND=""
 DO_BUMP=true
 DO_BUILD=false
 DO_SMOKE=true
+DO_PRUNE=true
 DRY_RUN=false
 ASSUME_YES=false
 BUILD_DIR="$(dirname "$(dirname "$REPO_ROOT")")/build_nuclear_2d"
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --no-bump) DO_BUMP=false; shift ;;
     --build) DO_BUILD=true; shift ;;
     --no-smoke) DO_SMOKE=false; shift ;;
+    --no-prune) DO_PRUNE=false; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --yes|-y) ASSUME_YES=true; shift ;;
     --build-dir) BUILD_DIR="$2"; shift 2 ;;
@@ -149,6 +152,17 @@ MANIFEST_PATH="$BUILD_DIR/version.json"
 
 run rm -rf "$STAGE_DIR"
 run cp -al "$BUILD_DIR/bin" "$STAGE_DIR"
+# Prune dead 3D dependency libs (features OFF in the preset) + build tools from
+# the staging copy before zipping. Hardlink-safe: only the staging links are
+# dropped, $BUILD_DIR/bin stays whole. Skip with --no-prune. Validated to keep
+# the 2D pipeline pixel-identical (2026-07-07). Also strip the auto-update
+# relics if a previous run left them in bin/ (the packaging note's manual step).
+run rm -rf "$STAGE_DIR/versions" "$STAGE_DIR/current"
+if $DO_PRUNE; then
+  run bash "$SCRIPT_DIR/nuclear_prune_package.sh" "$STAGE_DIR"
+else
+  echo "-- poda de peso morto pulada (--no-prune)"
+fi
 run python3 "$RELEASE_PY" stamp "$STAGE_DIR"
 run rm -f "$ZIP_PATH"
 if $DRY_RUN; then
