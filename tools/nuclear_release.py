@@ -144,14 +144,18 @@ def _sha256_and_size(path):
 
 
 def _find_binary_dir(install):
-    """Locate the directory that holds the `blender` executable inside an install tree."""
+    """Locate the directory that holds the Nuclear executable inside an install tree.
+
+    The binary was renamed "blender" -> "nuclear" (product rebrand); both names are
+    accepted so the tool still stamps pre-rename trees."""
+    exe_names = ("nuclear", "nuclear.exe", "blender", "blender.exe")
     for cand in (install, os.path.join(install, "Nuclear")):
-        for exe in ("blender", "blender.exe"):
+        for exe in exe_names:
             if os.path.isfile(os.path.join(cand, exe)):
                 return cand
-    # Search shallowly for a blender binary.
+    # Search shallowly for the binary.
     for root, _dirs, files in os.walk(install):
-        if "blender" in files or "blender.exe" in files:
+        if any(exe in files for exe in exe_names):
             return root
     return None
 
@@ -199,7 +203,7 @@ def cmd_stamp(args):
     info = parse_version(args.header)
     bin_dir = _find_binary_dir(args.install)
     if bin_dir is None:
-        raise SystemExit("error: no 'blender' binary found under %s" % args.install)
+        raise SystemExit("error: no 'nuclear' (or 'blender') binary found under %s" % args.install)
     out_path = os.path.join(bin_dir, "nuclear_version.json")
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(info, fh, indent=2, ensure_ascii=False)

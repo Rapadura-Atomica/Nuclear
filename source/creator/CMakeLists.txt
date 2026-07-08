@@ -349,6 +349,14 @@ else()
     target_compile_definitions(blender-launcher PRIVATE -D_UNICODE -DUNICODE)
     target_link_libraries(blender-launcher Pathcch.lib)
   endif()
+
+  # Nuclear rebrand: the shipped executable is named `nuclear` (the CMake target keeps
+  # the upstream name `blender` to minimize divergence). macOS keeps the upstream
+  # `Blender` OUTPUT_NAME override further down (bundle rename deferred).
+  set_target_properties(blender PROPERTIES OUTPUT_NAME nuclear)
+  if(WIN32)
+    set_target_properties(blender-launcher PROPERTIES OUTPUT_NAME nuclear-launcher)
+  endif()
 endif()
 
 if(WITH_BUILDINFO)
@@ -714,9 +722,16 @@ if(UNIX AND NOT APPLE)
 
     # none of the other files are needed currently
   elseif(WITH_INSTALL_PORTABLE)
-    set(BLENDER_BIN "blender")
+    set(BLENDER_BIN "nuclear")
     install(
       TARGETS blender
+      DESTINATION "."
+    )
+
+    # Nuclear rebrand: compatibility shim so pre-rename auto-updaters, .desktop
+    # entries and pipeline scripts that expect a `blender` file keep working.
+    install(
+      PROGRAMS ${CMAKE_SOURCE_DIR}/release/bin/blender
       DESTINATION "."
     )
 
@@ -729,9 +744,9 @@ if(UNIX AND NOT APPLE)
 
     install(
       FILES
-        ${CMAKE_SOURCE_DIR}/release/freedesktop/blender.desktop
-        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/blender.svg
-        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/blender-symbolic.svg
+        ${CMAKE_SOURCE_DIR}/release/freedesktop/Nuclear.desktop
+        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/nuclear.svg
+        ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/nuclear-symbolic.svg
       DESTINATION "."
     )
 
@@ -754,8 +769,8 @@ if(UNIX AND NOT APPLE)
 
       install(
         PROGRAMS
-        ${CMAKE_SOURCE_DIR}/release/bin/blender-launcher
-        ${CMAKE_SOURCE_DIR}/release/bin/blender-softwaregl
+        ${CMAKE_SOURCE_DIR}/release/bin/nuclear-launcher
+        ${CMAKE_SOURCE_DIR}/release/bin/nuclear-softwaregl
         DESTINATION "."
       )
 
@@ -777,26 +792,26 @@ file(REMOVE ${CMAKE_BINARY_DIR}/bin/lib/libglapi.so.0.0.0)\n
     endif()
   else()
     # main blender binary
-    set(BLENDER_BIN "bin/blender")
+    set(BLENDER_BIN "bin/nuclear")
     install(
       TARGETS blender
       DESTINATION "./bin"
     )
     # Misc files.
     install(
-      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/blender.desktop
+      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/Nuclear.desktop
       DESTINATION "./share/applications"
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/org.blender.Blender.metainfo.xml
+      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/org.rapaduraatomica.Nuclear.metainfo.xml
       DESTINATION "./share/metainfo"
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/blender.svg
+      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/scalable/apps/nuclear.svg
       DESTINATION "./share/icons/hicolor/scalable/apps"
     )
     install(
-      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/blender-symbolic.svg
+      FILES ${CMAKE_SOURCE_DIR}/release/freedesktop/icons/symbolic/apps/nuclear-symbolic.svg
       DESTINATION "./share/icons/hicolor/symbolic/apps"
     )
     if(WITH_BLENDER_THUMBNAILER)
@@ -985,13 +1000,13 @@ file(REMOVE ${CMAKE_BINARY_DIR}/bin/lib/libglapi.so.0.0.0)\n
       # are active.
       get_filename_component(PYTHON_EXECUTABLE_NAME_ONLY ${PYTHON_EXECUTABLE} NAME)
       configure_file(
-        ${CMAKE_SOURCE_DIR}/release/freedesktop/scripts/blender-system-info.sh.in
-        ${CMAKE_BINARY_DIR}/release/freedesktop/scripts/blender-system-info.sh
+        ${CMAKE_SOURCE_DIR}/release/freedesktop/scripts/nuclear-system-info.sh.in
+        ${CMAKE_BINARY_DIR}/release/freedesktop/scripts/nuclear-system-info.sh
         @ONLY
       )
       unset(PYTHON_EXECUTABLE_NAME_ONLY)
       install(
-        PROGRAMS ${CMAKE_BINARY_DIR}/release/freedesktop/scripts/blender-system-info.sh
+        PROGRAMS ${CMAKE_BINARY_DIR}/release/freedesktop/scripts/nuclear-system-info.sh
         DESTINATION "."
       )
     endif()
@@ -1002,11 +1017,12 @@ elseif(WIN32)
     install(
       FILES ${CMAKE_BINARY_DIR}/blender.exe.manifest
       DESTINATION "."
+      RENAME nuclear.exe.manifest
     )
     install(
       FILES ${CMAKE_BINARY_DIR}/blender.exe.manifest
       DESTINATION "."
-      RENAME blender-launcher.exe.manifest
+      RENAME nuclear-launcher.exe.manifest
     )
   endif()
   windows_install_shared_manifest(
@@ -1127,14 +1143,14 @@ elseif(WIN32)
       install(
         FILES ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/blender_public.pdb
         DESTINATION "."
-        RENAME blender.pdb
+        RENAME nuclear.pdb
         CONFIGURATIONS Release
       )
     else()
       install(
         FILES $<TARGET_PDB_FILE:blender>
         DESTINATION "."
-        RENAME blender.pdb
+        RENAME nuclear.pdb
         CONFIGURATIONS Release
       )
     endif()
@@ -2033,7 +2049,7 @@ endif()
 # Setup launcher
 
 if(WIN32 AND NOT WITH_PYTHON_MODULE)
-  set(BLENDER_BIN "blender.exe")
+  set(BLENDER_BIN "nuclear.exe")
   install(
     TARGETS blender blender-launcher
     COMPONENT Blender
@@ -2081,7 +2097,7 @@ if(DEFINED ENV\{DESTDIR\})\n\
 endif()\n\
 set(PYTHON_EXECUTABLE \"${PYTHON_EXECUTABLE}\")\n\
 set(MANPAGE_GEN \"${CMAKE_SOURCE_DIR}/doc/manpage/blender.1.py\")\n\
-set(MANPAGE_OUT \"${CMAKE_CURRENT_BINARY_DIR}/blender.1\")\n\
+set(MANPAGE_OUT \"${CMAKE_CURRENT_BINARY_DIR}/nuclear.1\")\n\
 if(\n\
   ($\{BLENDER_BIN\} IS_NEWER_THAN $\{MANPAGE_OUT\}) OR\n\
   ($\{MANPAGE_GEN\} IS_NEWER_THAN $\{MANPAGE_OUT\})\n\
@@ -2105,13 +2121,13 @@ endif()\n\
 
       if(WITH_INSTALL_PORTABLE)
         install(
-          FILES ${CMAKE_CURRENT_BINARY_DIR}/blender.1
+          FILES ${CMAKE_CURRENT_BINARY_DIR}/nuclear.1
           DESTINATION "."
         )
       else()
-        # Manual page (only with `blender` binary).
+        # Manual page (only with `nuclear` binary).
         install(
-          FILES ${CMAKE_CURRENT_BINARY_DIR}/blender.1
+          FILES ${CMAKE_CURRENT_BINARY_DIR}/nuclear.1
           DESTINATION "./share/man/man1"
         )
       endif()

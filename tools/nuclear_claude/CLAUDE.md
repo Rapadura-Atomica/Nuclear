@@ -328,9 +328,10 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
    28min03s → 35,8s). Pode haver build concorrente em outro processo, então **confirme
    antes de disparar**. Rodar externamente continua sendo opção.
 2.5. **Smoke gate 2D** (obrigatório antes de empacotar; o `nuclear_release.sh` roda
-   sozinho): `<builddir>/bin/blender -b --factory-startup --python
+   sozinho): `<builddir>/bin/nuclear -b --factory-startup --python
    tools/smoke_nuclear2d.py` — RC≠0 aborta a release (3D voltou ou capacidade 2D sumiu).
-   Empacotar um full build deliberado = `--no-smoke`.
+   Empacotar um full build deliberado = `--no-smoke`. (Desde 2026-07-08 o binário chama
+   **`nuclear`**; `bin/blender` é o shim de compat — o script aceita os dois.)
 3. **Carimbar** o build: `python tools/nuclear_release.py stamp <pasta-do-build>`
    → grava `nuclear_version.json` ao lado do binário.
 4. **Empacotar** o zip portátil (topo `Nuclear/<ver>/…`).
@@ -364,6 +365,16 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
 > no mundo versionado/auto-update isso não vale mais. Confira:
 > `unzip -l nuclear.zip | grep -c site-packages/scipy` (tem que ser > 0).
 > Não duplique a `numpy` (o Blender já bundla a dele).
+
+> ⚠️ Regra de ouro nº5 (rename do executável, 2026-07-08): o binário agora chama
+> **`nuclear`** e o zip TEM que conter TAMBÉM o shim de compat **`Nuclear/blender`**
+> (script que faz forward pro `nuclear`, instalado pelo CMake a partir de
+> `release/bin/blender`). Motivo: o `nuclear_update.py` das máquinas em build ≤ 10
+> procura um arquivo chamado `blender` dentro do zip — sem o shim o apply falha com
+> "nenhum binário 'blender' encontrado". O shim é arquivo comum (symlink não sobrevive
+> ao `zipfile.extractall`). Confira antes de publicar:
+> `unzip -l nuclear.zip | grep -E 'Nuclear/(nuclear|blender)$'` (tem que listar OS DOIS).
+> Só remova o shim quando não houver mais máquina em build pré-rename.
 
 ### Atalho: rodar o release sozinho, sem o Claude
 `tools/nuclear_release.sh` encadeia os passos 1-9 acima num script só, pra quem prefere
@@ -469,7 +480,18 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-07-06.
+Atualizado em 2026-07-08.
+
+- **Rename do executável `blender` → `nuclear` (2026-07-08) — COMMITADO na branch
+  `Nuclear`, AINDA NÃO PUBLICADO.** Completa o rebrand da 1.5.0: binário `nuclear`,
+  auxiliares `nuclear-launcher`/`nuclear-softwaregl`/`nuclear-thumbnailer`/
+  `nuclear-system-info.sh`, `Nuclear.desktop`, ícones `nuclear*.svg`, man `nuclear.1`,
+  metainfo/readme reescritos, strings user-facing do `--help`/splash/Help menu, temas
+  `Nuclear_Dark/Light`. **Shim de compat `blender`** instalado junto (regra de ouro nº5).
+  Updater/instaladores/release-tooling aceitam os dois nomes. Build 2D + smoke ALL PASS
+  nesta máquina; instalação local `~/Nuclear/versions/1.5.0-b10` já renomeada no lugar
+  (com shim). Detalhe completo das seams no `NUCLEAR_DIVERGENCE.md` (entrada 2026-07-08).
+  **O próximo release (b11) leva isso pros usuários** — nada a fazer no servidor até lá.
 
 - **Refresh do zip 1.5.0/b10 — fix cosmético do banner do updater (2026-07-06, mesmo
   dia).** Bug: `_draw_statusbar` montava `"Nuclear %s disponível" % _latest_label()`, mas
