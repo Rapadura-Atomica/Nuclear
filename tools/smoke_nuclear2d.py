@@ -17,8 +17,10 @@ cprop = bpy.types.Constraint.bl_rna.properties['type']
 ctypes = [e.identifier for e in cprop.enum_items]
 
 def op_ok(mod, name):
+    # get_rna_type() raises for unregistered operators; idname_py() does NOT
+    # (bpy.ops wrappers are lazy), which would make this check unfalsifiable.
     try:
-        getattr(getattr(bpy.ops, mod), name).idname_py()
+        getattr(getattr(bpy.ops, mod), name).get_rna_type()
         return True
     except Exception:
         return False
@@ -40,6 +42,9 @@ results = {
     "image_openexr ON":  has("image_openexr") is True,
     "SPLINE_IK present": "SPLINE_IK" in ctypes,
     "SVG->GP import op": op_ok("wm", "grease_pencil_import_svg"),
+    "3D mesh IO ops gone": not any(
+        op_ok("wm", n) for n in ("obj_import", "stl_import", "ply_import",
+                                 "usd_import", "alembic_import")),
 }
 
 print("\n===== NUCLEAR 2D SMOKE =====")
