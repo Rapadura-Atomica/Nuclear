@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 10,
-  "version": "1.5.0",
+  "build": 12,
+  "version": "1.6.0",
   "stage": "Beta",
-  "version_string": "Nuclear 1.5.0 (Beta)",
+  "version_string": "Nuclear 1.6.0 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25",
-  "size": 646600712,
+  "sha256": "3c1a1d0e561c12c8f038aba35e0efc51ddc07b66b9b923574be2ad9eb73a71c5",
+  "size": 356983335,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Novo kit de pintura Grease Pencil: aba Paint no Properties com color picker estilo Krita (roda de matiz + triangulo saturacao/valor), pinceis Smudge e Blur/Dissolve, Lasso Fill, balde e cores recentes. Rebrand da pasta de config: .config/blender vira .config/Nuclear (idem cache), com migracao automatica dos settings existentes no updater e no instalador."
+  "notes": "Rebrand completo: executável e todos os arquivos agora se chamam nuclear; keymap renomeado com migração automática das preferências; splash e menus atualizados; pacote otimizado (−310MB de libs 3D não usadas). Inclui o Auto Rig da 1.5.1."
 }
