@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 10,
-  "version": "1.5.0",
+  "build": 11,
+  "version": "1.5.1",
   "stage": "Beta",
-  "version_string": "Nuclear 1.5.0 (Beta)",
+  "version_string": "Nuclear 1.5.1 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25",
-  "size": 646600712,
+  "sha256": "80cf187a381ae444a020e66020d8d23b9ab014ec4de60a4abc1a8131d35af5dd",
+  "size": 390084482,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Novo kit de pintura Grease Pencil: aba Paint no Properties com color picker estilo Krita (roda de matiz + triangulo saturacao/valor), pinceis Smudge e Blur/Dissolve, Lasso Fill, balde e cores recentes. Rebrand da pasta de config: .config/blender vira .config/Nuclear (idem cache), com migracao automatica dos settings existentes no updater e no instalador."
+  "notes": "auto rig: novas peças implementadas"
 }
