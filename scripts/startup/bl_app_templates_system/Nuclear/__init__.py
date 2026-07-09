@@ -1141,6 +1141,13 @@ def _update_startup_canvas():
             overlay.show_axis_z = False
             overlay.show_ortho_grid = False
             overlay.show_cursor = False
+            # Drop the 3D HUD text: the "Camera Perspective" view label + object-info line
+            # ("(1) Collection | GP") in the top-left corner. Pure 3D-navigation scaffolding.
+            try:
+                overlay.show_text = False
+                overlay.show_stats = False
+            except Exception:
+                pass
 
 
 def _update_startup_timeline():
