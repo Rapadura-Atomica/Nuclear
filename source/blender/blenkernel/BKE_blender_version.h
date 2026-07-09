@@ -74,6 +74,13 @@
 /* User-readable version, derived from the numbers above -> "Nuclear 1.0.0 (Beta)". */
 #define NUCLEAR_VERSION_STRING NUCLEAR_NAME " " NUCLEAR_VERSION_STRING_NO_NAME
 
+/* Compact version number only, no name/stage -> "1.6.0". Used where upstream showed the
+ * bare Blender version (e.g. the splash-screen corner), so it reads as the Nuclear
+ * version instead of the underlying Blender file-format version. */
+#define NUCLEAR_VERSION_STRING_COMPACT \
+  NUCLEAR_STRINGIFY(NUCLEAR_VERSION_MAJOR) \
+  "." NUCLEAR_STRINGIFY(NUCLEAR_VERSION_MINOR) "." NUCLEAR_STRINGIFY(NUCLEAR_VERSION_PATCH)
+
 /** User readable version string. */
 const char *BKE_blender_version_string(void);
 
