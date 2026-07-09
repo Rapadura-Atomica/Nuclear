@@ -884,12 +884,48 @@ def _nuclear_help_menu_draw(self, context):
     layout.operator("wm.sysinfo")
 
 
+def _nuclear_add_menu_draw(self, context):
+    # Nuclear 2D cut-out: the Add menu (Shift+A) offers only Grease Pencil plus the few
+    # non-GP objects that make sense in a 2D pipeline — Empty (rig controls/nulls),
+    # reference Image (backgrounds), and Camera (framing the shot). The raw 3D primitives
+    # (Mesh/Curve/Surface/Metaball/Text/Point Cloud/Volume/Armature/Lattice/Light/Light
+    # Probe/Speaker/Force Field) are hidden here: the object system stays in the code
+    # (Grease Pencil depends on it) but the artist never adds bare 3D objects. Reversible —
+    # this is a template draw override restored on unregister.
+    layout = self.layout
+
+    # Preserve the native "add happens at the 3D cursor / region" operator context and the
+    # Search entry, mirroring the upstream VIEW3D_MT_add header.
+    if layout.operator_context == 'EXEC_REGION_WIN':
+        layout.operator_context = 'INVOKE_REGION_WIN'
+        layout.operator(
+            "WM_OT_search_single_menu", text="Search...", icon='VIEWZOOM',
+        ).menu_idname = "VIEW3D_MT_add"
+        layout.separator()
+    layout.operator_context = 'EXEC_REGION_WIN'
+
+    layout.menu("VIEW3D_MT_grease_pencil_add", text="Grease Pencil", icon='OUTLINER_OB_GREASEPENCIL')
+    layout.separator()
+    layout.menu("VIEW3D_MT_empty_add", icon='OUTLINER_OB_EMPTY')
+    layout.menu("VIEW3D_MT_image_add", text="Image", icon='OUTLINER_OB_IMAGE')
+    layout.separator()
+    try:
+        from bl_ui.space_view3d import VIEW3D_MT_camera_add
+        if VIEW3D_MT_camera_add.is_extended():
+            layout.menu("VIEW3D_MT_camera_add", icon='OUTLINER_OB_CAMERA')
+        else:
+            VIEW3D_MT_camera_add.draw(self, context)
+    except Exception:
+        layout.operator("object.camera_add", text="Camera", icon='OUTLINER_OB_CAMERA')
+
+
 # Overrides applied while the template is active: (bpy.types class name, attr, Nuclear fn).
 # Generalized to any method (not just "draw") so headers that dispatch (e.g. draw_left)
 # can be curated too.
 _HEADER_OVERRIDES = [
     ("TOPBAR_MT_editor_menus", "draw", _nuclear_editor_menus_draw),
     ("TOPBAR_MT_help", "draw", _nuclear_help_menu_draw),
+    ("VIEW3D_MT_add", "draw", _nuclear_add_menu_draw),  # hide 3D primitives (2D cut-out)
     ("TOPBAR_HT_upper_bar", "draw_left", _nuclear_topbar_draw_left),
     ("VIEW3D_HT_header", "draw", _nuclear_view3d_header_draw),
     ("VIEW3D_HT_tool_header", "draw", _nuclear_tool_header_draw),  # Phase E — ADDONS bar
