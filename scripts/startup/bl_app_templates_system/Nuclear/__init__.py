@@ -906,6 +906,16 @@ def _nuclear_add_menu_draw(self, context):
 
     layout.menu("VIEW3D_MT_grease_pencil_add", text="Grease Pencil", icon='OUTLINER_OB_GREASEPENCIL')
     layout.separator()
+    # Armature kept: cut-out GP rigs can still be driven by bones. Mirror the upstream
+    # is_extended pattern (a submenu if add-ons extended it, otherwise the single op).
+    try:
+        from bl_ui.space_view3d import VIEW3D_MT_armature_add
+        if VIEW3D_MT_armature_add.is_extended():
+            layout.menu("VIEW3D_MT_armature_add", icon='OUTLINER_OB_ARMATURE')
+        else:
+            layout.operator("object.armature_add", text="Armature", icon='OUTLINER_OB_ARMATURE')
+    except Exception:
+        layout.operator("object.armature_add", text="Armature", icon='OUTLINER_OB_ARMATURE')
     layout.menu("VIEW3D_MT_empty_add", icon='OUTLINER_OB_EMPTY')
     layout.menu("VIEW3D_MT_image_add", text="Image", icon='OUTLINER_OB_IMAGE')
     layout.separator()
