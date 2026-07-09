@@ -311,8 +311,10 @@ static uiBlock *wm_block_splash_create(bContext *C, ARegion *region, void * /*ar
 
     UI_but_func_set(but, wm_block_splash_close, block, nullptr);
 
+    /* Nuclear rebrand: show the Nuclear version in the splash corner instead of the
+     * underlying Blender version returned by BKE_blender_version_string(). */
     wm_block_splash_add_label(block,
-                              BKE_blender_version_string(),
+                              NUCLEAR_VERSION_STRING_COMPACT,
                               splash_width - 8.0 * UI_SCALE_FAC,
                               splash_height - 13.0 * UI_SCALE_FAC);
   }
