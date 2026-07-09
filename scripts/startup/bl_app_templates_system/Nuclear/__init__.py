@@ -744,8 +744,29 @@ _sidebar_cats_cache = None
 _sidebar_cats_stamp = 0.0
 
 
+# Whitelist of viewport N-panel categories the 2D studio uses. The ADDONS bar surfaces
+# ONLY these; every other category (native 3D — "View"/3D-Cursor/Collections, "Animation",
+# "glTF Variants", and anything an add-on registers later) is hidden by default. Whitelist,
+# not blocklist, so "100% of 3D hidden" holds even for categories that don't exist yet.
+# Kept per the studio's call (2026-07-08): Tool (brushes), Item (Transform — 2D X/Y),
+# Annotations (director notes), plus the Nuclear cut-out tabs. Dropped: Animation (the
+# timeline covers it), View (3D navigation), glTF Variants.
+_SIDEBAR_KEEP = {
+    "Tool",            # brush / active-tool settings
+    "Item",            # Transform (position); Z-axis curation is a later pass
+    "Annotations",     # review / director notes
+    "Cells",           # Drawing Substitution (Nuclear)
+    "Peg",             # PegRig (Nuclear)
+    "Rig", "Auto Rig",  # Auto Rig (Nuclear) — category name varies by build
+    "Global Transform",  # Nuclear addon
+    "Drawing Substitution",  # Nuclear addon
+    "Paint",           # GP paint toolkit
+}
+
+
 def _sidebar_categories():
-    # Distinct categories of the VIEW_3D sidebar (N-panel) across registered panels.
+    # Distinct categories of the VIEW_3D sidebar (N-panel) across registered panels, FILTERED
+    # to the studio whitelist (_SIDEBAR_KEEP) so no 3D-native tab leaks into the ADDONS bar.
     # Scanning all of dir(bpy.types) on every tool-header redraw was a per-draw O(types)
     # cost (viewport stutter, worse with many add-ons); throttle to ~1 Hz so newly
     # (un)registered addon panels still appear/disappear "live" within a second.
@@ -763,7 +784,7 @@ def _sidebar_categories():
                 and getattr(cls, "bl_space_type", None) == 'VIEW_3D'
                 and getattr(cls, "bl_region_type", None) == 'UI'):
             cat = getattr(cls, "bl_category", "")
-            if cat and cat not in seen:
+            if cat and cat not in seen and cat in _SIDEBAR_KEEP:
                 seen.add(cat)
                 cats.append(cat)
     cats.sort()
