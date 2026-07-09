@@ -595,6 +595,21 @@ _HIDDEN_CLASS_NAMES = [
     "MATERIAL_PT_gpencil_preview",
     "MATERIAL_PT_gpencil_custom_props",
     "MATERIAL_PT_gpencil_settings",
+    # Object tab: hide the unambiguously-3D panels (they show for every object type, so a GP
+    # object still exposes them). Kept for 2D: Transform (Z curated separately), Relations
+    # (rig parenting), Collections, Visibility (viewport/render toggles), Animation, Custom
+    # Properties. Dropped below = 3D geometry/lighting/render concepts with no 2D use.
+    "OBJECT_PT_delta_transform",        # 3D delta transform
+    "OBJECT_PT_parent_inverse_transform",
+    "OBJECT_PT_instancing",             # 3D instancing
+    "OBJECT_PT_instancing_size",
+    "OBJECT_PT_motion_paths",           # 3D motion paths
+    "OBJECT_PT_motion_paths_display",
+    "OBJECT_PT_display",                # Viewport Display: bounds/wireframe/axes/texture-space
+    "OBJECT_PT_shading",                # 3D shading
+    "OBJECT_PT_light_linking",          # 3D lighting
+    "OBJECT_PT_shadow_linking",
+    "OBJECT_PT_shadow_terminator",
 ]
 # Nuclear's own panels/menus to register.
 _NUCLEAR_CLASSES = [
@@ -905,6 +920,29 @@ def _nuclear_help_menu_draw(self, context):
     layout.operator("wm.sysinfo")
 
 
+def _nuclear_object_transform_draw(self, context):
+    # 2D transform for Grease Pencil pieces: X/Y position, in-plane (Z) rotation, X/Y scale.
+    # The depth axis (Location Z, Rotation X/Y, Scale Z) is hidden — a cut-out piece lives in
+    # the drawing plane. NON-GP objects (camera, empty) fall back to the full native panel so
+    # their depth stays editable.
+    ob = context.object
+    if ob is None or getattr(ob, "type", None) != 'GREASEPENCIL':
+        orig = _orig_draws.get((bpy.types.OBJECT_PT_transform, "draw"))
+        if orig is not None:
+            orig(self, context)
+        return
+    layout = self.layout
+    layout.use_property_split = True
+    col = layout.column()
+    sub = col.column(align=True)
+    sub.prop(ob, "location", index=0, text="Location X")
+    sub.prop(ob, "location", index=1, text="Y")
+    col.prop(ob, "rotation_euler", index=2, text="Rotation")
+    sub = col.column(align=True)
+    sub.prop(ob, "scale", index=0, text="Scale X")
+    sub.prop(ob, "scale", index=1, text="Y")
+
+
 def _nuclear_add_menu_draw(self, context):
     # Nuclear 2D cut-out: the Add menu (Shift+A) offers only Grease Pencil plus the few
     # non-GP objects that make sense in a 2D pipeline — Empty (rig controls/nulls),
@@ -957,6 +995,7 @@ _HEADER_OVERRIDES = [
     ("TOPBAR_MT_editor_menus", "draw", _nuclear_editor_menus_draw),
     ("TOPBAR_MT_help", "draw", _nuclear_help_menu_draw),
     ("VIEW3D_MT_add", "draw", _nuclear_add_menu_draw),  # hide 3D primitives (2D cut-out)
+    ("OBJECT_PT_transform", "draw", _nuclear_object_transform_draw),  # X/Y only for GP
     ("TOPBAR_HT_upper_bar", "draw_left", _nuclear_topbar_draw_left),
     ("VIEW3D_HT_header", "draw", _nuclear_view3d_header_draw),
     ("VIEW3D_HT_tool_header", "draw", _nuclear_tool_header_draw),  # Phase E — ADDONS bar
