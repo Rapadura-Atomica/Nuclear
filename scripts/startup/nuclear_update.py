@@ -631,6 +631,78 @@ def _config_roots():
     return os.path.join(base, "blender"), os.path.join(base, "Nuclear")
 
 
+def _cache_roots():
+    """Return (legacy_root, nuclear_root) for the user cache dir, mirroring appdir.cc.
+
+    The cache org folder was renamed "blender" -> "Nuclear" in the rebrand
+    (`caches_root` in `source/blender/blenkernel/intern/appdir.cc`). On Linux the root is
+    $XDG_CACHE_HOME/<org> or ~/.cache/<org>; Windows/macOS mirror GHOST's caches dir.
+    Returns (None, None) when the cache root can't be resolved.
+    """
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+        if not base:
+            return None, None
+        return os.path.join(base, "blender", "Cache"), os.path.join(base, "Nuclear", "Cache")
+    if sys.platform == "darwin":
+        home = os.path.expanduser("~")
+        base = os.path.join(home, "Library", "Caches")
+        return os.path.join(base, "blender"), os.path.join(base, "Nuclear")
+    # Linux / other POSIX
+    base = os.environ.get("XDG_CACHE_HOME")
+    if not base:
+        home = os.environ.get("HOME") or os.path.expanduser("~")
+        if not home or home == "~":
+            return None, None
+        base = os.path.join(home, ".cache")
+    return os.path.join(base, "blender"), os.path.join(base, "Nuclear")
+
+
+def _cleanup_legacy_dirs(log_path=None):
+    """Remove the leftover pre-rename `blender` user dirs after migration.
+
+    Runs on apply, AFTER `_migrate_legacy_config` has carried settings over. Two dirs are
+    abandoned by the rebrand but never cleaned by the running build:
+
+      * cache (`~/.cache/blender`) — 100% regenerable (shader/asset-index caches); deleted
+        outright. The new build already writes to `~/.cache/Nuclear`.
+      * config (`~/.config/blender`) — holds the user's OLD settings. Conservative: the
+        legacy dir is *renamed* to `<name>.pre-nuclear.bak` (never deleted), so it stays
+        recoverable if the migration ever misses something. Guarded so we never clobber an
+        existing backup and never touch the live Nuclear dir.
+
+    Idempotent and best-effort: never raises into the apply flow.
+    """
+    # 1. Cache: safe to delete (regenerable).
+    try:
+        legacy_cache, _nuclear_cache = _cache_roots()
+        if legacy_cache and os.path.isdir(legacy_cache):
+            shutil.rmtree(legacy_cache, ignore_errors=True)
+            if log_path:
+                _apply_log(log_path, "cache legado removido: %s" % legacy_cache)
+    except Exception as ex:
+        if log_path:
+            _apply_log(log_path, "aviso: limpeza de cache legado falhou: %s" % ex)
+
+    # 2. Config: rename (never delete) the legacy dir to a .bak so it's recoverable.
+    try:
+        legacy_config, nuclear_config = _config_roots()
+        if (legacy_config and nuclear_config and os.path.isdir(legacy_config)
+                # Only set the legacy dir aside once we're actually on Nuclear config,
+                # so we never orphan settings that failed to migrate.
+                and os.path.isdir(nuclear_config)):
+            bak = legacy_config + ".pre-nuclear.bak"
+            if not os.path.exists(bak):
+                os.rename(legacy_config, bak)
+                if log_path:
+                    _apply_log(log_path, "config legado renomeado: %s -> %s" % (legacy_config, bak))
+            # If `bak` already exists, a prior apply already backed it up; leave the
+            # ambiguous second legacy dir untouched (never clobber the backup).
+    except Exception as ex:
+        if log_path:
+            _apply_log(log_path, "aviso: limpeza de config legado falhou: %s" % ex)
+
+
 def _migrate_legacy_config(log_path=None):
     """Copy per-version settings from the legacy `blender` config dir to `Nuclear`.
 
@@ -741,6 +813,9 @@ def _run_apply(manifest, layout):
         # Product rebrand: the config org folder moved blender -> Nuclear. Carry existing
         # users' settings across so an auto-update doesn't reset them (idempotent).
         _migrate_legacy_config(log_path)
+        # Then tidy the leftover pre-rename dirs: delete the (regenerable) legacy cache and
+        # set the legacy config aside as a .bak. Best-effort, after migration.
+        _cleanup_legacy_dirs(log_path)
         _refresh_desktop(layout)
         # Keep the new build and the still-running one (locked on Windows).
         _prune_versions(layout["versions"], [dest, layout["install_root"]])

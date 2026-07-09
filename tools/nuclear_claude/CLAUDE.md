@@ -482,6 +482,19 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-07-08.
 
+- **PENDENTE (commitado, NÃO publicado) — auto-limpeza dos dirs legados `blender` no
+  updater (2026-07-08).** `nuclear_update.py`: `_cleanup_legacy_dirs()` roda no apply logo
+  após `_migrate_legacy_config`, (1) **apaga** `~/.cache/blender` (regenerável; o build novo
+  já usa `~/.cache/Nuclear`) e (2) **renomeia** `~/.config/blender` → `.pre-nuclear.bak`
+  (nunca apaga config — reversível; guardado p/ não clobberar backup nem tocar no dir
+  Nuclear vivo; só age se `.config/Nuclear` já existe, p/ não órfãr settings não-migrados).
+  Testado isolado em HOME falso (3 cenários: pós-migração, idempotente 2x, Nuclear-ausente).
+  Novo helper `_cache_roots()` espelha `caches_root` do `appdir.cc`. ⚠️ **Como toda melhoria
+  do apply, só age a partir do build que a contém:** máquinas em ≤b12 só ganham a limpeza no
+  update que PARTIR de b13+ (o updater que aplica é o da versão que está rodando). Vai pegar
+  carona no próximo release. Motivo: o resíduo `.cache/blender`/`.config/blender` sobra em
+  toda máquina que rodou build pré-rename (o updater não limpava).
+
 - **Nuclear 1.6.0 (Beta) — `NUCLEAR_BUILD = 12` — PUBLICADO (2026-07-08).** Empacota o
   **rebrand completo** (rename `blender`→`nuclear` do executável e de TODOS os artefatos:
   auxiliares, `Nuclear.desktop`, ícones `nuclear*.svg`, man `nuclear.1`, keyconfig
