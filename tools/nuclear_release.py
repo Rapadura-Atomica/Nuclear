@@ -67,6 +67,18 @@ _REQUIRED_ZIP_MEMBERS = (
 # stand-in for the whole site-packages bundle -- see nuclear-release.md golden rule #4).
 _REQUIRED_SITE_PACKAGES_MARKER = "site-packages/scipy"
 
+# Dead weight that `ninja install` drags into bin/ and that `nuclear_prune_package.sh`
+# strips at packaging time: libs of features the 2D preset compiles OUT, plus build-time
+# codegen tools. Kept in sync with that script's own lists -- this is the "did anyone
+# forget to prune?" gate, added after b13 shipped 221 MB of it (the release was packaged
+# by hand, bypassing nuclear_release.sh where the prune is the default).
+_DEAD_WEIGHT_LIB_RE = re.compile(
+    r"/lib/lib(usd|osl|oslexec|oslcomp|oslquery|oslnoise|openvdb|nanovdb|embree|hiprt|"
+    r"ur_loader|ur_adapter|sycl|MaterialXGenOsl|MaterialXRenderOsl|openimagedenoise|oidn)",
+    re.IGNORECASE,
+)
+_DEAD_WEIGHT_TOOLS = ("makesrna", "makesdna", "msgfmt", "glsl_preprocess", "datatoc")
+
 
 def _repo_root():
     """Repo root, found by walking up from this script until the header exists."""
@@ -267,14 +279,30 @@ def cmd_verify_zip(args):
         problems.append("regra de ouro #4 (deps Python ausentes): nao achei '%s'" %
                          _REQUIRED_SITE_PACKAGES_MARKER)
 
+    dead_libs = sorted({os.path.basename(n) for n in names if _DEAD_WEIGHT_LIB_RE.search(n)})
+    dead_tools = sorted({os.path.basename(n) for n in names
+                         if os.path.basename(n) in _DEAD_WEIGHT_TOOLS
+                         and n.count("/") == 1})
+    if dead_libs or dead_tools:
+        detail = []
+        if dead_libs:
+            detail.append("%d libs de features OFF (ex.: %s)" %
+                          (len(dead_libs), ", ".join(dead_libs[:3])))
+        if dead_tools:
+            detail.append("ferramentas de build: %s" % ", ".join(dead_tools))
+        problems.append(
+            "peso morto no pacote (a poda nao rodou): %s. "
+            "Rode 'tools/nuclear_prune_package.sh <staging>' e re-empacote, "
+            "ou use tools/nuclear_release.sh (poda por padrao)." % "; ".join(detail))
+
     if problems:
         print("FALHOU: %s nao esta pronto para publicar:" % args.zip, file=sys.stderr)
         for p in problems:
             print("  - %s" % p, file=sys.stderr)
         raise SystemExit(1)
 
-    print("OK: %s contem o updater e as deps do fork (%d arquivos em site-packages/scipy)" %
-          (args.zip, scipy_count))
+    print("OK: %s contem o updater e as deps do fork (%d arquivos em site-packages/scipy), "
+          "sem peso morto 3D" % (args.zip, scipy_count))
     return 0
 
 
