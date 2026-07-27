@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 12,
-  "version": "1.6.0",
+  "build": 13,
+  "version": "1.7.0",
   "stage": "Beta",
-  "version_string": "Nuclear 1.6.0 (Beta)",
+  "version_string": "Nuclear 1.7.0 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "3c1a1d0e561c12c8f038aba35e0efc51ddc07b66b9b923574be2ad9eb73a71c5",
-  "size": 356983335,
+  "sha256": "760cf54b0384ff4e85613dd05580e5ff8bad141dcc87ed4115100f0cdaf884dd",
+  "size": 578335394,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Rebrand completo: executável e todos os arquivos agora se chamam nuclear; keymap renomeado com migração automática das preferências; splash e menus atualizados; pacote otimizado (−310MB de libs 3D não usadas). Inclui o Auto Rig da 1.5.1."
+  "notes": "Nuclear 1.7.0: grade de thumbnails na tela de abertura (Krita-style Recent Files com previews dos projetos) + Entremeio com auto-detecção de faixa de animação (ignora biblioteca negativa e Cell Library)"
 }

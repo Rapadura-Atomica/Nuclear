@@ -2659,7 +2659,14 @@ void uiTemplateColormanagedViewSettings(uiLayout *layout,
                                         PointerRNA *ptr,
                                         blender::StringRefNull propname);
 
-int uiTemplateRecentFiles(uiLayout *layout, int rows);
+/**
+ * List the recently opened files.
+ *
+ * \param rows: Maximum number of files to show.
+ * \param columns: Nuclear: when greater than zero, the files are drawn as a grid of
+ * thumbnail tiles with this many columns instead of a plain text list.
+ */
+int uiTemplateRecentFiles(uiLayout *layout, int rows, int columns = 0);
 void uiTemplateFileSelectPath(uiLayout *layout, bContext *C, FileSelectParams *params);
 
 namespace blender::ui {
