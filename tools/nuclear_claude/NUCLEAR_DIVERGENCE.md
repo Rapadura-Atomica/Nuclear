@@ -306,6 +306,12 @@ versionamento — só **append de enums** e um **drawflag runtime**; rebase = re
 | `source/blender/editors/sculpt_paint/paint_cursor.cc` | `grease_pencil_brush_cursor_draw`: seta `pixel_radius = brush->size/2` p/ `GPAINT_BRUSH_TYPE_SMUDGE`/`_BLUR` (senão o anel do cursor fica raio 0 = invisível) |
 | `source/blender/editors/sculpt_paint/grease_pencil_paint.cc` | `PaintOperationExecutor` (~690): quando `brush->mtex.tex` existe, `BKE_brush_sample_tex_3d` na posição em world-space modula `opacity` → traços texturizados (textura de bico) |
 
+### PERDA DE DADOS: o Follow Peg não contava usuário no PegRig (2026-07-27)
+Relato do usuário: "estou perdendo as pegs" no take `DPE_EP06_C12T67` (Carolina, Ep06 C12).
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/blenkernel/intern/constraint.cc` | `followpeg_id_looper()` reportava o ponteiro `data->rig` com `is_reference = false` → `IDWALK_CB_NOP`, ou seja **sem contar usuário**. O PegRig é um ID de *dado* (como a Action do Action constraint, que passa `true` — só o *objeto*-alvo passa `false`, convenção do upstream contra ciclos). Efeito no arquivo real: 4 objetos seguindo o rig e `users = 1`; assim que o último usuário contado saía (o `NuclearPegTree` "Peg Graph"), o rig caía a zero usuários e era **silenciosamente descartado no save, levando as 80 pegs**. Reproduzido e corrigido: remover o Peg Graph e salvar dava `pegrigs=0` antes, `pegrigs=1 pegs=80` depois. Torna obsoleto o workaround de `use_fake_user=True`. |
+
 ### Robustez: crash do Outliner + ruído de log do auto-key (2026-07-27)
 Achados investigando a estação de animação `bazzite-2` (192.168.0.29): um SIGSEGV no
 redraw do Outliner depois de ~1h23 de trabalho e dezenas de warnings "Could not insert

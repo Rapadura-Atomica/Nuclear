@@ -1175,8 +1175,15 @@ static void followpeg_id_looper(bConstraint *con, ConstraintIDFunc func, void *u
   bFollowPegConstraint *data = static_cast<bFollowPegConstraint *>(con->data);
 
   /* The peg rig is the (non-object) target. Reporting it here is what lets copy-on-eval remap
-   * the pointer to the evaluated rig and what makes the dependency visible to the depsgraph. */
-  func(con, (ID **)&data->rig, false, userdata);
+   * the pointer to the evaluated rig and what makes the dependency visible to the depsgraph.
+   *
+   * `is_reference = true` (IDWALK_CB_USER), like the Action of the Action constraint: a PegRig
+   * is a *data* ID, so a constraint pointing at it MUST hold a user. With `false` the rig was
+   * under-counted -- a file with four objects following it reported `users = 1` -- so once the
+   * remaining counted user went away the rig dropped to zero users and was silently discarded
+   * on save, taking every peg with it. (Object *targets* stay `false` on purpose: that is the
+   * upstream convention that keeps constraint target cycles from pinning objects.) */
+  func(con, (ID **)&data->rig, true, userdata);
 }
 
 static void followpeg_evaluate(bConstraint *con, bConstraintOb *cob, ListBase * /*targets*/)
