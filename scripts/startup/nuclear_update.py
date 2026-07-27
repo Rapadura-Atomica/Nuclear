@@ -480,6 +480,72 @@ def _apply_extracted(extract_tree, layout, manifest):
     return dest
 
 
+_DESKTOP_FALLBACK = """[Desktop Entry]
+Name=Nuclear
+GenericName=2D Animation
+GenericName[pt_BR]=Animação 2D
+Comment=2D cut-out animation
+Comment[pt_BR]=Animação 2D estilo cut-out
+Keywords=2d;cutout;cut-out;animation;grease pencil;drawing;rigging;pegs;toon;
+Exec={exec_path} --app-template Nuclear %F
+Icon={icon_path}
+Terminal=false
+Type=Application
+PrefersNonDefaultGPU=true
+Categories=Graphics;2DGraphics;
+MimeType=application/x-nuclear;application/x-blender;
+StartupNotify=true
+StartupWMClass=Nuclear
+"""
+
+
+def _install_desktop(layout, target_exec):
+    """Create `~/.local/share/applications/Nuclear.desktop` when no launcher exists yet.
+
+    Machines whose launcher was never rebranded keep opening Nuclear through the legacy
+    `blender` shim (or through a dead pre-rename .desktop), so the menu, the systemd app
+    unit and the journal all still read "blender" even though the binary and the UI are
+    fully Nuclear. `_refresh_desktop` alone could not fix those: it only *rewrites* an
+    existing launcher. Seed one from the .desktop shipped inside the package (absolute
+    Exec/Icon pointing at `current`, so later updates only need the rewrite path), falling
+    back to a built-in template if the packaged file is missing.
+
+    Only ever creates — never overwrites an existing launcher. Best-effort, never raises.
+    """
+    dest = os.path.expanduser("~/.local/share/applications/Nuclear.desktop")
+    if os.path.exists(dest):
+        return
+    icon_path = os.path.join(layout["current"], "nuclear.svg")
+    if not os.path.isfile(icon_path):
+        icon_path = "nuclear"
+    packaged = os.path.join(layout["current"], "Nuclear.desktop")
+    text = None
+    if os.path.isfile(packaged):
+        try:
+            with open(packaged, "r", encoding="utf-8") as fh:
+                lines = fh.readlines()
+            # The packaged entry carries a PATH-relative `Exec=nuclear` / `Icon=nuclear`,
+            # which resolves to nothing on these installs (nothing is on PATH) — make both
+            # absolute against `current`.
+            for i, line in enumerate(lines):
+                if line.startswith("Exec="):
+                    lines[i] = "Exec=%s --app-template Nuclear %%F\n" % target_exec
+                elif line.startswith("Icon="):
+                    lines[i] = "Icon=%s\n" % icon_path
+            text = "".join(lines)
+        except Exception:
+            text = None
+    if text is None:
+        text = _DESKTOP_FALLBACK.format(exec_path=target_exec, icon_path=icon_path)
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(dest, 0o644)
+    except Exception:
+        pass
+
+
 def _refresh_desktop(layout):
     """Best-effort: repoint a Nuclear.desktop launcher at the `current` binary after an update.
 
@@ -487,7 +553,8 @@ def _refresh_desktop(layout):
     version directory; once we move to the versioned `current` symlink, the launcher must
     follow or it would keep opening the old build. Conservative on purpose: only rewrites an
     Exec line that already points somewhere inside this install's base, so we never touch an
-    unrelated .desktop. Never raises into the update flow.
+    unrelated .desktop. If no launcher exists at all, one is created (see
+    `_install_desktop`). Never raises into the update flow.
 
     Linux only: on Windows the `current` junction means the Start-Menu shortcut keeps
     resolving to the new build with no rewrite needed.
@@ -500,6 +567,9 @@ def _refresh_desktop(layout):
         os.path.expanduser("~/.local/share/applications/Nuclear.desktop"),
         os.path.join(layout["base"], "Nuclear.desktop"),
     ]
+    if not any(os.path.isfile(p) for p in candidates):
+        _install_desktop(layout, target_exec)
+        return
     for path in candidates:
         try:
             if not os.path.isfile(path):

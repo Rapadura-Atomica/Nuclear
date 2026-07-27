@@ -2219,11 +2219,25 @@ SingleKeyingResult StripKeyframeData::keyframe_insert(Main *bmain,
       fcurve, time_value, settings, insert_key_flags);
 
   if (insert_vert_result != SingleKeyingResult::SUCCESS) {
-    CLOG_WARN(&LOG,
-              "Could not insert key into FCurve %s[%d] for slot %s.\n",
-              fcurve_descriptor.rna_path.c_str(),
-              fcurve_descriptor.array_index,
-              slot.identifier);
+    /* NO_KEY_NEEDED is not a failure: with "Only Insert Needed" (on by default for
+     * auto-keying) a channel whose value did not change is *meant* to be skipped. Warning
+     * on it flooded the log during ordinary animation — every auto-key on a bone logged one
+     * line per unchanged component (`rotation_quaternion[2]`, `location[1]`, …), which
+     * reads like lost keyframes. Keep it at debug level; only real failures warn. */
+    if (insert_vert_result == SingleKeyingResult::NO_KEY_NEEDED) {
+      CLOG_DEBUG(&LOG,
+                 "No key needed for FCurve %s[%d] for slot %s (value unchanged).\n",
+                 fcurve_descriptor.rna_path.c_str(),
+                 fcurve_descriptor.array_index,
+                 slot.identifier);
+    }
+    else {
+      CLOG_WARN(&LOG,
+                "Could not insert key into FCurve %s[%d] for slot %s.\n",
+                fcurve_descriptor.rna_path.c_str(),
+                fcurve_descriptor.array_index,
+                slot.identifier);
+    }
     return insert_vert_result;
   }
 
