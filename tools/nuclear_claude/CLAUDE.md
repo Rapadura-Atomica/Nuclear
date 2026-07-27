@@ -480,7 +480,29 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-07-08.
+Atualizado em 2026-07-27.
+
+- **Nuclear 1.7.0 (Beta) — `NUCLEAR_BUILD = 13` — PUBLICADO (2026-07-27).** MINOR a partir
+  da branch `Nuclear`. **Destaque 1 — grade de thumbnails na tela de abertura:** a splash
+  screen agora mostra os projetos recentes como uma grade de miniaturas (Krita-style), com a
+  imagem embedded no `.blend`/`.nuc` — o artista reconhece o take pelo desenho, não pelo nome
+  de arquivo. O thumbnail é lido do cache do sistema (THB_LARGE) ou do header do próprio
+  arquivo, letterboxed pra quadrado, com cache LRU de 100 entradas validado por mtime. Quatro
+  arquivos tocados: `wm.py` (grid layout 8×4), `UI_interface_c.hh` (parâmetro `columns`),
+  `interface_template_recent_files.cc` (+~230 linhas, leitura+cache+render), `rna_ui_api.cc`
+  (exposição Python). **Destaque 2 — Entremeio com auto-detecção de faixa:** o addon de
+  in-betweening agora detecta automaticamente onde começa e termina a animação real (ignora
+  frames negativos/biblioteca de poses e Cell Library ≥100000). Painel ganhou campos
+  Início/Fim + botão "Auto-detectar" + hint visual. Ver `rig_bridge.detect_animation_range()`.
+  **Limpeza de dirs legados** (pendente desde b12) pega carona neste release: o updater que
+  APLICA a b13 é o da versão que está rodando, então máquinas em ≤b12 só ganham a limpeza
+  de `.cache/blender`/`.config/blender` no update que PARTIR de b13. Compilado nesta máquina
+  em `build_nuclear_2d` (container `blender`, preset `nuclear_2d.cmake`, ninja 3 jobs, ccache
+  quente ~1min). Smoke 2D ALL PASS. Empacotado com deps Python (scipy 2615 arquivos).
+  verify-zip + check-manifest OK. Publicado: sha256 do zip live no servidor == manifesto ==
+  `760cf54b0384ff4e85613dd05580e5ff8bad141dcc87ed4115100f0cdaf884dd` (578.335.394 bytes).
+  Backup da 1.6.0/b12 no servidor: `nuclear.zip.bak-pre-1.7.0`.
+  `ping.php`/`instalarNuclear.sh` não tocados.
 
 - **PENDENTE (commitado, NÃO publicado) — auto-limpeza dos dirs legados `blender` no
   updater (2026-07-08).** `nuclear_update.py`: `_cleanup_legacy_dirs()` roda no apply logo
@@ -491,9 +513,8 @@ Atualizado em 2026-07-08.
   Testado isolado em HOME falso (3 cenários: pós-migração, idempotente 2x, Nuclear-ausente).
   Novo helper `_cache_roots()` espelha `caches_root` do `appdir.cc`. ⚠️ **Como toda melhoria
   do apply, só age a partir do build que a contém:** máquinas em ≤b12 só ganham a limpeza no
-  update que PARTIR de b13+ (o updater que aplica é o da versão que está rodando). Vai pegar
-  carona no próximo release. Motivo: o resíduo `.cache/blender`/`.config/blender` sobra em
-  toda máquina que rodou build pré-rename (o updater não limpava).
+  update que PARTIR de b13+ (o updater que aplica é o da versão que está rodando). **Agora
+  PUBLICADO como parte da 1.7.0/b13.**
 
 - **Nuclear 1.6.0 (Beta) — `NUCLEAR_BUILD = 12` — PUBLICADO (2026-07-08).** Empacota o
   **rebrand completo** (rename `blender`→`nuclear` do executável e de TODOS os artefatos:
@@ -666,11 +687,11 @@ Atualizado em 2026-07-08.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.5.0 (Beta) — `NUCLEAR_BUILD = 10` (2026-07-06, deploy
+- **Versão em produção:** Nuclear 1.7.0 (Beta) — `NUCLEAR_BUILD = 13` (2026-07-27, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live). Máquinas em qualquer
-  build ≤ 9 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  build ≤ 12 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
-  1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → **1.5.0/b10 (2026-07-06)**.
+  1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → **1.7.0/b13 (2026-07-27)**.
 - **nuclear.zip (b10, em produção):** 646.600.712 bytes, sha256
   `22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25` — **refresh do banner do
   updater (2026-07-06), mesmo build/version**; o zip inicial da 1.5.0 (646.626.577 bytes, sha256

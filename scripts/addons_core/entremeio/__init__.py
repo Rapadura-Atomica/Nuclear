@@ -31,6 +31,15 @@ from .engine.ipc import IPCEngine, IPCParams, IPCError, reference_worker_path
 _ADDON_DIR = os.path.dirname(__file__)
 
 
+def _frame_range(props):
+    """Resolve frame_start/frame_end a partir das props do painel.
+    0 = usa o default da cena (None -> read_rig usa scene.frame_start/end).
+    """
+    start = props.anim_start if props.anim_start > 0 else None
+    end = props.anim_end if props.anim_end > 0 else None
+    return start, end
+
+
 def _report_dir(props):
     """Diretório do relatório: prop, senão ao lado do .blend, senão temp."""
     if props.report_dir.strip():
@@ -62,7 +71,9 @@ class ENTREMEIO_OT_read_rig(bpy.types.Operator):
             target = bpy.data.pegrigs[0].name
 
         try:
-            plan = rig_bridge.read_rig(target, seed=props.seed)
+            f_start, f_end = _frame_range(props)
+            plan = rig_bridge.read_rig(target, seed=props.seed,
+                                       frame_start=f_start, frame_end=f_end)
         except ValueError as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
@@ -86,6 +97,39 @@ class ENTREMEIO_OT_read_rig(bpy.types.Operator):
             frames = [k.frame for k in t.anchors]
             chans = ", ".join(sorted(t.animated_channels())) or "(sem keys)"
             print(f"   peg '{t.name}' (parent={t.peg.parent}) âncoras={frames} canais=[{chans}]")
+        return {"FINISHED"}
+
+
+# --------------------------------------------------------------------------
+# Operador: auto-detectar faixa de animação (ignora biblioteca negativa, Cell Library)
+# --------------------------------------------------------------------------
+class ENTREMEIO_OT_auto_detect_range(bpy.types.Operator):
+    bl_idname = "entremeio.auto_detect_range"
+    bl_label = "Auto-detectar Faixa"
+    bl_description = "Varre os keyframes e preenche Início/Fim automaticamente, ignorando frames negativos (biblioteca de poses) e Cell Library (≥100000)"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        props = context.scene.entremeio
+        target = props.rig_name.strip() or (bpy.data.pegrigs[0].name if bpy.data.pegrigs else None)
+        if target is None:
+            self.report({"ERROR"}, "Nenhum PegRig na cena.")
+            return {"CANCELLED"}
+
+        try:
+            rig = bpy.data.pegrigs[target]
+        except KeyError as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+
+        lo, hi = rig_bridge.detect_animation_range(rig)
+        if lo is None:
+            self.report({"WARNING"}, "Nenhum keyframe de peg encontrado (fora da Cell Library).")
+            return {"CANCELLED"}
+
+        props.anim_start = lo
+        props.anim_end = hi
+        self.report({"INFO"}, f"Faixa detectada: {lo}–{hi} ({hi - lo + 1} frames)")
         return {"FINISHED"}
 
 
@@ -118,7 +162,9 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
             return {"CANCELLED"}
 
         try:
-            plan = rig_bridge.read_rig(target, seed=props.seed)
+            f_start, f_end = _frame_range(props)
+            plan = rig_bridge.read_rig(target, seed=props.seed,
+                                       frame_start=f_start, frame_end=f_end)
         except (KeyError, ValueError) as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
@@ -133,7 +179,8 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
 
         # regeneração limpa (só do escopo, se houver): remove o que o Entremeio gerou antes
         rig_bridge.clear_generated(rig, pegs=scope_names)
-        plan = rig_bridge.read_rig(target, seed=props.seed)   # âncoras limpas
+        plan = rig_bridge.read_rig(target, seed=props.seed,
+                                   frame_start=f_start, frame_end=f_end)   # âncoras limpas
         if scope_names is not None:
             plan = plan.scoped_to(scope_names)
 
@@ -233,12 +280,16 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
     bl_description = "Gera e toca o trecho em loop; ENTER aplica, ESC descarta (não comita até aplicar)"
     bl_options = {"REGISTER"}
 
-    def _span(self, rig):
+    def _span(self, rig, f_start=None, f_end=None):
         lo = hi = None
         for fcu in rig_bridge._iter_fcurves(rig.animation_data):
             if rig_bridge.parse_peg_data_path(fcu.data_path):
                 for kp in fcu.keyframe_points:
                     f = int(round(kp.co[0]))
+                    if f_start is not None and f < f_start:
+                        continue
+                    if f_end is not None and f > f_end:
+                        continue
                     lo = f if lo is None else min(lo, f)
                     hi = f if hi is None else max(hi, f)
         return lo, hi
@@ -269,7 +320,8 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
             return {"CANCELLED"}   # o generate já reportou o motivo
 
         rig = bpy.data.pegrigs.get(self._rig_name)
-        lo, hi = self._span(rig)
+        f_start, f_end = _frame_range(props)
+        lo, hi = self._span(rig, f_start=f_start, f_end=f_end)
         if lo is not None:
             scene = context.scene
             scene.use_preview_range = True
@@ -313,6 +365,20 @@ class ENTREMEIO_PG_settings(bpy.types.PropertyGroup):
         name="Rig",
         description="Nome do PegRig a ler (vazio = primeiro da cena)",
         default="",
+    )
+    anim_start: bpy.props.IntProperty(
+        name="Início",
+        description="Frame onde começa a animação — âncoras antes deste frame são ignoradas (ex.: evita biblioteca negativa). 0 = usa o início da cena",
+        default=0,
+        min=0,
+        soft_min=0,
+    )
+    anim_end: bpy.props.IntProperty(
+        name="Fim",
+        description="Frame onde termina a animação — âncoras depois deste frame são ignoradas. 0 = usa o fim da cena",
+        default=0,
+        min=0,
+        soft_min=0,
     )
     seed: bpy.props.IntProperty(
         name="Seed",
@@ -412,6 +478,22 @@ class ENTREMEIO_PT_panel(bpy.types.Panel):
         layout.prop_search(props, "rig_name", bpy.data, "pegrigs", text="Rig")
         layout.operator(ENTREMEIO_OT_read_rig.bl_idname, icon="HOOK")
 
+        # RF-1.2: faixa de trabalho do animador — evita biblioteca negativa, Cell Library etc.
+        faixa = layout.box()
+        faixa.label(text="Faixa de Trabalho")
+        row = faixa.row(align=True)
+        row.prop(props, "anim_start")
+        row.prop(props, "anim_end")
+        row.operator(ENTREMEIO_OT_auto_detect_range.bl_idname, icon="VIEWZOOM", text="")
+        hint = faixa.row()
+        hint.scale_y = 0.6
+        cena_inicio = context.scene.frame_start
+        cena_fim = context.scene.frame_end
+        if props.anim_start > 0 or props.anim_end > 0:
+            hint.label(text=f"Filtrando: {props.anim_start or cena_inicio}–{props.anim_end or cena_fim} (cena: {int(cena_inicio)}–{int(cena_fim)})")
+        else:
+            hint.label(text=f"Auto-detecção ao gerar (ignora frames < 0 e Cell Library). Cena: {int(cena_inicio)}–{int(cena_fim)}")
+
         layout.prop(props, "engine_mode", text="Modo")
         col = layout.column(align=True)
         col.prop(props, "step")
@@ -447,6 +529,7 @@ class ENTREMEIO_PT_panel(bpy.types.Panel):
 classes = (
     ENTREMEIO_PG_settings,
     ENTREMEIO_OT_read_rig,
+    ENTREMEIO_OT_auto_detect_range,
     ENTREMEIO_OT_generate,
     ENTREMEIO_OT_preview,
     ENTREMEIO_PT_panel,

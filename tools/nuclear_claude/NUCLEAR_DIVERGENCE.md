@@ -225,6 +225,19 @@ documentado). No rebase, re-aplicar cada uma:
 | `scripts/startup/bl_operators/wm.py` | menu `WM_MT_splash_about`: Version/Date/Hash/Branch literais + linha "Nuclear, a derivative of Blender" (branding do About) |
 | `scripts/startup/bl_ui/space_topbar.py` | `TOPBAR_MT_file_new.draw_ex`: 3 seams pequenas — (a) reordena `paths` com `Nuclear` sempre primeiro; (b) **remove o item "General"** (o `wm.read_homefile` com `app_template=""`) do menu/splash/Ctrl+N; (c) ícone `OUTLINER_OB_GREASEPENCIL` p/ o template `Nuclear`. Deixa só os 3 templates 2D (Nuclear, Storyboarding, 2D Animation) no `File > New`. **Acoplamento de runtime:** depende dos nomes de template `Nuclear`/`2D_Animation` e da estrutura do `draw_ex`; degrada sem quebrar se o upstream refatorar. Reversível via git. |
 
+### Tela inicial: projetos recentes como grade de thumbnails (estilo Krita)
+A lista textual de recentes da splash virou uma **grade de miniaturas** — o animador
+reconhece o take pelo desenho em vez de ler nomes quase idênticos
+(`DPE_EP06_C12T19` vs `DPE_EP06_C12T19_B`). Usa o thumbnail que o **próprio arquivo já
+carrega** (cabeçalho do `.blend`/`.nuc`, mesmo que o tooltip do upstream já exibia) — não
+renderiza nada novo, então não custa nada no save. PRD: `PRD-nuclear-thumbs-projetos-recentes.md`.
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/editors/interface/templates/interface_template_recent_files.cc` | `uiTemplateRecentFiles()` ganhou o parâmetro `columns`: **0 = comportamento do upstream** (lista textual, código intocado num ramo do `if`), **>0 = grade** de tiles `WM_OT_open_mainfile` com o thumbnail como preview icon + nome sem extensão embaixo. Infra nova no mesmo arquivo: cache de ícones por caminho (`blender::Map`, validado por mtime, LRU de 100, ícone gerenciado via `BKE_icon_imbuf_create` que assume a posse do `ImBuf`), leitura via `IMB_thumb_read(THB_LARGE)` → fallback `BLO_thumbnail_from_file`, e *letter-box* do thumbnail num buffer quadrado (preview icons são desenhados esticados em região quadrada; sem isso um 16:9 fica achatado). Sem thumbnail → placeholder `ICON_FILE_BLEND`/`ICON_FILE_BACKUP`; arquivo sumido → `ICON_FILE_HIDDEN` (o tooltip do upstream já dizia "File Not Found"). |
+| `source/blender/editors/include/UI_interface_c.hh` | assinatura `uiTemplateRecentFiles(uiLayout *, int rows, int columns)` |
+| `source/blender/makesrna/intern/rna_ui_api.cc` | `template_recent_files` ganhou o argumento `columns` (default 0 = lista) |
+| `scripts/startup/bl_operators/wm.py` | `WM_MT_splash.draw`: o split "New File \| Recent" virou empilhado — templates numa **linha** no topo, recentes ocupando a **largura toda** logo abaixo (`template_recent_files(rows=8, columns=4)`), que é o que dá espaço pros tiles |
+
 ### Boot no template Nuclear (`--app-template Nuclear` no launcher)
 O Blender **não** entra em nenhum app template no boot (nem restaura do userpref) —
 só via `--app-template <id>`. Para o produto abrir sempre no template Nuclear, a flag

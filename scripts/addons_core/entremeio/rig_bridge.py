@@ -142,7 +142,33 @@ def _peg_channel_fcurves(adt, peg_names: set[str]):
     return out
 
 
-def _build_track_anchors(peg_obj, channel_fcurves: dict[tuple[str, str], dict[int, object]]):
+def detect_animation_range(rig) -> tuple[int | None, int | None]:
+    """Varre todas as FCurves de peg e detecta a faixa real de animação.
+
+    Ignora frames negativos (biblioteca de poses) e Cell Library (>= 100000).
+    Retorna (primeiro_frame, ultimo_frame) ou (None, None) se não houver keys.
+    """
+    adt = getattr(rig, "animation_data", None)
+    if adt is None:
+        return (None, None)
+
+    CELL_LIBRARY_BASE = 100000
+    lo = hi = None
+    for fcu in _iter_fcurves(adt):
+        parsed = parse_peg_data_path(fcu.data_path)
+        if parsed is None:
+            continue
+        for kp in fcu.keyframe_points:
+            f = int(round(kp.co[0]))
+            if f < 0 or f >= CELL_LIBRARY_BASE:
+                continue
+            lo = f if lo is None else min(lo, f)
+            hi = f if hi is None else max(hi, f)
+    return (lo, hi)
+
+
+def _build_track_anchors(peg_obj, channel_fcurves: dict[tuple[str, str], dict[int, object]],
+                        frame_start: int | None = None, frame_end: int | None = None):
     """Monta as âncoras de uma peg como SNAPSHOTS FIÉIS da pose.
 
     Para cada canal, os frames-âncora são a união dos frames keyados de seus
@@ -150,6 +176,9 @@ def _build_track_anchors(peg_obj, channel_fcurves: dict[tuple[str, str], dict[in
     (não 0-fill!) — componentes sem fcurve usam o valor estático da peg, que é
     exatamente o que a avaliação retornaria. Isso garante drift = 0 na fidelidade
     mesmo quando os eixos de um canal são keyados em frames diferentes.
+
+    Se `frame_start`/`frame_end` forem fornecidos, apenas keyframes dentro desse
+    intervalo viram âncoras (ex.: exclui biblioteca negativa, Cell Library, etc.).
     """
     frame_values: dict[int, dict[str, tuple[float, ...]]] = {}
     for (peg_name, chan), idx_map in channel_fcurves.items():
@@ -162,6 +191,11 @@ def _build_track_anchors(peg_obj, channel_fcurves: dict[tuple[str, str], dict[in
         frames = sorted({int(round(kp.co[0]))
                          for fcu in idx_map.values() for kp in fcu.keyframe_points})
         for frame in frames:
+            # RF-1.2: respeitar faixa de trabalho do animador
+            if frame_start is not None and frame < frame_start:
+                continue
+            if frame_end is not None and frame > frame_end:
+                continue
             comps = tuple(float(idx_map[i].evaluate(frame)) if i in idx_map else static[i]
                           for i in range(arity))
             frame_values.setdefault(frame, {})[chan] = comps
@@ -169,11 +203,15 @@ def _build_track_anchors(peg_obj, channel_fcurves: dict[tuple[str, str], dict[in
     return [Keyframe(frame=f, values=frame_values[f]) for f in sorted(frame_values)]
 
 
-def read_rig(source, *, seed: int = 0, style_preset: Optional[str] = None) -> PlanIR:
+def read_rig(source, *, seed: int = 0, style_preset: Optional[str] = None,
+            frame_start: Optional[int] = None, frame_end: Optional[int] = None) -> PlanIR:
     """Lê um PegRig real e devolve um PlanIR (SPEC §4.1).
 
     `source`: nome do PegRig, o datablock, ou objeto que o referencie.
     As âncoras são os keyframes JÁ existentes nas pegs (RF-2.4, caminho primário).
+
+    `frame_start`/`frame_end`: faixa de trabalho do animador. Ancoras fora deste
+    intervalo são ignoradas (ex.: biblioteca negativa). Se None, usa o range da cena.
     """
     import bpy
 
@@ -187,23 +225,34 @@ def read_rig(source, *, seed: int = 0, style_preset: Optional[str] = None) -> Pl
 
     scene = bpy.context.scene
 
+    # defaults: se o animador não especificou, auto-detecta a faixa real de animação
+    # (ignora biblioteca negativa e Cell Library). Fallback = range da cena.
+    if frame_start is None and frame_end is None:
+        auto_lo, auto_hi = detect_animation_range(rig)
+        f_start = auto_lo if auto_lo is not None else int(scene.frame_start)
+        f_end = auto_hi if auto_hi is not None else int(scene.frame_end)
+    else:
+        f_start = frame_start if frame_start is not None else int(scene.frame_start)
+        f_end = frame_end if frame_end is not None else int(scene.frame_end)
+
     # holds discretos (Drawing Substitution / Xsheet) por peg — SPEC §5, RF-4.6.
     # Restringe à janela do animatic; a Cell Library (frames >= 100000) fica de fora.
     from . import discrete
     holds = discrete.detect_discrete_holds(
-        rig, frame_range=(int(scene.frame_start), int(scene.frame_end)))
+        rig, frame_range=(f_start, f_end))
 
     pegs_by_name = {p.name: p for p in rig.pegs}
     tracks: list[PegTrack] = []
     for pr in peg_refs:
-        anchors = _build_track_anchors(pegs_by_name[pr.name], channel_fcurves)
+        anchors = _build_track_anchors(pegs_by_name[pr.name], channel_fcurves,
+                                       frame_start=f_start, frame_end=f_end)
         tracks.append(PegTrack(peg=pr, anchors=anchors,
                                discrete_holds=holds.get(pr.name, [])))
 
     return PlanIR(
         fps=float(scene.render.fps / scene.render.fps_base),
-        frame_start=int(scene.frame_start),
-        frame_end=int(scene.frame_end),
+        frame_start=f_start,
+        frame_end=f_end,
         tracks=tracks,
         seed=seed,
         style_preset=style_preset,

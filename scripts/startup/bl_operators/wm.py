@@ -3415,24 +3415,25 @@ class WM_MT_splash(Menu):
         layout.operator_context = 'EXEC_DEFAULT'
         layout.emboss = 'PULLDOWN_MENU'
 
-        split = layout.split()
-
-        # Templates
-        col1 = split.column()
+        # Templates, laid out horizontally so the recent projects get the full width.
+        col1 = layout.column()
         col1.label(text="New File")
+        row1 = col1.row(align=True)
 
-        bpy.types.TOPBAR_MT_file_new.draw_ex(col1, context, use_splash=True)
+        bpy.types.TOPBAR_MT_file_new.draw_ex(row1, context, use_splash=True)
 
-        # Recent
-        col2 = split.column()
+        layout.separator()
+
+        # Recent projects, as a grid of thumbnails.
+        col2 = layout.column()
         col2_title = col2.row()
 
-        found_recent = col2.template_recent_files(rows=5)
+        found_recent = col2.template_recent_files(rows=8, columns=4)
 
         if found_recent:
             col2_title.label(text="Recent Files")
 
-            col_more = col2.column()
+            col_more = col2.row()
             col_more.operator_context = 'INVOKE_DEFAULT'
             more_props = col_more.operator("wm.search_single_menu", text="More...", icon='VIEWZOOM')
             more_props.menu_idname = "TOPBAR_MT_file_open_recent"
