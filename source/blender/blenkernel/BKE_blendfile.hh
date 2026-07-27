@@ -150,6 +150,20 @@ bool BKE_blendfile_userdef_write_app_template(const char *filepath, ReportList *
 
 bool BKE_blendfile_userdef_write_all(ReportList *reports);
 
+/**
+ * As #BKE_blendfile_userdef_write_all, but when `force` is false the write is skipped if the
+ * preferences file on disk is newer than the one this process loaded -- i.e. another running
+ * instance saved preferences in the meantime, and overwriting would discard its changes.
+ * Automatic writes (on exit) should pass false; an explicit user-requested save passes true.
+ */
+bool BKE_blendfile_userdef_write_all_ex(ReportList *reports, bool force);
+
+/**
+ * Record the current modification time of the preferences file at `filepath` as the newest state
+ * this process knows about. Call after loading the user preferences.
+ */
+void BKE_blendfile_userdef_mtime_track(const char *filepath);
+
 WorkspaceConfigFileData *BKE_blendfile_workspace_config_read(const char *filepath,
                                                              const void *file_buf,
                                                              int file_buf_size,

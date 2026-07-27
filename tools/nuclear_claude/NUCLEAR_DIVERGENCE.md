@@ -306,6 +306,21 @@ versionamento — só **append de enums** e um **drawflag runtime**; rebase = re
 | `source/blender/editors/sculpt_paint/paint_cursor.cc` | `grease_pencil_brush_cursor_draw`: seta `pixel_radius = brush->size/2` p/ `GPAINT_BRUSH_TYPE_SMUDGE`/`_BLUR` (senão o anel do cursor fica raio 0 = invisível) |
 | `source/blender/editors/sculpt_paint/grease_pencil_paint.cc` | `PaintOperationExecutor` (~690): quando `brush->mtex.tex` existe, `BKE_brush_sample_tex_3d` na posição em world-space modula `opacity` → traços texturizados (textura de bico) |
 
+### PERDA DE CONFIG: duas instâncias brigando pelo `userpref.blend` (2026-07-27)
+Relato do usuário: "estou perdendo addons adicionados e atalhos configurados". Causa: as
+preferências vivem inteiras em memória e são escritas inteiras, sem merge — a última instância
+a gravar vence, e uma janela aberta há horas grava o estado de quando abriu, desfazendo o que
+foi configurado numa instância mais nova. É comportamento do upstream, não do fork; o gatilho
+é `U.runtime.is_dirty`, que coisas banais marcam (asset shelf, atribuir atalho por menu de
+contexto). Reproduzido com duas instâncias reais: addon habilitado em B desaparecia quando A
+fechava.
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/blenkernel/intern/blendfile.cc` | `g_userpref_mtime_seen` (static) guarda o mtime do `userpref.blend` como este processo o viu — na leitura e a cada escrita própria. Novo `BKE_blendfile_userdef_write_all_ex(reports, force)`: com `force = false`, se o arquivo no disco está **mais novo** que o visto, a escrita é **pulada** (log de WARNING, retorno `true` — não é erro). `BKE_blendfile_userdef_write_all()` agora é um wrapper com `force = true`, então todo chamador existente (o operador "Save Preferences") mantém o comportamento de sempre. |
+| `source/blender/blenkernel/BKE_blendfile.hh` | declara `BKE_blendfile_userdef_write_all_ex` e `BKE_blendfile_userdef_mtime_track` |
+| `source/blender/windowmanager/intern/wm_files.cc` | após ler o userpref do usuário no boot, chama `BKE_blendfile_userdef_mtime_track(filepath_userdef)` |
+| `source/blender/windowmanager/intern/wm_init_exit.cc` | o save **automático** na saída passa `force = false` — é o único caminho que perde configuração alheia; o explícito segue forçando |
+
 ### PERDA DE DADOS: o Follow Peg não contava usuário no PegRig (2026-07-27)
 Relato do usuário: "estou perdendo as pegs" no take `DPE_EP06_C12T67` (Carolina, Ep06 C12).
 | Arquivo | O que foi alterado |

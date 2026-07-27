@@ -495,7 +495,10 @@ void WM_exit_ex(bContext *C, const bool do_python_exit, const bool do_user_exit_
     if (do_user_exit_actions) {
       if ((U.pref_flag & USER_PREF_FLAG_SAVE) && ((G.f & G_FLAG_USERPREF_NO_SAVE_ON_EXIT) == 0)) {
         if (U.runtime.is_dirty) {
-          BKE_blendfile_userdef_write_all(nullptr);
+          /* Not forced: if another instance saved preferences while this one was open, keep the
+           * newer file rather than writing back the state from when we started (which silently
+           * undid add-ons enabled and shortcuts assigned in that other instance). */
+          BKE_blendfile_userdef_write_all_ex(nullptr, false);
         }
       }
       /* Free the callback data used on file-open
