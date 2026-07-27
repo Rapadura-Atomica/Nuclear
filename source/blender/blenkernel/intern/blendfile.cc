@@ -1656,7 +1656,39 @@ bool BKE_blendfile_userdef_write_app_template(const char *filepath, ReportList *
   return ok;
 }
 
+/**
+ * Modification time of the preferences file as *this* process last saw it: read at startup, and
+ * refreshed on every successful write of our own.
+ *
+ * Preferences are held whole in memory and written whole, with no merge, so two running instances
+ * silently fight over the file: the last one to write wins, and an instance that has been open for
+ * a while writes back the state from when it started -- undoing add-ons enabled and shortcuts
+ * assigned in the newer instance. Tracking the mtime lets the *automatic* write (on exit) detect
+ * that someone else wrote in the meantime and leave the fresher file alone. An explicit
+ * "Save Preferences" still forces the write: there the user is asking for exactly that.
+ */
+static double g_userpref_mtime_seen = 0.0;
+
+static double userpref_file_mtime(const char *filepath)
+{
+  BLI_stat_t st;
+  if (BLI_stat(filepath, &st) == -1) {
+    return 0.0;
+  }
+  return double(st.st_mtime);
+}
+
+void BKE_blendfile_userdef_mtime_track(const char *filepath)
+{
+  g_userpref_mtime_seen = userpref_file_mtime(filepath);
+}
+
 bool BKE_blendfile_userdef_write_all(ReportList *reports)
+{
+  return BKE_blendfile_userdef_write_all_ex(reports, true);
+}
+
+bool BKE_blendfile_userdef_write_all_ex(ReportList *reports, const bool force)
 {
   char filepath[FILE_MAX];
   bool ok = true;
@@ -1666,12 +1698,31 @@ bool BKE_blendfile_userdef_write_all(ReportList *reports)
   if (cfgdir) {
     bool ok_write;
     BLI_path_join(filepath, sizeof(filepath), cfgdir->c_str(), BLENDER_USERPREF_FILE);
+
+    /* Another instance wrote preferences after we last saw the file: writing ours would throw
+     * their changes away. Skip (not an error) and keep the fresher file. `g_userpref_mtime_seen`
+     * of 0 means we never saw the file, so there is nothing known to protect. */
+    if (!force && g_userpref_mtime_seen != 0.0) {
+      const double mtime_now = userpref_file_mtime(filepath);
+      if (mtime_now > g_userpref_mtime_seen) {
+        CLOG_WARN(&LOG_BLEND,
+                  "Not overwriting user preferences: \"%s\" was modified by another instance "
+                  "after this one loaded it. Use \"Save Preferences\" to write them anyway.",
+                  filepath);
+        return true;
+      }
+    }
+
     CLOG_INFO_NOCHECK(&LOG_BLEND, "Writing user preferences: \"%s\" ", filepath);
     if (use_template_userpref) {
       ok_write = BKE_blendfile_userdef_write_app_template(filepath, reports);
     }
     else {
       ok_write = BKE_blendfile_userdef_write(filepath, reports);
+    }
+    if (ok_write) {
+      /* Our own write is the newest state we know about. */
+      BKE_blendfile_userdef_mtime_track(filepath);
     }
 
     if (ok_write) {

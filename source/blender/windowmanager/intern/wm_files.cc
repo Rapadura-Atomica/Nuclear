@@ -1382,6 +1382,11 @@ void wm_homefile_read_ex(bContext *C,
       if (userdef != nullptr) {
         CLOG_INFO(&LOG, "Read prefs: \"%s\"", filepath_userdef);
 
+        /* Remember how fresh the file was, so the automatic write on exit can tell whether
+         * another instance saved preferences in the meantime (see
+         * #BKE_blendfile_userdef_write_all_ex). */
+        BKE_blendfile_userdef_mtime_track(filepath_userdef);
+
         BKE_blender_userdef_data_set_and_free(userdef);
         userdef = nullptr;
 
