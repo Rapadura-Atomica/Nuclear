@@ -306,6 +306,17 @@ versionamento — só **append de enums** e um **drawflag runtime**; rebase = re
 | `source/blender/editors/sculpt_paint/paint_cursor.cc` | `grease_pencil_brush_cursor_draw`: seta `pixel_radius = brush->size/2` p/ `GPAINT_BRUSH_TYPE_SMUDGE`/`_BLUR` (senão o anel do cursor fica raio 0 = invisível) |
 | `source/blender/editors/sculpt_paint/grease_pencil_paint.cc` | `PaintOperationExecutor` (~690): quando `brush->mtex.tex` existe, `BKE_brush_sample_tex_3d` na posição em world-space modula `opacity` → traços texturizados (textura de bico) |
 
+### Robustez: crash do Outliner + ruído de log do auto-key (2026-07-27)
+Achados investigando a estação de animação `bazzite-2` (192.168.0.29): um SIGSEGV no
+redraw do Outliner depois de ~1h23 de trabalho e dezenas de warnings "Could not insert
+key" durante a animação normal. **Candidatos a enviar upstream** — nada aqui é específico
+do Nuclear.
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/editors/space_outliner/outliner_draw.cc` | **Causa do crash.** `tree_element_id_type_to_index()` repassava o **-1** que `BKE_idtype_idcode_to_index()` devolve para um idcode desconhecido; o chamador então fazia `merged->num_elements[-1]++` e `merged->tree_element[-1] = te` — escrita fora dos limites que corrompe o fim do array vizinho do `MergedIconRow`, deixando um `num_elements[…] != 0` com `tree_element[…] == nullptr` e, no desenho, um deref de nulo em `outliner_draw_iconrow_doit` (frame #0 da stack do coredump). Fix em 3 camadas: (a) `id_index < 0` cai no bucket genérico `INDEX_ID_GR`; (b) o bucket `INDEX_ID_OB` valida `ob != nullptr` e `ob->type` dentro de `[0, OB_TYPE_MAX)`; (c) guard de `te`/`store_elem` nulos no topo de `outliner_draw_iconrow_doit` (roda a cada redraw — melhor perder um ícone que a janela). |
+| `source/blender/animrig/intern/action.cc` | `NO_KEY_NEEDED` deixou de ser `CLOG_WARN` e virou `CLOG_DEBUG`. Com "Only Insert Needed" (ligado por padrão no auto-key), pular um canal cujo valor não mudou é o comportamento **pretendido** — mas cada auto-key logava uma linha "Could not insert key into FCurve …" por componente parado (`rotation_quaternion[2]`, `location[1]`, …), o que lê como keyframe perdido e polui o log de sessões longas. Os demais resultados seguem em WARN. |
+| `source/blender/animrig/intern/fcurve.cc` | `insert_vert_fcurve()` chamava `BKE_fcurve_active_keyframe_set(fcu, &fcu->bezt[a])` **antes** de testar `a < 0`; no caminho de falha isso indexa `bezt[-1]`. Checagem movida para antes do uso. |
+
 ---
 
 ## 3. Branding (subconjunto de pontos quentes + dados)

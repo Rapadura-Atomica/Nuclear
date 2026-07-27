@@ -459,14 +459,16 @@ SingleKeyingResult insert_vert_fcurve(FCurve *fcu,
 
   /* Add temp beztriple to keyframes. */
   a = insert_bezt_fcurve(fcu, &beztr, flag);
-  BKE_fcurve_active_keyframe_set(fcu, &fcu->bezt[a]);
 
-  /* Key insertion failed. */
+  /* Key insertion failed. Check BEFORE touching `fcu->bezt[a]`: on failure `a` is negative,
+   * so setting the active keyframe first indexed out of bounds. */
   if (a < 0) {
     /* TODO: we need more info from `insert_bezt_fcurve()` called above to
      * return a more specific failure. */
     return SingleKeyingResult::UNKNOWN_FAILURE;
   }
+
+  BKE_fcurve_active_keyframe_set(fcu, &fcu->bezt[a]);
 
   /* Set handle-type and interpolation. */
   if ((fcu->totvert > 2) && (flag & INSERTKEY_REPLACE) == 0) {

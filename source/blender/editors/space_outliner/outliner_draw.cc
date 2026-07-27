@@ -3081,6 +3081,12 @@ static void outliner_draw_iconrow_doit(uiBlock *block,
                                        const eOLDrawState active,
                                        const int num_elements)
 {
+  /* Belt and braces: this runs on every redraw of a collapsed row, so a single bad entry in
+   * #MergedIconRow would crash the whole window rather than drop one icon. */
+  if (te == nullptr || TREESTORE(te) == nullptr) {
+    BLI_assert_unreachable();
+    return;
+  }
   TreeStoreElem *tselem = TREESTORE(te);
 
   if (active != OL_DRAWSEL_NONE) {
@@ -3125,6 +3131,14 @@ int tree_element_id_type_to_index(TreeElement *te)
   int id_index = 0;
   if (tselem->type == TSE_SOME_ID) {
     id_index = BKE_idtype_idcode_to_index(te->idcode);
+    if (id_index < 0) {
+      /* `BKE_idtype_idcode_to_index` returns -1 for an idcode it doesn't know (e.g. a tree
+       * element that carries no real ID code). Returning that verbatim made callers index
+       * #MergedIconRow at [-1], corrupting the neighbouring array and later dereferencing a
+       * null `TreeElement` while drawing the merged icon row — a hard crash in
+       * `outliner_draw_iconrow_doit`. Fall back to the generic bucket instead. */
+      id_index = INDEX_ID_GR;
+    }
   }
   else if (tselem->type == TSE_GREASE_PENCIL_NODE) {
     /* Use the index of the grease pencil ID for the grease pencil tree nodes (which are not IDs).
@@ -3140,6 +3154,11 @@ int tree_element_id_type_to_index(TreeElement *te)
   }
   if (id_index == INDEX_ID_OB) {
     const Object *ob = (Object *)tselem->id;
+    /* Guard the object bucket the same way: a tree element flagged as an object but carrying
+     * no ID, or an out-of-range `ob->type`, would index past `OB_TYPE_MAX`. */
+    if (ob == nullptr || ob->type < 0 || ob->type >= OB_TYPE_MAX) {
+      return INDEX_ID_OB;
+    }
     return INDEX_ID_OB + ob->type;
   }
   return id_index + OB_TYPE_MAX;
