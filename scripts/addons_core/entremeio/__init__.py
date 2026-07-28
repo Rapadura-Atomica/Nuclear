@@ -31,15 +31,6 @@ from .engine.ipc import IPCEngine, IPCParams, IPCError, reference_worker_path
 _ADDON_DIR = os.path.dirname(__file__)
 
 
-def _frame_range(props):
-    """Resolve frame_start/frame_end a partir das props do painel.
-    0 = usa o default da cena (None -> read_rig usa scene.frame_start/end).
-    """
-    start = props.anim_start if props.anim_start > 0 else None
-    end = props.anim_end if props.anim_end > 0 else None
-    return start, end
-
-
 def _report_dir(props):
     """Diretório do relatório: prop, senão ao lado do .blend, senão temp."""
     if props.report_dir.strip():
@@ -71,9 +62,7 @@ class ENTREMEIO_OT_read_rig(bpy.types.Operator):
             target = bpy.data.pegrigs[0].name
 
         try:
-            f_start, f_end = _frame_range(props)
-            plan = rig_bridge.read_rig(target, seed=props.seed,
-                                       frame_start=f_start, frame_end=f_end)
+            plan = rig_bridge.read_rig(target, seed=props.seed)
         except ValueError as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
@@ -85,11 +74,18 @@ class ENTREMEIO_OT_read_rig(bpy.types.Operator):
             c.startswith("squash") or c == "use_squash"
             for t in plan.tracks for c in t.animated_channels()
         )
+        # detecção do trecho: onde a animação começa e termina (campos editáveis)
+        span = plan.anchors_span()
+        span_note = ""
+        if span is not None:
+            if props.auto_range:
+                props.frame_start, props.frame_end = span
+            span_note = f" · animação detectada em {span[0]}–{span[1]}"
         self.report(
             {"INFO"},
             f"Entremeio: '{target}' — {n_pegs} pegs, {n_anchored} com âncoras, "
             f"{total_anchors} keyframes-âncora ({plan.frame_start}-{plan.frame_end} @ {plan.fps:.3g}fps)"
-            + (" · squash detectado" if uses_squash else ""),
+            + (" · squash detectado" if uses_squash else "") + span_note,
         )
         # detalhe no console para inspeção durante o desenvolvimento
         print(f"[Entremeio] read_rig('{target}'):")
@@ -101,13 +97,14 @@ class ENTREMEIO_OT_read_rig(bpy.types.Operator):
 
 
 # --------------------------------------------------------------------------
-# Operador: auto-detectar faixa de animação (ignora biblioteca negativa, Cell Library)
+# Operador: detectar o trecho (onde a animação começa e termina)
 # --------------------------------------------------------------------------
-class ENTREMEIO_OT_auto_detect_range(bpy.types.Operator):
-    bl_idname = "entremeio.auto_detect_range"
-    bl_label = "Auto-detectar Faixa"
-    bl_description = "Varre os keyframes e preenche Início/Fim automaticamente, ignorando frames negativos (biblioteca de poses) e Cell Library (≥100000)"
-    bl_options = {"REGISTER", "UNDO"}
+class ENTREMEIO_OT_detect_range(bpy.types.Operator):
+    bl_idname = "entremeio.detect_range"
+    bl_label = "Detectar Trecho (Entremeio)"
+    bl_description = ("Detecta onde a animação começa e termina (primeira e última "
+                      "pose-chave, no escopo atual) e preenche Início/Fim — edite à vontade")
+    bl_options = {"REGISTER"}
 
     def execute(self, context):
         props = context.scene.entremeio
@@ -115,21 +112,23 @@ class ENTREMEIO_OT_auto_detect_range(bpy.types.Operator):
         if target is None:
             self.report({"ERROR"}, "Nenhum PegRig na cena.")
             return {"CANCELLED"}
-
         try:
-            rig = bpy.data.pegrigs[target]
-        except KeyError as e:
+            plan = rig_bridge.read_rig(target, seed=props.seed)
+        except (KeyError, ValueError) as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
-
-        lo, hi = rig_bridge.detect_animation_range(rig)
-        if lo is None:
-            self.report({"WARNING"}, "Nenhum keyframe de peg encontrado (fora da Cell Library).")
+        if props.scope == "SUBTREE" and props.scope_peg.strip():
+            names = plan.subtree_names(props.scope_peg.strip())
+            if not names:
+                self.report({"ERROR"}, f"Peg '{props.scope_peg}' não encontrada no rig.")
+                return {"CANCELLED"}
+            plan = plan.scoped_to(names)
+        span = plan.anchors_span()
+        if span is None:
+            self.report({"WARNING"}, "Nenhuma pose-chave encontrada — nada a detectar.")
             return {"CANCELLED"}
-
-        props.anim_start = lo
-        props.anim_end = hi
-        self.report({"INFO"}, f"Faixa detectada: {lo}–{hi} ({hi - lo + 1} frames)")
+        props.frame_start, props.frame_end = span
+        self.report({"INFO"}, f"Trecho detectado: {span[0]}–{span[1]} (edite Início/Fim se quiser)")
         return {"FINISHED"}
 
 
@@ -162,9 +161,7 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
             return {"CANCELLED"}
 
         try:
-            f_start, f_end = _frame_range(props)
-            plan = rig_bridge.read_rig(target, seed=props.seed,
-                                       frame_start=f_start, frame_end=f_end)
+            plan = rig_bridge.read_rig(target, seed=props.seed)
         except (KeyError, ValueError) as e:
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
@@ -177,12 +174,37 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
                 self.report({"ERROR"}, f"Peg '{props.scope_peg}' não encontrada no rig.")
                 return {"CANCELLED"}
 
-        # regeneração limpa (só do escopo, se houver): remove o que o Entremeio gerou antes
-        rig_bridge.clear_generated(rig, pegs=scope_names)
-        plan = rig_bridge.read_rig(target, seed=props.seed,
-                                   frame_start=f_start, frame_end=f_end)   # âncoras limpas
+        # Trecho: janela de frames a ler/gerar — detectada pelas âncoras ou manual
+        manual_range = None
+        if not props.auto_range:
+            if props.frame_end <= props.frame_start:
+                self.report({"ERROR"},
+                            f"Trecho inválido: Fim ({props.frame_end}) deve ser maior "
+                            f"que Início ({props.frame_start}).")
+                return {"CANCELLED"}
+            manual_range = (props.frame_start, props.frame_end)
+
+        # regeneração limpa (só do escopo/trecho, se houver): remove o que o Entremeio gerou antes.
+        # Na janela manual, limpa SÓ o que dá pra regenerar (>=2 âncoras dentro da janela) —
+        # limpar além disso abriria buraco em vãos cujas âncoras estão fora do trecho.
+        if manual_range is None:
+            rig_bridge.clear_generated(rig, pegs=scope_names)
+        else:
+            regen = rig_bridge.regenerable_in_range(rig, manual_range, pegs=scope_names)
+            rig_bridge.clear_generated(rig, pegs=scope_names, frame_range=manual_range,
+                                       peg_channels=regen)
+        plan = rig_bridge.read_rig(target, seed=props.seed)   # âncoras limpas
         if scope_names is not None:
             plan = plan.scoped_to(scope_names)
+
+        if manual_range is not None:
+            plan = plan.clipped(*manual_range)
+        else:
+            span = plan.anchors_span()
+            if span is not None:
+                plan = plan.clipped(*span)
+                # mostra o trecho detectado nos campos (editáveis com "Detectar trecho" desligado)
+                props.frame_start, props.frame_end = span
 
         if props.engine_mode == "IPC":
             # motor externo (Fase 1): worker em processo separado. Default = worker de
@@ -216,16 +238,24 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
             return {"CANCELLED"}
 
         if generated.frame_count() == 0:
-            self.report({"WARNING"}, "Nada a gerar: nenhuma peg tem âncoras com vão entre elas.")
+            self.report({"WARNING"},
+                        "Nada a gerar: nenhuma peg tem âncoras com vão entre elas"
+                        f" no trecho {plan.frame_start}–{plan.frame_end}.")
             return {"CANCELLED"}
 
         # snapshot das exposições GP ANTES (RF-4.6): provar que a geração não as toca
         exposure_before = discrete.snapshot_gp_exposure(rig)
+        # drift de linha de base: o Depsgraph pode devolver valores trocados entre
+        # frames vizinhos (slotted actions) mesmo sem o Entremeio tocar em nada.
+        # Medindo antes, só alarmamos quando a geração PIORA o quadro.
+        drift_before, _ = rig_bridge.measure_fidelity(rig, plan)
 
         _t = time.perf_counter()
         inserted = rig_bridge.write_keys(rig, generated)
         t_write = (time.perf_counter() - _t) * 1000.0
-        rig_bridge.record_generated(rig, generated, merge=(scope_names is not None))
+        rig_bridge.record_generated(
+            rig, generated,
+            merge=(scope_names is not None or manual_range is not None))
         max_drift, offenders = rig_bridge.measure_fidelity(rig, plan)
         exposure_ok, changes = discrete.verify_exposure_preserved(rig, exposure_before)
 
@@ -261,13 +291,19 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
                 report_note = " · (falha ao salvar relatório)"
                 print(f"[Entremeio] erro ao salvar relatório: {e}")
 
-        if offenders:
+        if offenders and max_drift > drift_before + 1e-4:
             self.report({"WARNING"},
-                        f"Drift detectado em {len(offenders)} âncora(s) (máx {max_drift:.2g}) — revisar.")
+                        f"Drift AUMENTOU em {len(offenders)} âncora(s) "
+                        f"({drift_before:.2g} → {max_drift:.2g}) — revisar.")
+        elif offenders:
+            self.report({"INFO"},
+                        f"Entremeio: {inserted} keys · trecho {plan.frame_start}–{plan.frame_end} · "
+                        f"{report.summary()} · drift pré-existente={max_drift:.1g} "
+                        f"(não causado pelo Entremeio) · exposição preservada{report_note}")
         else:
             self.report({"INFO"},
-                        f"Entremeio: {inserted} keys · {report.summary()} · "
-                        f"drift={max_drift:.1g} · exposição preservada{report_note}")
+                        f"Entremeio: {inserted} keys · trecho {plan.frame_start}–{plan.frame_end} · "
+                        f"{report.summary()} · drift={max_drift:.1g} · exposição preservada{report_note}")
         return {"FINISHED"}
 
 
@@ -280,16 +316,12 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
     bl_description = "Gera e toca o trecho em loop; ENTER aplica, ESC descarta (não comita até aplicar)"
     bl_options = {"REGISTER"}
 
-    def _span(self, rig, f_start=None, f_end=None):
+    def _span(self, rig):
         lo = hi = None
         for fcu in rig_bridge._iter_fcurves(rig.animation_data):
             if rig_bridge.parse_peg_data_path(fcu.data_path):
                 for kp in fcu.keyframe_points:
                     f = int(round(kp.co[0]))
-                    if f_start is not None and f < f_start:
-                        continue
-                    if f_end is not None and f > f_end:
-                        continue
                     lo = f if lo is None else min(lo, f)
                     hi = f if hi is None else max(hi, f)
         return lo, hi
@@ -312,6 +344,7 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
         # gera (prévia não salva relatório — é efêmera; use Gerar p/ registrar)
         prev_save = props.save_report
         props.save_report = False
+        rec_antes = {tuple(e) for e in rig_bridge._load_record(rig)}
         try:
             res = bpy.ops.entremeio.generate("EXEC_DEFAULT")
         finally:
@@ -320,8 +353,14 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
             return {"CANCELLED"}   # o generate já reportou o motivo
 
         rig = bpy.data.pegrigs.get(self._rig_name)
-        f_start, f_end = _frame_range(props)
-        lo, hi = self._span(rig, f_start=f_start, f_end=f_end)
+        # o que ESTA geração escreveu (diff do registro) — é só isso que o ESC descarta
+        self._new_entries = [e for e in rig_bridge._load_record(rig)
+                             if tuple(e) not in rec_antes]
+
+        lo, hi = self._span(rig)
+        # o trecho ativo (detectado/manual) manda no loop da prévia
+        if props.frame_end > props.frame_start:
+            lo, hi = props.frame_start, props.frame_end
         if lo is not None:
             scene = context.scene
             scene.use_preview_range = True
@@ -340,11 +379,12 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
     def modal(self, context, event):
         if event.type in {"ESC", "RIGHTMOUSE"}:
             self._stop(context)
-            # descarte DETERMINÍSTICO: remove o que o Entremeio gerou (volta às âncoras).
+            # descarte DETERMINÍSTICO: remove o que ESTA prévia gerou (volta às âncoras).
             # (undo não serve: não captura mudanças via keyframe_insert da API de dados.)
+            # Gerações aplicadas antes — outras janelas/escopos — ficam intactas.
             rig = bpy.data.pegrigs.get(self._rig_name)
             if rig is not None:
-                rig_bridge.clear_generated(rig)
+                rig_bridge.clear_generated_entries(rig, self._new_entries)
             context.scene.frame_set(context.scene.frame_preview_start)
             if context.area:
                 context.area.tag_redraw()
@@ -366,25 +406,27 @@ class ENTREMEIO_PG_settings(bpy.types.PropertyGroup):
         description="Nome do PegRig a ler (vazio = primeiro da cena)",
         default="",
     )
-    anim_start: bpy.props.IntProperty(
-        name="Início",
-        description="Frame onde começa a animação — âncoras antes deste frame são ignoradas (ex.: evita biblioteca negativa). 0 = usa o início da cena",
-        default=0,
-        min=0,
-        soft_min=0,
-    )
-    anim_end: bpy.props.IntProperty(
-        name="Fim",
-        description="Frame onde termina a animação — âncoras depois deste frame são ignoradas. 0 = usa o fim da cena",
-        default=0,
-        min=0,
-        soft_min=0,
-    )
     seed: bpy.props.IntProperty(
         name="Seed",
         description="Semente determinística da geração (RF-4.4)",
         default=0,
         min=0,
+    )
+    auto_range: bpy.props.BoolProperty(
+        name="Detectar trecho",
+        description="Detecta onde a animação começa e termina (primeira e última pose-chave) "
+                    "a cada geração e preenche Início/Fim; desligue para digitar o trecho na mão",
+        default=True,
+    )
+    frame_start: bpy.props.IntProperty(
+        name="Início",
+        description="Primeiro frame do trecho a ler/gerar; poses fora do trecho ficam intactas",
+        default=1,
+    )
+    frame_end: bpy.props.IntProperty(
+        name="Fim",
+        description="Último frame do trecho a ler/gerar; poses fora do trecho ficam intactas",
+        default=1,
     )
     step: bpy.props.IntProperty(
         name="Passo",
@@ -478,22 +520,6 @@ class ENTREMEIO_PT_panel(bpy.types.Panel):
         layout.prop_search(props, "rig_name", bpy.data, "pegrigs", text="Rig")
         layout.operator(ENTREMEIO_OT_read_rig.bl_idname, icon="HOOK")
 
-        # RF-1.2: faixa de trabalho do animador — evita biblioteca negativa, Cell Library etc.
-        faixa = layout.box()
-        faixa.label(text="Faixa de Trabalho")
-        row = faixa.row(align=True)
-        row.prop(props, "anim_start")
-        row.prop(props, "anim_end")
-        row.operator(ENTREMEIO_OT_auto_detect_range.bl_idname, icon="VIEWZOOM", text="")
-        hint = faixa.row()
-        hint.scale_y = 0.6
-        cena_inicio = context.scene.frame_start
-        cena_fim = context.scene.frame_end
-        if props.anim_start > 0 or props.anim_end > 0:
-            hint.label(text=f"Filtrando: {props.anim_start or cena_inicio}–{props.anim_end or cena_fim} (cena: {int(cena_inicio)}–{int(cena_fim)})")
-        else:
-            hint.label(text=f"Auto-detecção ao gerar (ignora frames < 0 e Cell Library). Cena: {int(cena_inicio)}–{int(cena_fim)}")
-
         layout.prop(props, "engine_mode", text="Modo")
         col = layout.column(align=True)
         col.prop(props, "step")
@@ -517,6 +543,16 @@ class ENTREMEIO_PT_panel(bpy.types.Panel):
             else:
                 sc.prop(props, "scope_peg", text="Peg raiz")
 
+        rng = layout.column(align=True)
+        rng.prop(props, "auto_range")
+        row = rng.row(align=True)
+        row.enabled = not props.auto_range
+        row.prop(props, "frame_start")
+        row.prop(props, "frame_end")
+        if not props.auto_range:
+            rng.operator(ENTREMEIO_OT_detect_range.bl_idname,
+                         icon="ZOOM_SELECTED", text="Detectar do rig")
+
         rep = layout.column(align=True)
         rep.prop(props, "save_report")
         if props.save_report:
@@ -529,7 +565,7 @@ class ENTREMEIO_PT_panel(bpy.types.Panel):
 classes = (
     ENTREMEIO_PG_settings,
     ENTREMEIO_OT_read_rig,
-    ENTREMEIO_OT_auto_detect_range,
+    ENTREMEIO_OT_detect_range,
     ENTREMEIO_OT_generate,
     ENTREMEIO_OT_preview,
     ENTREMEIO_PT_panel,
