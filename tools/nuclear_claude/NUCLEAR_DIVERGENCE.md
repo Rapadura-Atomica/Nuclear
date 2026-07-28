@@ -321,6 +321,32 @@ fechava.
 | `source/blender/windowmanager/intern/wm_files.cc` | após ler o userpref do usuário no boot, chama `BKE_blendfile_userdef_mtime_track(filepath_userdef)` |
 | `source/blender/windowmanager/intern/wm_init_exit.cc` | o save **automático** na saída passa `force = false` — é o único caminho que perde configuração alheia; o explícito segue forçando |
 
+### PERDA DE CONFIG (a causa principal): o app template zerava as preferências (2026-07-28)
+A briga entre instâncias (acima) era só metade. O lançador abre com `--app-template Nuclear`, e
+`wm_homefile_read_ex` carrega as preferências *do template*; quando o template não tem
+`userpref.blend` próprio, o upstream cai em `BKE_blendfile_userdef_from_defaults()` e passa isso
+para `BKE_blender_userdef_app_template_data_set`, que faz **`VALUE_SWAP` de `addons`,
+`user_keymaps`, `user_keyconfig_prefs`, `themes`, `uistyles`, `uifonts` e `keyconfigstr`**. Ou
+seja: **toda abertura pelo lançador trocava addons/atalhos/tema pelos de fábrica**, e o save
+automático na saída (`U.runtime.is_dirty`) tornava a perda permanente. **Nenhum** dos três
+templates do Nuclear tem `userpref.blend`, então isso valia para todos. Reproduzido: salvar prefs
+com um addon habilitado → reabrir **sem** `--app-template` mostra o addon, reabrir **com** não.
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/windowmanager/intern/wm_files.cc` | removido o fallback `userdef_template = BKE_blendfile_userdef_from_defaults()` quando o template não traz `userpref.blend` (nem em `config/<template>/`, nem no dir do template no sistema). Sem preferências próprias, o template não tem nada a restaurar — as do usuário ficam intactas. ⚠️ Trade-off registrado no comentário: sair de um template **com** preferências para um **sem** mantém as do primeiro; nenhum template do Nuclear está nessa situação hoje. |
+
+### Template inicial do lançador: `Nuclear` → `2D_Animation` (2026-07-28)
+Pedido do usuário: o Nuclear devia iniciar no ambiente **2D Animation**, não no template
+`Nuclear`. Trocado o `--app-template` nos quatro lugares que geram o `.desktop` —
+`release/freedesktop/Nuclear.desktop`, `tools/nuclear_install/instalarNuclear.sh`,
+`tools/nuclear_install/instalarNuclear-wizard.sh` e `scripts/startup/nuclear_update.py` (nova
+constante `_APP_TEMPLATE`, usada pelo fallback e pelos dois pontos de reescrita do Exec).
+⚠️ Consequência: o `__init__.py` do template `Nuclear` (remap de labels, topbar próprio, abas
+Properties/Reference/Library/Color/Peg Graph) **não roda mais** — a UI passa a ser a do
+2D Animation nativo. O template `Nuclear` continua no pacote e volta a valer trocando a
+constante de volta. Como o `_refresh_desktop` reescreve o `Exec` a cada update, as máquinas
+pegam a troca no update que **partir** de um build com esta mudança.
+
 ### PERDA DE DADOS: o Follow Peg não contava usuário no PegRig (2026-07-27)
 Relato do usuário: "estou perdendo as pegs" no take `DPE_EP06_C12T67` (Carolina, Ep06 C12).
 | Arquivo | O que foi alterado |

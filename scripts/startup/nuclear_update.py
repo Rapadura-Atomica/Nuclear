@@ -480,6 +480,10 @@ def _apply_extracted(extract_tree, layout, manifest):
     return dest
 
 
+# App template the launcher boots into. Directory name under
+# `scripts/startup/bl_app_templates_system/`, so it is the on-disk name, not the display label.
+_APP_TEMPLATE = "2D_Animation"
+
 _DESKTOP_FALLBACK = """[Desktop Entry]
 Name=Nuclear
 GenericName=2D Animation
@@ -487,7 +491,7 @@ GenericName[pt_BR]=Animação 2D
 Comment=2D cut-out animation
 Comment[pt_BR]=Animação 2D estilo cut-out
 Keywords=2d;cutout;cut-out;animation;grease pencil;drawing;rigging;pegs;toon;
-Exec={exec_path} --app-template Nuclear %F
+Exec={exec_path} --app-template {app_template} %F
 Icon={icon_path}
 Terminal=false
 Type=Application
@@ -529,14 +533,15 @@ def _install_desktop(layout, target_exec):
             # absolute against `current`.
             for i, line in enumerate(lines):
                 if line.startswith("Exec="):
-                    lines[i] = "Exec=%s --app-template Nuclear %%F\n" % target_exec
+                    lines[i] = "Exec=%s --app-template %s %%F\n" % (target_exec, _APP_TEMPLATE)
                 elif line.startswith("Icon="):
                     lines[i] = "Icon=%s\n" % icon_path
             text = "".join(lines)
         except Exception:
             text = None
     if text is None:
-        text = _DESKTOP_FALLBACK.format(exec_path=target_exec, icon_path=icon_path)
+        text = _DESKTOP_FALLBACK.format(
+            exec_path=target_exec, icon_path=icon_path, app_template=_APP_TEMPLATE)
     try:
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         with open(dest, "w", encoding="utf-8") as fh:
@@ -583,9 +588,10 @@ def _refresh_desktop(layout):
                 cur = line[len("Exec="):].strip().split()[0] if line[len("Exec="):].strip() else ""
                 # Only touch a launcher that already points into our install base.
                 if cur and os.path.realpath(os.path.dirname(cur)).startswith(base_real):
-                    # Keep booting into the Nuclear app template (and preserve the file
-                    # field code) — a bare `Exec=<binary>` would drop both on every update.
-                    lines[i] = "Exec=%s --app-template Nuclear %%F\n" % target_exec
+                    # Keep booting into the app template (and preserve the file field code) —
+                    # a bare `Exec=<binary>` would drop both on every update. Rewriting this
+                    # every update is also how machines pick up a change of template.
+                    lines[i] = "Exec=%s --app-template %s %%F\n" % (target_exec, _APP_TEMPLATE)
                     changed = True
             if changed:
                 with open(path, "w", encoding="utf-8") as fh:

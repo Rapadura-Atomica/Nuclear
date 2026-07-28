@@ -1523,10 +1523,15 @@ void wm_homefile_read_ex(bContext *C,
           CLOG_INFO(&LOG, "Read prefs from app-template: \"%s\"", temp_path);
         }
       }
-      if (userdef_template == nullptr) {
-        /* We need to have preferences load to overwrite preferences from previous template. */
-        userdef_template = BKE_blendfile_userdef_from_defaults();
-      }
+      /* NUCLEAR: upstream falls back to factory defaults here, so that switching templates
+       * overwrites whatever the previous template had set. But
+       * #BKE_blender_userdef_app_template_data_swap swaps `addons`, `user_keymaps`, `themes` and
+       * the keyconfig along with it, so a template that ships no preferences of its own wipes the
+       * user's add-ons and shortcuts on *every* launch -- and the automatic save on exit then
+       * makes the loss permanent. None of Nuclear's templates ships a `userpref.blend`, so there
+       * is nothing of the template's to restore: leave the preferences alone.
+       * Trade-off: going from a template that has preferences to one that does not keeps the
+       * former's; no Nuclear template is in that position today. */
       if (userdef_template) {
         BKE_blender_userdef_app_template_data_set_and_free(userdef_template);
         userdef_template = nullptr;
