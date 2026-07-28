@@ -39,6 +39,11 @@ DISCRETE_CHANNELS: dict[str, int] = {
 
 ALL_CHANNELS: dict[str, int] = {**CONTINUOUS_CHANNELS, **DISCRETE_CHANNELS}
 
+# frames >= esta base são Cell Library (substituição de desenho), não animação;
+# frames negativos são biblioteca de poses. Nenhum dos dois entra na detecção
+# de "onde a animação começa e termina".
+CELL_LIBRARY_BASE = 100000
+
 Components = tuple[float, ...]
 
 
@@ -118,6 +123,37 @@ class PlanIR:
                 if i not in keep and t.peg.parent in keep:
                     keep.add(i); changed = True
         return {self.tracks[i].peg.name for i in keep}
+
+    def anchors_span(self) -> Optional[tuple[int, int]]:
+        """(primeiro, último) frame com pose-chave em qualquer peg; None sem âncoras.
+
+        É a detecção de "onde a animação começa e termina": vira o trecho default
+        de leitura/geração, exibido em campos editáveis na UI. Rode-a DEPOIS de
+        `scoped_to` para detectar só o trecho do membro escolhido.
+
+        Frames fora do domínio da animação não contam: os negativos são biblioteca
+        de poses e os >= CELL_LIBRARY_BASE são Cell Library (substituição de
+        desenho). Sem esse filtro o trecho detectado nasce em -3 num take real.
+        """
+        frames = [k.frame for t in self.tracks for k in t.anchors
+                  if 0 <= k.frame < CELL_LIBRARY_BASE]
+        if not frames:
+            return None
+        return (min(frames), max(frames))
+
+    def clipped(self, frame_start: int, frame_end: int) -> "PlanIR":
+        """Novo PlanIR restrito ao trecho [frame_start, frame_end] (inclusivo).
+
+        Âncoras e holds fora do trecho saem do plano — o engine só enxerga (e o
+        guarda-corpos só admite) o que está na janela; o resto do rig fica intacto.
+        Mantém a lista de tracks (parent indices válidos p/ overlap/depths).
+        """
+        f0, f1 = int(frame_start), int(frame_end)
+        tracks = [PegTrack(peg=t.peg,
+                           anchors=[k for k in t.anchors if f0 <= k.frame <= f1],
+                           discrete_holds=[f for f in t.discrete_holds if f0 <= f <= f1])
+                  for t in self.tracks]
+        return PlanIR(self.fps, f0, f1, tracks, self.seed, self.style_preset)
 
     def scoped_to(self, names: set[str]) -> "PlanIR":
         """Novo PlanIR com âncoras SÓ nas pegs do escopo (o resto vira sem-âncora).

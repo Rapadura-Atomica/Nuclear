@@ -59,6 +59,16 @@ def _lag_warp(s: float, amp: float) -> float:
     return s - amp * math.sin(math.pi * s)
 
 
+def _clamp(val: float, a: float, b: float) -> float:
+    """Mantém `val` dentro de [min(a,b), max(a,b)] — anti-overshoot do Hermite."""
+    lo, hi = (a, b) if a <= b else (b, a)
+    if val < lo:
+        return lo
+    if val > hi:
+        return hi
+    return val
+
+
 def _hermite(p0: float, p1: float, m0: float, m1: float, s: float) -> float:
     """Hermite cúbico em s∈[0,1]. m0/m1 já escalados p/ o segmento. Passa por p0,p1."""
     s2 = s * s
@@ -127,8 +137,10 @@ class SplineEngine:
                         if lag_amp:
                             s = _lag_warp(s, lag_amp)   # overlap: filhas arrastam
                         comps = tuple(
-                            _hermite(vecs[i][c], vecs[i + 1][c],
-                                     comp_tangents[c][i] * h, comp_tangents[c][i + 1] * h, s)
+                            _clamp(_hermite(vecs[i][c], vecs[i + 1][c],
+                                            comp_tangents[c][i] * h,
+                                            comp_tangents[c][i + 1] * h, s),
+                                   vecs[i][c], vecs[i + 1][c])
                             for c in range(arity)
                         )
                         frame_values.setdefault(frame, {})[channel] = comps
