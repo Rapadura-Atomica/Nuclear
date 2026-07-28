@@ -482,7 +482,26 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-07-28.
 
-- **Nuclear 1.7.2 (Beta) — `NUCLEAR_BUILD = 15` — PUBLICADO (2026-07-28).** PATCH a partir da
+- **Nuclear 1.7.3 (Beta) — `NUCLEAR_BUILD = 16` — PUBLICADO (2026-07-28).** PATCH que fecha a
+  lacuna estrutural exposta pela 1.7.2: **o updater que aplica uma release é o da versão
+  ANTERIOR**, então toda mudança em como o `.desktop` é escrito chega uma release atrasada. Na
+  prática: a b15 trocou o template do lançador para `2D_Animation`, mas quem aplicou a b15 foi o
+  updater da b14, que reescreveu o `Exec` com `--app-template Nuclear` — as máquinas continuaram
+  abrindo no template `Nuclear` (UI enxuta: o template substitui `VIEW3D_HT_tool_header.draw`
+  pelo dele e os controles de pincel somem, o que o usuário leu como "informações faltando").
+  Conserto: `nuclear_update.py` ganha `_reconcile_desktop()`, agendado no `register()` (timer de
+  1 s, pulado em background mode), que roda o mesmo `_refresh_desktop` **no startup** — o build
+  que está rodando conserta o próprio lançador na primeira abertura, sem depender de outro
+  update. O `_refresh_desktop` virou **idempotente** (só grava quando a linha muda), então o
+  estado estável é duas leituras e nenhuma escrita. Testado isolado em HOME falso, 3 casos:
+  lançador com template antigo é corrigido, segunda passada não reescreve (mtime igual),
+  `.desktop` de outro app não é tocado. Compilado em `build_nuclear_2d` (preset 2D, ninja -j2),
+  smoke 2D ALL PASS, staging podado 1174 MB → 865 MB, zip **340 MB** (357.029.468 bytes),
+  verify-zip + check-manifest OK. Publicado em duas fases; zip live == manifesto live ==
+  resposta pública == `e09ca80fcb0ac8807a4b113144ae62b3d9d8f33ef6609211b7aea1a9d846287d`.
+  Backup da 1.7.2/b15: `nuclear.zip.bak-pre-1.7.3`. `ping.php`/`instalarNuclear.sh` não tocados.
+
+- **Nuclear 1.7.2 (Beta) — `NUCLEAR_BUILD = 15` — PUBLICADO (2026-07-28), superado pela 1.7.3.** PATCH a partir da
   branch `Nuclear` (commit `e70b800de51`). **A causa PRINCIPAL da perda de preferências, que a
   b14 não pegou.** O usuário reabriu a queixa "fecho e abro e perdi tudo" depois da 1.7.1: o
   guard de mtime da b14 só cobria duas instâncias brigando pelo arquivo, que era a metade menor.
@@ -755,12 +774,12 @@ Atualizado em 2026-07-28.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.7.2 (Beta) — `NUCLEAR_BUILD = 15` (2026-07-28, deploy
+- **Versão em produção:** Nuclear 1.7.3 (Beta) — `NUCLEAR_BUILD = 16` (2026-07-28, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live e com a resposta pública).
-  Máquinas em qualquer build ≤ 14 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  Máquinas em qualquer build ≤ 15 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
   1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → 1.7.0/b13 (2026-07-27) →
-  1.7.1/b14 (2026-07-27) → **1.7.2/b15 (2026-07-28)**.
+  1.7.1/b14 (2026-07-27) → 1.7.2/b15 (2026-07-28) → **1.7.3/b16 (2026-07-28)**.
 - **nuclear.zip (b10, em produção):** 646.600.712 bytes, sha256
   `22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25` — **refresh do banner do
   updater (2026-07-06), mesmo build/version**; o zip inicial da 1.5.0 (646.626.577 bytes, sha256

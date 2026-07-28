@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 15,
-  "version": "1.7.2",
+  "build": 16,
+  "version": "1.7.3",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.2 (Beta)",
+  "version_string": "Nuclear 1.7.3 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "d3d34575f9247a97b131fdd4d9ebfd1ca099e83b558012a601a4127dae9e9bc6",
-  "size": 357021973,
+  "sha256": "e09ca80fcb0ac8807a4b113144ae62b3d9d8f33ef6609211b7aea1a9d846287d",
+  "size": 357029468,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Fim da perda de addons e atalhos ao fechar e abrir: o app template trocava suas preferencias pelas de fabrica a cada abertura. O Nuclear passa a iniciar no ambiente 2D Animation."
+  "notes": "O Nuclear corrige o proprio lancador ao abrir: maquinas que ficaram apontando para o template antigo passam a iniciar no 2D Animation sem precisar de outro update."
 }
