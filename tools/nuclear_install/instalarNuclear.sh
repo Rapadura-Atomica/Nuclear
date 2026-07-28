@@ -124,7 +124,7 @@ cat > "$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Name=Nuclear
 GenericName=2D Animation
-Exec=$NUCLEAR_EXEC --app-template Nuclear %F
+Exec=$NUCLEAR_EXEC --app-template 2D_Animation %F
 Icon=$ICON
 Type=Application
 Categories=Graphics;2DGraphics;

@@ -458,7 +458,7 @@ finalize_desktop() {  # exec_prefix
 [Desktop Entry]
 Name=Nuclear
 GenericName=2D Animation
-Exec=${exec_prefix}$exec_bin --app-template Nuclear %F
+Exec=${exec_prefix}$exec_bin --app-template 2D_Animation %F
 Icon=$icon
 Type=Application
 Categories=Graphics;2DGraphics;
