@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 13,
-  "version": "1.7.0",
+  "build": 14,
+  "version": "1.7.1",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.0 (Beta)",
+  "version_string": "Nuclear 1.7.1 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "760cf54b0384ff4e85613dd05580e5ff8bad141dcc87ed4115100f0cdaf884dd",
-  "size": 578335394,
+  "sha256": "1481548d02db95a9e7520438033febdd0afc0dc06a27c91217814217355cbdaa",
+  "size": 357337194,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Nuclear 1.7.0: grade de thumbnails na tela de abertura (Krita-style Recent Files com previews dos projetos) + Entremeio com auto-detecção de faixa de animação (ignora biblioteca negativa e Cell Library)"
+  "notes": "Correções de perda de dados: as pegs do rig não desaparecem mais ao salvar; preferências (addons e atalhos) não são mais sobrescritas por uma janela antiga ao fechar; fim do travamento no Outliner. Pacote 221 MB menor."
 }
