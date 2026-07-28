@@ -591,8 +591,10 @@ def _refresh_desktop(layout):
                     # Keep booting into the app template (and preserve the file field code) —
                     # a bare `Exec=<binary>` would drop both on every update. Rewriting this
                     # every update is also how machines pick up a change of template.
-                    lines[i] = "Exec=%s --app-template %s %%F\n" % (target_exec, _APP_TEMPLATE)
-                    changed = True
+                    new_line = "Exec=%s --app-template %s %%F\n" % (target_exec, _APP_TEMPLATE)
+                    if new_line != lines[i]:
+                        lines[i] = new_line
+                        changed = True
             if changed:
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.writelines(lines)
@@ -1234,6 +1236,31 @@ def _periodic_check():
     return None
 
 
+def _reconcile_desktop():
+    """Bring the launcher in line with the build that is actually running.
+
+    The updater that applies a release is the one shipped with the *previous* build, so any
+    change to how the `.desktop` is written (a new app template, a renamed binary) reaches a
+    machine one release late -- and until then the launcher opens the wrong thing. Doing the
+    same reconciliation at startup closes that gap: whatever build is running fixes its own
+    launcher on first run, no second update needed.
+
+    Cheap and quiet: `_refresh_desktop` only rewrites an Exec that already points inside this
+    install, and only writes when a line actually changes, so the steady state is two reads
+    and no write. Skipped in background mode -- a headless render has no business touching
+    the desktop menu.
+    """
+    try:
+        if bpy.app.background:
+            return None
+        layout = _layout_now()
+        if layout:
+            _refresh_desktop(layout)
+    except Exception:
+        pass
+    return None
+
+
 # --- registration ------------------------------------------------------------
 
 
@@ -1244,6 +1271,7 @@ def register():
         bpy.utils.register_class(cls)
     if _is_disabled():
         return
+    bpy.app.timers.register(_reconcile_desktop, first_interval=1.0)
     _start_fetch()
     if not bpy.app.timers.is_registered(_tick):
         bpy.app.timers.register(_tick, first_interval=FIRST_CHECK_SECONDS, persistent=True)
@@ -1252,7 +1280,7 @@ def register():
 def unregister():
     if bpy is None:
         return
-    for fn in (_tick, _periodic_check, _apply_progress_tick):
+    for fn in (_tick, _periodic_check, _apply_progress_tick, _reconcile_desktop):
         if bpy.app.timers.is_registered(fn):
             bpy.app.timers.unregister(fn)
     _remove_statusbar()
