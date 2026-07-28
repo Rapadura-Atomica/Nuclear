@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 14,
-  "version": "1.7.1",
+  "build": 15,
+  "version": "1.7.2",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.1 (Beta)",
+  "version_string": "Nuclear 1.7.2 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "1481548d02db95a9e7520438033febdd0afc0dc06a27c91217814217355cbdaa",
-  "size": 357337194,
+  "sha256": "d3d34575f9247a97b131fdd4d9ebfd1ca099e83b558012a601a4127dae9e9bc6",
+  "size": 357021973,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Correções de perda de dados: as pegs do rig não desaparecem mais ao salvar; preferências (addons e atalhos) não são mais sobrescritas por uma janela antiga ao fechar; fim do travamento no Outliner. Pacote 221 MB menor."
+  "notes": "Fim da perda de addons e atalhos ao fechar e abrir: o app template trocava suas preferencias pelas de fabrica a cada abertura. O Nuclear passa a iniciar no ambiente 2D Animation."
 }
