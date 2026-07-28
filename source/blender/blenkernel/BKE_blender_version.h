@@ -52,8 +52,8 @@
  * `nuclear_version.json` and the server manifest, so edit them here and nowhere else. */
 #define NUCLEAR_VERSION_MAJOR 1
 #define NUCLEAR_VERSION_MINOR 7
-#define NUCLEAR_VERSION_PATCH 0
-#define NUCLEAR_BUILD 13
+#define NUCLEAR_VERSION_PATCH 1
+#define NUCLEAR_BUILD 14
 /* Release stage suffix shown to users, e.g. "Beta"/"RC"/"Stable". */
 #define NUCLEAR_VERSION_STAGE "Beta"
 

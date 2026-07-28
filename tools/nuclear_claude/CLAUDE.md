@@ -482,6 +482,44 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-07-27.
 
+- **Nuclear 1.7.1 (Beta) — `NUCLEAR_BUILD = 14` — PUBLICADO (2026-07-27).** PATCH a partir da
+  branch `Nuclear`: quatro correções, três delas de **perda de dados/trabalho**, todas achadas
+  investigando a estação de animação `bazzite-2` (192.168.0.29) e o take
+  `DPE_EP06_C12T67` (Carolina). **(1) As pegs do rig não desaparecem mais no save**
+  (`bec553b0122`): o `followpeg_id_looper` reportava o PegRig com `is_reference = false`, sem
+  contar usuário — quatro objetos seguindo o rig e `users = 1`; quando o último usuário contado
+  saía, o rig ia a zero e era descartado no save com as 80 pegs dentro. Torna obsoleto o
+  workaround `use_fake_user = True`. **(2) Preferências não são mais sobrescritas por uma janela
+  antiga** (`09b76ec32f3`): as prefs são gravadas inteiras a partir do estado em memória, então
+  uma instância aberta há horas desfazia addons/atalhos configurados noutra ao fechar. Agora o
+  mtime do `userpref.blend` é rastreado e o save **automático** (saída) pula quando o disco está
+  mais novo; "Save Preferences" explícito segue forçando. **(3) Fim do crash no Outliner**
+  (`5650284a200`): `tree_element_id_type_to_index()` repassava o `-1` de
+  `BKE_idtype_idcode_to_index()` e o chamador indexava `MergedIconRow[-1]`, corrompendo o array
+  vizinho → deref de nulo em `outliner_draw_iconrow_doit` (SIGSEGV real, coredump na .29 após
+  1h23 de trabalho). Junto: `NO_KEY_NEEDED` do auto-key deixou de virar WARNING "Could not insert
+  key" (inundava o log e parecia keyframe perdido) e o `bezt[-1]` do `insert_vert_fcurve`.
+  **(4) Pacote 221 MB menor**: a b13 foi empacotada à mão e pulou a poda; agora o `verify-zip`
+  **reprova** pacote com peso morto (`e19bb623119`), e o zip voltou a **340 MB** (357.337.194
+  bytes) contra os 578 MB da b13. Também: o updater passou a **criar** o `Nuclear.desktop` quando
+  não existe (máquinas que nunca receberam o rebrand manual do lançador seguiam abrindo pelo shim
+  `blender`, com "blender" no menu/journal) — como toda melhoria do apply, só age a partir do
+  build que a contém, então vale do update que PARTIR da b14.
+  ⚠️ **Pegadinha achada neste release:** o `bin/` do `build_nuclear_2d` **não tem as deps Python**
+  (`scipy` etc.) — o `ninja install` não as instala, elas foram postas por fora um dia. O
+  `verify-zip` pegou (regra de ouro nº4) e o `scipy` (+ `scipy.libs` + dist-info, 142 MB) foi
+  copiado do pacote publicado para o `bin/` e para o staging; agora o `bin/` os tem, mas
+  **confira sempre**. Nota: `pyclipper`/`triangle`/`skimage` já não existiam nem no pacote da b13
+  — o status quo é só `scipy`, não foi alterado aqui.
+  Compilado em `build_nuclear_2d` (container `blender`, preset `nuclear_2d.cmake`, ninja -j2).
+  Smoke 2D ALL PASS; os quatro fixes revalidados no binário de release; take real aberto na GUI
+  com o Outliner exercitado. verify-zip + check-manifest OK. Publicado com upload em duas fases
+  (`nuclear.zip.new` → sha conferido no servidor → `mv`), sha256 do zip live == manifesto live ==
+  resposta pública == `1481548d02db95a9e7520438033febdd0afc0dc06a27c91217814217355cbdaa`.
+  Backup da 1.7.0/b13 no servidor: `nuclear.zip.bak-pre-1.7.1`. ⚠️ Os backups `nuclear.zip.bak*`
+  já somam **9,5 GB** com o disco do servidor a **89%** — vale podar os antigos.
+  `ping.php`/`instalarNuclear.sh` não tocados.
+
 - **Nuclear 1.7.0 (Beta) — `NUCLEAR_BUILD = 13` — PUBLICADO (2026-07-27).** MINOR a partir
   da branch `Nuclear`. **Destaque 1 — grade de thumbnails na tela de abertura:** a splash
   screen agora mostra os projetos recentes como uma grade de miniaturas (Krita-style), com a
@@ -687,11 +725,11 @@ Atualizado em 2026-07-27.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.7.0 (Beta) — `NUCLEAR_BUILD = 13` (2026-07-27, deploy
-  confirmado: sha256 do zip no servidor confere com o manifesto live). Máquinas em qualquer
-  build ≤ 12 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+- **Versão em produção:** Nuclear 1.7.1 (Beta) — `NUCLEAR_BUILD = 14` (2026-07-27, deploy
+  confirmado: sha256 do zip no servidor confere com o manifesto live e com a resposta pública).
+  Máquinas em qualquer build ≤ 13 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
-  1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → **1.7.0/b13 (2026-07-27)**.
+  1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → 1.7.0/b13 (2026-07-27) → **1.7.1/b14 (2026-07-27)**.
 - **nuclear.zip (b10, em produção):** 646.600.712 bytes, sha256
   `22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25` — **refresh do banner do
   updater (2026-07-06), mesmo build/version**; o zip inicial da 1.5.0 (646.626.577 bytes, sha256
