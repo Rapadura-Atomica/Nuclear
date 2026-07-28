@@ -480,9 +480,39 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-07-27.
+Atualizado em 2026-07-28.
 
-- **Nuclear 1.7.1 (Beta) — `NUCLEAR_BUILD = 14` — PUBLICADO (2026-07-27).** PATCH a partir da
+- **Nuclear 1.7.2 (Beta) — `NUCLEAR_BUILD = 15` — PUBLICADO (2026-07-28).** PATCH a partir da
+  branch `Nuclear` (commit `e70b800de51`). **A causa PRINCIPAL da perda de preferências, que a
+  b14 não pegou.** O usuário reabriu a queixa "fecho e abro e perdi tudo" depois da 1.7.1: o
+  guard de mtime da b14 só cobria duas instâncias brigando pelo arquivo, que era a metade menor.
+  O verdadeiro culpado é o **app template**: o lançador abre com `--app-template`, e
+  `wm_homefile_read_ex` carrega as preferências *do template*; como nenhum dos três templates do
+  Nuclear tem `userpref.blend` próprio, o upstream cai em `BKE_blendfile_userdef_from_defaults()`
+  e passa isso a `BKE_blender_userdef_app_template_data_set`, que faz **`VALUE_SWAP` de `addons`,
+  `user_keymaps`, `user_keyconfig_prefs`, `themes`, `uistyles`, `uifonts` e `keyconfigstr`**. Ou
+  seja: **toda abertura pelo lançador trocava addons/atalhos/tema pelos de fábrica**, e o save
+  automático da saída (`U.runtime.is_dirty`) tornava permanente. Conserto: removido o fallback
+  para defaults quando o template não traz preferências próprias (`wm_files.cc`) — sem prefs
+  próprias, o template não tem o que restaurar. Reproduzido antes/depois (addon + item de keymap
+  sobrevivem com template, na troca de template e sem template; keyconfig segue "Nuclear").
+  **Segunda mudança, a pedido do usuário: o lançador passa a iniciar no template
+  `2D_Animation`**, não no `Nuclear` — trocado nos quatro lugares que escrevem o `.desktop`
+  (`release/freedesktop/Nuclear.desktop`, `instalarNuclear.sh`, `instalarNuclear-wizard.sh` e
+  `nuclear_update.py`, este com a constante nova `_APP_TEMPLATE`). ⚠️ Consequência aceita: o
+  `__init__.py` do template `Nuclear` não roda mais, então a UI customizada (topbar próprio, abas
+  Properties/Reference/Library/Color/Peg Graph) sai de cena; o template segue no pacote e volta
+  trocando a constante. Como o `_refresh_desktop` reescreve o `Exec` a cada apply, as máquinas
+  pegam a troca no update que PARTIR da b15. Compilado em `build_nuclear_2d` (container
+  `blender`, preset `nuclear_2d.cmake`, ninja -j2); o `bin/` **já tinha** o `scipy` desta vez.
+  Smoke 2D ALL PASS. Staging podado (1174 MB → 865 MB), zip de **340 MB** (357.021.973 bytes).
+  verify-zip + check-manifest OK. Publicado em duas fases (`nuclear.zip.new` → sha conferido no
+  servidor → `mv`); sha256 do zip live == manifesto live == resposta pública ==
+  `d3d34575f9247a97b131fdd4d9ebfd1ca099e83b558012a601a4127dae9e9bc6`. Backup da 1.7.1/b14 no
+  servidor: `nuclear.zip.bak-pre-1.7.2`. ⚠️ Os `nuclear.zip.bak*` seguem crescendo com o disco a
+  **89%** — a poda continua pendente de autorização. `ping.php`/`instalarNuclear.sh` não tocados.
+
+- **Nuclear 1.7.1 (Beta) — `NUCLEAR_BUILD = 14` — PUBLICADO (2026-07-27), superado pela 1.7.2.** PATCH a partir da
   branch `Nuclear`: quatro correções, três delas de **perda de dados/trabalho**, todas achadas
   investigando a estação de animação `bazzite-2` (192.168.0.29) e o take
   `DPE_EP06_C12T67` (Carolina). **(1) As pegs do rig não desaparecem mais no save**
@@ -725,11 +755,12 @@ Atualizado em 2026-07-27.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.7.1 (Beta) — `NUCLEAR_BUILD = 14` (2026-07-27, deploy
+- **Versão em produção:** Nuclear 1.7.2 (Beta) — `NUCLEAR_BUILD = 15` (2026-07-28, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live e com a resposta pública).
-  Máquinas em qualquer build ≤ 13 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  Máquinas em qualquer build ≤ 14 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
-  1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → 1.7.0/b13 (2026-07-27) → **1.7.1/b14 (2026-07-27)**.
+  1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → 1.7.0/b13 (2026-07-27) →
+  1.7.1/b14 (2026-07-27) → **1.7.2/b15 (2026-07-28)**.
 - **nuclear.zip (b10, em produção):** 646.600.712 bytes, sha256
   `22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25` — **refresh do banner do
   updater (2026-07-06), mesmo build/version**; o zip inicial da 1.5.0 (646.626.577 bytes, sha256
