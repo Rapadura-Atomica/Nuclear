@@ -40,6 +40,42 @@ def parse_peg_data_path(data_path: str) -> Optional[tuple[str, str]]:
     return m.group("name"), m.group("chan")
 
 
+def followers_of(rig) -> list[str]:
+    """Nomes dos objetos da cena presos a este rig por constraint FOLLOW_PEG.
+
+    É o que separa o rig VIVO do rig órfão: um take pode ter cópias do PegRig
+    (`carolina_heroi` e `carolina_heroi.001`) e só uma delas mover os desenhos.
+    Gerar no órfão insere keyframes que não movem nada — parece que o Entremeio
+    "não fez nada".
+    """
+    import bpy
+
+    out = []
+    for ob in bpy.data.objects:
+        for con in ob.constraints:
+            if con.type == "FOLLOW_PEG" and getattr(con, "rig", None) == rig:
+                out.append(ob.name)
+                break
+    return out
+
+
+def pick_default_rig():
+    """O PegRig que a cena realmente usa (mais objetos presos), ou None.
+
+    Empate ou nenhum seguidor: cai no primeiro da lista, como antes.
+    """
+    import bpy
+
+    if not len(bpy.data.pegrigs):
+        return None
+    melhor, n_melhor = None, -1
+    for rig in bpy.data.pegrigs:
+        n = len(followers_of(rig))
+        if n > n_melhor:
+            melhor, n_melhor = rig, n
+    return melhor or bpy.data.pegrigs[0]
+
+
 def check_compatibility(rig) -> tuple[bool, list[str]]:
     """Valida que a RNA/estrutura do PegRig é a esperada (RF-8.6).
 
