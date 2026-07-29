@@ -41,9 +41,15 @@ def _clamp(val, a, b):
 
 ## 3. Warning de drift não é mais falso alarme
 
-**Antes:** `measure_fidelity` sempre reportava `WARNING` quando encontrava drift. O Depsgraph do Nuclear 1.7.3-b16 tem um bug pré-existente (`evaluated_get` retorna valores trocados entre frames vizinhos em slotted actions), causando drift de ~4.5 mesmo sem o Entremeio fazer nada. O warning aparecia em TODO `generate`, parecendo erro.
+**Antes:** `measure_fidelity` sempre reportava `WARNING` quando encontrava drift, e o warning aparecia em TODO `generate`, parecendo erro.
 
-**Depois:** O drift é medido ANTES da geração (`drift_before`) e depois (`max_drift`). Só dispara `WARNING` se `max_drift > drift_before + 1e-4` (ou seja, se o Entremeio PIOROU). Drift pré-existente aparece como `INFO` com a nota "não causado pelo Entremeio".
+**Depois:** O drift é medido ANTES da geração (`drift_before`) e depois (`max_drift`). Só dispara `WARNING` se `max_drift > drift_before + 1e-4` (ou seja, se o Entremeio PIOROU).
+
+> ⚠️ **A explicação original desta seção estava ERRADA e foi corrigida em 2026-07-28 (2ª rodada).**
+> Dizia que o drift de ~4.5 vinha de um bug do Depsgraph com slotted actions. Não vem: era o
+> **rig órfão** (seção 7). Num rig que o depsgraph avalia, o drift é **0**. O rebaixamento para
+> INFO continua certo, mas o sinal real de "drift alto na linha de base" agora tem dono e é
+> reportado como tal.
 
 ---
 
@@ -71,6 +77,37 @@ Regressão exposta pelo teste no take real logo após o sync: `PlanIR.anchors_sp
 negativos são biblioteca de poses, não animação. Agora `anchors_span()` só considera
 `0 <= frame < CELL_LIBRARY_BASE` (100000), e o trecho sai **1–3**, que é a animação real.
 
+## 7. O rig órfão — a causa real do "não gera keyframe"
+
+Achado no teste ao vivo (MCP, take `DPE_EP06_C12T67` aberto na GUI). O take tem **dois PegRigs**:
+
+| PegRig | users | objetos com FOLLOW_PEG | é avaliado? |
+|---|---|---|---|
+| `carolina_heroi` | 1 | **0** | não — congelado |
+| `carolina_heroi.001` | 51 | **51** | sim |
+
+O add-on escolhia `bpy.data.pegrigs[0]`, ou seja, **a cópia órfã**. Os keyframes entravam de
+verdade nas FCurves, mas nada na cena se movia — para o animador, "não gerou nada". E como o
+depsgraph nunca avalia esse rig, `measure_fidelity` comparava o plano com um valor congelado:
+daí o "drift ~4" que a seção 3 atribuía ao Depsgraph.
+
+**Conserto:**
+- `rig_bridge.followers_of(rig)` — objetos presos ao rig por constraint `FOLLOW_PEG`.
+- `rig_bridge.pick_default_rig()` — escolhe o rig com mais seguidores (empate/nenhum: primeiro
+  da lista, como antes). Usado em todos os pontos que faziam `pegrigs[0]`.
+- `generate` avisa quando o rig alvo não tem seguidor nenhum:
+  *"N keys geradas, mas NENHUM objeto segue 'X' — nada vai se mover na tela. Use 'X.001'."*
+
+Provado ao vivo: no rig certo, `antebraco.d` sai de (-2.46, 0.22) no frame 1 para (-2.48, -2.08)
+no 24, com **drift = 0** (não mais "pré-existente=4").
+
+## 8. "Nada a gerar" culpava as poses quando a culpa era do Passo
+
+Com **Passo = 2** e o único vão do take valendo 2 frames, `range(f0+2, f1, 2)` fica vazio e a
+mensagem dizia *"nenhuma peg tem âncoras com vão entre elas"* — falso, e manda o animador
+procurar problema nas poses. Agora, quando o passo não cabe no maior vão:
+*"Nada a gerar: o Passo (2) não cabe no maior vão entre poses (2 frames) — reduza o Passo."*
+
 ---
 
 ## Testes
@@ -91,6 +128,15 @@ generate    → FINISHED   (3 keys, INFO: drift pré-existente=4, sem WARNING)
 
 **Preview, na GUI** (o modal não roda em `-b`): `RUNNING_MODAL`, com `frame_start/end` = 1/20
 digitados no painel → `use_preview_range=True`, range **1–20**, frame atual 1.
+
+**Ao vivo, pelo MCP, no take aberto na GUI:** trecho detectado 1–3; geração com âncoras intactas
+e drift 0 nas FCurves; anti-overshoot provado num caso montado (parada em 1–11, salto em 21 →
+segmento parado fica exatamente 0.0) com a peg de teste apagada depois; escolha automática do rig
+caindo em `carolina_heroi.001`; aviso de rig órfão e mensagem do Passo conferidos.
+
+**Achado de produção:** varredura dos **115 takes do Ep06** — nenhum tem PegRig com vãos entre
+poses, exceto o T67 (um vão de 2 frames). Não existe material animado para o Entremeio mastigar
+enquanto a produção não animar poses espaçadas em PegRig.
 
 A cena tem 10 pegs animadas em 3 frames (1, 2, 3) — gera 1 in-between. O drift de ~4.5 no
 Depsgraph é pré-existente e reportado como INFO.

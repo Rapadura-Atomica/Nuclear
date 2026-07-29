@@ -56,10 +56,11 @@ class ENTREMEIO_OT_read_rig(bpy.types.Operator):
 
         # fallback: primeiro PegRig da cena, se nenhum nome informado
         if target is None:
-            if len(bpy.data.pegrigs) == 0:
+            escolhido = rig_bridge.pick_default_rig()
+            if escolhido is None:
                 self.report({"ERROR"}, "Nenhum PegRig na cena.")
                 return {"CANCELLED"}
-            target = bpy.data.pegrigs[0].name
+            target = escolhido.name
 
         try:
             plan = rig_bridge.read_rig(target, seed=props.seed)
@@ -108,7 +109,7 @@ class ENTREMEIO_OT_detect_range(bpy.types.Operator):
 
     def execute(self, context):
         props = context.scene.entremeio
-        target = props.rig_name.strip() or (bpy.data.pegrigs[0].name if bpy.data.pegrigs else None)
+        target = props.rig_name.strip() or getattr(rig_bridge.pick_default_rig(), "name", None)
         if target is None:
             self.report({"ERROR"}, "Nenhum PegRig na cena.")
             return {"CANCELLED"}
@@ -143,7 +144,7 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
 
     def execute(self, context):
         props = context.scene.entremeio
-        target = props.rig_name.strip() or (bpy.data.pegrigs[0].name if bpy.data.pegrigs else None)
+        target = props.rig_name.strip() or getattr(rig_bridge.pick_default_rig(), "name", None)
         if target is None:
             self.report({"ERROR"}, "Nenhum PegRig na cena.")
             return {"CANCELLED"}
@@ -238,17 +239,29 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
             return {"CANCELLED"}
 
         if generated.frame_count() == 0:
-            self.report({"WARNING"},
-                        "Nada a gerar: nenhuma peg tem âncoras com vão entre elas"
-                        f" no trecho {plan.frame_start}–{plan.frame_end}.")
+            # distingue "não há vão" de "o passo não cabe no vão" — com Passo 2 e um
+            # vão de 2 frames não cabe in-between nenhum, e culpar as poses confunde.
+            maior_vao = 0
+            for t in plan.tracks:
+                fr = sorted(k.frame for k in t.anchors)
+                maior_vao = max([maior_vao] + [b - a for a, b in zip(fr, fr[1:])])
+            if maior_vao > 1 and props.step >= maior_vao:
+                self.report({"WARNING"},
+                            f"Nada a gerar: o Passo ({props.step}) não cabe no maior vão "
+                            f"entre poses ({maior_vao} frames) — reduza o Passo.")
+            else:
+                self.report({"WARNING"},
+                            "Nada a gerar: nenhuma peg tem âncoras com vão entre elas"
+                            f" no trecho {plan.frame_start}–{plan.frame_end}.")
             return {"CANCELLED"}
 
         # snapshot das exposições GP ANTES (RF-4.6): provar que a geração não as toca
         exposure_before = discrete.snapshot_gp_exposure(rig)
-        # drift de linha de base: o Depsgraph pode devolver valores trocados entre
-        # frames vizinhos (slotted actions) mesmo sem o Entremeio tocar em nada.
-        # Medindo antes, só alarmamos quando a geração PIORA o quadro.
+        # drift de linha de base: mede ANTES de gerar, para só alarmar quando a
+        # geração PIORA o quadro. Drift alto já na linha de base costuma ser rig
+        # que o depsgraph não avalia (cópia órfã do PegRig, sem objeto preso).
         drift_before, _ = rig_bridge.measure_fidelity(rig, plan)
+        seguidores = rig_bridge.followers_of(rig)
 
         _t = time.perf_counter()
         inserted = rig_bridge.write_keys(rig, generated)
@@ -291,7 +304,16 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
                 report_note = " · (falha ao salvar relatório)"
                 print(f"[Entremeio] erro ao salvar relatório: {e}")
 
-        if offenders and max_drift > drift_before + 1e-4:
+        if not seguidores:
+            # keyframes entram, mas nada na cena se mexe: é o sintoma clássico de
+            # gerar na cópia órfã do rig (take com `nome` e `nome.001`).
+            outros = [r.name for r in bpy.data.pegrigs
+                      if r != rig and rig_bridge.followers_of(r)]
+            dica = f" Use '{outros[0]}'." if outros else ""
+            self.report({"WARNING"},
+                        f"{inserted} keys geradas, mas NENHUM objeto segue '{rig.name}' — "
+                        f"nada vai se mover na tela.{dica}")
+        elif offenders and max_drift > drift_before + 1e-4:
             self.report({"WARNING"},
                         f"Drift AUMENTOU em {len(offenders)} âncora(s) "
                         f"({drift_before:.2g} → {max_drift:.2g}) — revisar.")
@@ -299,7 +321,7 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
             self.report({"INFO"},
                         f"Entremeio: {inserted} keys · trecho {plan.frame_start}–{plan.frame_end} · "
                         f"{report.summary()} · drift pré-existente={max_drift:.1g} "
-                        f"(não causado pelo Entremeio) · exposição preservada{report_note}")
+                        f"(já estava lá antes de gerar) · exposição preservada{report_note}")
         else:
             self.report({"INFO"},
                         f"Entremeio: {inserted} keys · trecho {plan.frame_start}–{plan.frame_end} · "
@@ -335,7 +357,7 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
 
     def invoke(self, context, event):
         props = context.scene.entremeio
-        rig = bpy.data.pegrigs.get(props.rig_name) or (bpy.data.pegrigs[0] if bpy.data.pegrigs else None)
+        rig = bpy.data.pegrigs.get(props.rig_name) or rig_bridge.pick_default_rig()
         if rig is None:
             self.report({"ERROR"}, "Nenhum PegRig na cena.")
             return {"CANCELLED"}
@@ -534,7 +556,7 @@ class ENTREMEIO_PT_panel(bpy.types.Panel):
         else:
             col.prop(props, "ease")
             col.prop(props, "overshoot")
-        _rig = bpy.data.pegrigs.get(props.rig_name) or (bpy.data.pegrigs[0] if bpy.data.pegrigs else None)
+        _rig = bpy.data.pegrigs.get(props.rig_name) or rig_bridge.pick_default_rig()
         sc = layout.column(align=True)
         sc.prop(props, "scope", text="Escopo")
         if props.scope == "SUBTREE":
