@@ -365,6 +365,23 @@ do Nuclear.
 | `source/blender/animrig/intern/action.cc` | `NO_KEY_NEEDED` deixou de ser `CLOG_WARN` e virou `CLOG_DEBUG`. Com "Only Insert Needed" (ligado por padrão no auto-key), pular um canal cujo valor não mudou é o comportamento **pretendido** — mas cada auto-key logava uma linha "Could not insert key into FCurve …" por componente parado (`rotation_quaternion[2]`, `location[1]`, …), o que lê como keyframe perdido e polui o log de sessões longas. Os demais resultados seguem em WARN. |
 | `source/blender/animrig/intern/fcurve.cc` | `insert_vert_fcurve()` chamava `BKE_fcurve_active_keyframe_set(fcu, &fcu->bezt[a])` **antes** de testar `a < 0`; no caminho de falha isso indexa `bezt[-1]`. Checagem movida para antes do uso. |
 
+### PERDA DE DADOS: `I` no Dope Sheet apagava o elenco inteiro (2026-07-31)
+Relato do usuário: pôs keyframes em 1/5/7, mudou a interpolação para constante, apertou **I**
+no frame 4 — e o personagem sumiu. Rastreado com uma sessão instrumentada (log de
+`wm.operators`): o operador era `ACTION_OT_keyframe_insert`, +128 keyframes, peças visíveis
+43 → 0. **Candidato a enviar upstream.**
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/editors/space_action/action_edit.cc` | `insert_action_keys()` derivava `grease_pencil_hold_previous` de **"Additive Drawing"** (`GP_TOOL_FLAG_RETAIN_LAST`). Esse flag é **off por padrão de fábrica**, e com ele off `insert_grease_pencil_key()` cai no ramo "insert a blank frame": o `I` insere keyframe **vazio** em cada canal que toca, apagando o desenho dali em diante. Com `type='ALL'` (o default do menu) isso é *todo canal visível de todo objeto listado* — num elenco cut-out, o personagem inteiro em uma tecla. Medido no rig de referência: 670→798 keyframes, 43 peças visíveis → **0**. Agora `grease_pencil_hold_previous` é sempre `true`: inserir keyframe **segura o desenho exposto** (comportamento Toon Boom). `insert_grease_pencil_key` segue inserindo branco quando não há o que segurar (sem frame ativo, ou end frame). O flag mantém a outra função — semear um frame recém-desenhado com os traços anteriores (`grease_pencil_draw_ops.cc`). O caminho GP legado (`ANIMTYPE_GPLAYER`, anotações) não foi tocado. |
+
+### PERDA DE DADOS: o Interpolate do GP apagava camadas (2026-07-31)
+Achado investigando o relato acima (operador diferente, mesmo sintoma de "sumiu o desenho").
+**Candidato a enviar upstream** — nada específico do Nuclear; morde aqui porque peça de rig
+cut-out mistura camadas de linha animadas com fills segurados.
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/editors/sculpt_paint/grease_pencil_interpolate.cc` | **Duas causas.** (a) `InterpolateOpData::from_operator()` só usava `find_curve_mapping_from_index()` como um OR global (`found_mapping`) e mantinha no `layer_mask` **toda** camada — inclusive as sem intervalo interpolável. `..._init()` então inseria nelas um BREAKDOWN **vazio** e `..._update()` sobrescrevia com geometria vazia; como só o *Cancel* restaura, confirmar deixava a camada em branco. Agora o mask é reduzido às camadas com mapeamento — a garantia que o `GREASE_PENCIL_OT_interpolate_sequence` já tinha via `if (!interval) return;`. (b) `..._invoke()` chamava só `..._status_indicators()`: o `init` apenas *cria* os keyframes (vazios) e o modal só os preenche no primeiro `MOUSEMOVE`, então invocar pelo menu e confirmar de imediato esvaziava **todos** os alvos. Passa a chamar `..._update()`. Medido no rig de referência: 4 keyframes vazios na `boca` antes, 0 depois. |
+
 ---
 
 ## 3. Branding (subconjunto de pontos quentes + dados)
