@@ -263,6 +263,11 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
         drift_before, _ = rig_bridge.measure_fidelity(rig, plan)
         seguidores = rig_bridge.followers_of(rig)
 
+        # identidade do que JÁ estava registrado antes desta chamada — o diff depois
+        # é exatamente o que ELA escreveu, e é só isso que um revert pode desfazer
+        # sem tocar em gerações anteriores (mesmo mecanismo do descarte da Prévia).
+        rec_antes_ids = {(e[0], e[1], e[2]) for e in rig_bridge._load_record(rig)}
+
         _t = time.perf_counter()
         inserted = rig_bridge.write_keys(rig, generated)
         t_write = (time.perf_counter() - _t) * 1000.0
@@ -272,11 +277,27 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
         max_drift, offenders = rig_bridge.measure_fidelity(rig, plan)
         exposure_ok, changes = discrete.verify_exposure_preserved(rig, exposure_before)
 
+        def _revert_this_write():
+            # P1/P2 são invioláveis: se algo escapou do guarda-corpos pré-escrita e
+            # feriu uma âncora/exposição de verdade, desfaz — nunca fica só no aviso.
+            novas = [e for e in rig_bridge._load_record(rig)
+                    if (e[0], e[1], e[2]) not in rec_antes_ids]
+            rig_bridge.clear_generated_entries(rig, novas)
+
         if not exposure_ok:
+            _revert_this_write()
             self.report({"ERROR"},
-                        f"Exposição de camada GP foi alterada ({len(changes)}) — violação de RF-4.6.")
+                        f"Entremeio rejeitou e desfez a geração — exposição de camada GP "
+                        f"foi alterada ({len(changes)}), violação de RF-4.6.")
             for c in changes[:5]:
                 print(f"[Entremeio] EXPOSIÇÃO MUDOU: {c}")
+            return {"CANCELLED"}
+
+        if offenders and max_drift > drift_before + 1e-4:
+            _revert_this_write()
+            self.report({"ERROR"},
+                        f"Entremeio rejeitou e desfez a geração — drift AUMENTOU em "
+                        f"{len(offenders)} âncora(s) ({drift_before:.2g} → {max_drift:.2g}).")
             return {"CANCELLED"}
         # RF-6.5 / RF-9.4: relatório auditável versionável (params, seed, modelo, drift, aderência)
         report_note = ""
@@ -313,10 +334,6 @@ class ENTREMEIO_OT_generate(bpy.types.Operator):
             self.report({"WARNING"},
                         f"{inserted} keys geradas, mas NENHUM objeto segue '{rig.name}' — "
                         f"nada vai se mover na tela.{dica}")
-        elif offenders and max_drift > drift_before + 1e-4:
-            self.report({"WARNING"},
-                        f"Drift AUMENTOU em {len(offenders)} âncora(s) "
-                        f"({drift_before:.2g} → {max_drift:.2g}) — revisar.")
         elif offenders:
             self.report({"INFO"},
                         f"Entremeio: {inserted} keys · trecho {plan.frame_start}–{plan.frame_end} · "
@@ -366,7 +383,9 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
         # gera (prévia não salva relatório — é efêmera; use Gerar p/ registrar)
         prev_save = props.save_report
         props.save_report = False
-        rec_antes = {tuple(e) for e in rig_bridge._load_record(rig)}
+        # diff por IDENTIDADE (peg, canal, frame) — o registro guarda também o valor
+        # (list, não-hasheável), então não dá pra jogar a entrada inteira num set.
+        rec_antes_ids = {(e[0], e[1], e[2]) for e in rig_bridge._load_record(rig)}
         try:
             res = bpy.ops.entremeio.generate("EXEC_DEFAULT")
         finally:
@@ -377,7 +396,7 @@ class ENTREMEIO_OT_preview(bpy.types.Operator):
         rig = bpy.data.pegrigs.get(self._rig_name)
         # o que ESTA geração escreveu (diff do registro) — é só isso que o ESC descarta
         self._new_entries = [e for e in rig_bridge._load_record(rig)
-                             if tuple(e) not in rec_antes]
+                             if (e[0], e[1], e[2]) not in rec_antes_ids]
 
         lo, hi = self._span(rig)
         # o trecho ativo (detectado/manual) manda no loop da prévia

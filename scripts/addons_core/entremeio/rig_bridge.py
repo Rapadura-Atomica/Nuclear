@@ -323,7 +323,11 @@ def write_keys(rig, generated: GeneratedKeys, *, replace_range=None) -> int:
 
 # --- Geração gerenciada: regenerar limpa o que o Entremeio criou antes (RF-7.3) ---
 
-_GEN_PROP = "_entremeio_generated"   # ID-property no PegRig: lista [peg, chan, frame]
+_GEN_PROP = "_entremeio_generated"   # ID-property no PegRig: lista [peg, chan, frame, valores]
+
+# tolerância pra decidir se uma key "gerada" ainda tem o valor que o Entremeio
+# escreveu, ou se o artista reposou em cima dela (promoveu a pose-chave real)
+_VALUE_EPSILON = 1e-5
 
 
 def _load_record(rig) -> list:
@@ -337,16 +341,59 @@ def _load_record(rig) -> list:
 
 
 def record_generated(rig, generated: GeneratedKeys, *, merge: bool = False) -> None:
-    """Registra o que o Entremeio gerou, para limpar na regeneração.
+    """Registra o que o Entremeio gerou (com o VALOR escrito), para limpar na regeneração.
+
+    Guardar o valor é o que permite distinguir "ainda é o in-between que eu
+    gerei" de "o artista reposou este frame e virou uma pose-chave real" — sem
+    isso, limpar/regenerar apagaria a pose nova do artista (ver
+    `_value_matches_record`).
 
     merge=True acrescenta ao registro existente (refino cirúrgico: outras pegs
     permanecem registradas). merge=False substitui tudo.
     """
-    new = [[peg, chan, k.frame]
+    new = [[peg, chan, k.frame, list(k.values[chan])]
            for peg, keys in generated.per_peg.items()
            for k in keys for chan in k.values]
     rec = (_load_record(rig) + new) if merge else new
     rig[_GEN_PROP] = json.dumps(rec)
+
+
+def _read_key_values(adt, peg_name: str, chan: str, frame: int) -> Optional[tuple]:
+    """Valor atual (por componente) da key de `peg_name.chan` no frame dado.
+
+    None se não houver nenhum keyframe ali (já foi removido por outra via).
+    """
+    data_path = f'pegs["{peg_name}"].{chan}'
+    by_index: dict[int, float] = {}
+    for fcu in _iter_fcurves(adt):
+        if fcu.data_path != data_path:
+            continue
+        for kp in fcu.keyframe_points:
+            if int(round(kp.co[0])) == frame:
+                by_index[fcu.array_index] = kp.co[1]
+    if not by_index:
+        return None
+    arity = CONTINUOUS_CHANNELS.get(chan, 1)
+    return tuple(by_index.get(i) for i in range(arity))
+
+
+def _value_matches_record(adt, peg: str, chan: str, frame: int, recorded_values) -> bool:
+    """True se a key ainda tem o valor que o Entremeio escreveu (seguro apagar).
+
+    `recorded_values is None` = registro no formato antigo (sem valor, de antes
+    desta correção) — mantém o comportamento anterior por compatibilidade.
+    Se a key já sumiu (None), também é seguro (nada a apagar). Se o valor
+    mudou, é o artista tendo reposado ali: NÃO é mais "gerado", é pose-chave.
+    """
+    if recorded_values is None:
+        return True
+    current = _read_key_values(adt, peg, chan, frame)
+    if current is None:
+        return True
+    if len(current) != len(recorded_values):
+        return False
+    return all(c is not None and abs(c - r) <= _VALUE_EPSILON
+               for c, r in zip(current, recorded_values))
 
 
 def regenerable_in_range(rig, frame_range, pegs=None) -> dict[str, set[str]]:
@@ -358,7 +405,7 @@ def regenerable_in_range(rig, frame_range, pegs=None) -> dict[str, set[str]]:
     par de âncoras para regenerá-los.
     """
     f0, f1 = frame_range
-    generated = {(p, c, f) for p, c, f in _load_record(rig)}
+    generated = {(e[0], e[1], e[2]) for e in _load_record(rig)}
     frames_por: dict[tuple[str, str], set[int]] = {}
     for fcu in _iter_fcurves(getattr(rig, "animation_data", None)):
         parsed = parse_peg_data_path(fcu.data_path)
@@ -385,19 +432,29 @@ def clear_generated(rig, pegs=None, frame_range=None, peg_channels=None) -> int:
     `frame_range=(f0, f1)` limita ao trecho (inclusivo) — regeneração por janela.
     `peg_channels` (peg -> set de canais) limita a esses canais — só o regenerável.
     O registro do que ficar de fora é preservado. None = sem filtro (limpa tudo).
+
+    ⚠️ NUNCA apaga uma key cujo valor divergiu do que foi registrado — isso
+    significa que o artista reposou ali e promoveu o frame a pose-chave real
+    (ver `_value_matches_record`). Nesse caso só para de rastrear o frame
+    (some do registro), sem tocar no keyframe.
     """
+    adt = getattr(rig, "animation_data", None)
     rec = _load_record(rig)
     removed = 0
     kept = []
-    for peg, chan, frame in rec:
+    for entry in rec:
+        peg, chan, frame = entry[0], entry[1], entry[2]
+        recorded_values = entry[3] if len(entry) > 3 else None
         fora_do_escopo = pegs is not None and peg not in pegs
         fora_do_trecho = (frame_range is not None
                           and not (frame_range[0] <= frame <= frame_range[1]))
         fora_dos_canais = (peg_channels is not None
                            and chan not in peg_channels.get(peg, ()))
         if fora_do_escopo or fora_do_trecho or fora_dos_canais:
-            kept.append([peg, chan, frame])
+            kept.append(entry)
             continue
+        if not _value_matches_record(adt, peg, chan, frame, recorded_values):
+            continue  # virou pose-chave do artista: não apaga, só para de rastrear
         data_path = f'pegs["{peg}"].{chan}'
         for i in range(CONTINUOUS_CHANNELS.get(chan, 1)):
             try:
@@ -410,19 +467,28 @@ def clear_generated(rig, pegs=None, frame_range=None, peg_channels=None) -> int:
 
 
 def clear_generated_entries(rig, entries) -> int:
-    """Remove EXATAMENTE estas entradas [peg, canal, frame] geradas (e só elas).
+    """Remove EXATAMENTE estas entradas [peg, canal, frame, valores] geradas (e só elas).
 
     Usado pelo descarte da prévia: apaga o que AQUELA geração escreveu (diff do
     registro antes/depois), sem tocar em gerações aplicadas anteriormente.
+
+    Mesma proteção de `clear_generated`: se o valor da key divergiu do
+    registrado (artista reposou por cima antes de apertar ESC), não apaga.
     """
-    alvo = {tuple(e) for e in entries}
+    adt = getattr(rig, "animation_data", None)
+    alvo = {(e[0], e[1], e[2]) for e in entries}
+    valores_alvo = {(e[0], e[1], e[2]): (e[3] if len(e) > 3 else None) for e in entries}
     rec = _load_record(rig)
     removed = 0
     kept = []
-    for peg, chan, frame in rec:
+    for entry in rec:
+        peg, chan, frame = entry[0], entry[1], entry[2]
         if (peg, chan, frame) not in alvo:
-            kept.append([peg, chan, frame])
+            kept.append(entry)
             continue
+        recorded_values = valores_alvo[(peg, chan, frame)]
+        if not _value_matches_record(adt, peg, chan, frame, recorded_values):
+            continue  # virou pose-chave do artista: não apaga, só para de rastrear
         data_path = f'pegs["{peg}"].{chan}'
         for i in range(CONTINUOUS_CHANNELS.get(chan, 1)):
             try:
