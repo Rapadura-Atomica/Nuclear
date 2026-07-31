@@ -18,7 +18,11 @@ Interaction (each dot is a custom gizmo):
 - Shift+click a dot -> add/remove it from the selection (build a multi-selection).
 - Drag a dot        -> move it (a control point carries both tangents; a tangent is freed
                        first, like grabbing a handle in Edit Mode). With Auto Keying on,
-                       the drag inserts keyframes so the deformation can be animated.
+                       the drag keys the whole curve so the deformation can be animated
+                       (see #keyframe_whole_curve for why the dragged point is not enough).
+
+Note that Auto Keying is what makes a drag animatable at all: moving the control points
+in Edit Mode never keys anything (Blender has no auto-key for edit-mode transforms).
 """
 
 import bpy
@@ -93,6 +97,27 @@ def _deselect_all(curve_ob):
         bp.select_control_point = False
         bp.select_left_handle = False
         bp.select_right_handle = False
+
+
+def keyframe_whole_curve(curve_ob):
+    """Key every control point and tangent of ``curve_ob`` at the current frame.
+
+    Keying only the dragged point is not enough: a tangent of type AUTO is recomputed
+    from its neighbours, so dragging a point also moves the tangents of the points next
+    to it. Those neighbours would stay posed on every frame that has no key of their
+    own, and the drawing would never return to its rest shape - the deformation gets
+    stuck. Keying the whole curve keeps the shape self-consistent on every frame.
+    """
+    data = getattr(curve_ob, "data", None)
+    if data is None:
+        return
+    for (si, pi) in _bezier_points(curve_ob):
+        base = "splines[%d].bezier_points[%d]" % (si, pi)
+        for prop in (".co", ".handle_left", ".handle_right"):
+            try:
+                data.keyframe_insert(data_path=base + prop)
+            except RuntimeError:
+                pass
 
 
 def _world_radius(context, world_co, px):
@@ -243,12 +268,7 @@ class NUCLEAR_GT_curve_point(Gizmo):
         scene = bpy.context.scene
         if scene is None or not scene.tool_settings.use_keyframe_insert_auto:
             return
-        base = "splines[%d].bezier_points[%d]" % (self.si, self.pi)
-        for prop in (".co", ".handle_left", ".handle_right"):
-            try:
-                self.curve_ob.data.keyframe_insert(data_path=base + prop)
-            except RuntimeError:
-                pass
+        keyframe_whole_curve(self.curve_ob)
 
 
 class NUCLEAR_GGT_curve_deform_points(GizmoGroup):
