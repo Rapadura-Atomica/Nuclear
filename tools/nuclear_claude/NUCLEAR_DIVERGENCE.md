@@ -178,7 +178,7 @@ cada rebase. Quando possível, migrar a lógica para arquivo novo + uma "costura
 | `source/blender/editors/object/object_modifier.cc` | pegs no modifier context |
 | `source/blender/editors/transform/transform_convert.cc` | suporte ao peg transform workflow |
 | `source/blender/editors/grease_pencil/intern/grease_pencil_layers.cc` | `GREASE_PENCIL_OT_peg_pick`, `GREASE_PENCIL_OT_peg_select_parent` |
-| `source/blender/editors/animation/anim_filter.cc` | PegRig no filtro de dados de animação |
+| `source/blender/editors/animation/anim_filter.cc` | PegRig no filtro de dados de animação; **deform curves do modifier "Curve" sob o objeto do desenho** (mesmo padrão do PegRig, em `animdata_filter_dopesheet_ob`: sem isso as keys da curva ficam invisíveis no Dope Sheet, porque quem se seleciona é o desenho e a Action mora no data-block da curva). Requer `DNA_modifier_types.h` no include list. **Não** se tocou no modo Grease Pencil do editor: o upstream avisa ali que listar F-Curves exigiria mexer em quase todo operador que testa `ANIMCONT_GPENCIL` (seleção, delete, snap, copy/paste), e o canal apareceria sem poder ser editado — a saída foi abrir os arquivos com rig em modo Dope Sheet (`scripts/startup/nuclear_timeline_mode.py`) |
 | `source/blender/depsgraph/intern/builder/deg_builder_nodes.cc` | nodes de PegRig |
 | `source/blender/depsgraph/intern/builder/deg_builder_relations.cc` | dependências de PegRig |
 | `source/blender/makesrna/intern/rna_constraint.cc` | RNA do Follow Peg constraint |
