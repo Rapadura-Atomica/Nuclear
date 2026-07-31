@@ -480,9 +480,78 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-07-28.
+Atualizado em 2026-07-31.
 
-- **Nuclear 1.7.3 (Beta) — `NUCLEAR_BUILD = 16` — PUBLICADO (2026-07-28).** PATCH que fecha a
+- **Nuclear 1.7.4 (Beta) — `NUCLEAR_BUILD = 17` — PUBLICADO (2026-07-31).** PATCH a partir da
+  branch `Nuclear`, juntando duas frentes que rodaram em paralelo na mesma branch. **Destaque —
+  duas perdas de desenho no Grease Pencil**, ambas herdadas de comportamento upstream e ambas
+  candidatas a mandar para o upstream. (1) **O `I` no Dope Sheet apagava o elenco inteiro**
+  (`action_edit.cc`): `insert_action_keys` derivava `grease_pencil_hold_previous` do flag
+  **"Additive Drawing"** (`GP_TOOL_FLAG_RETAIN_LAST`), que vem **off de fábrica**; com ele off,
+  `insert_grease_pencil_key` cai no ramo "insert a blank frame" e o `I` insere keyframe **vazio**
+  em cada canal que toca, apagando o desenho dali em diante — e com `type='ALL'` (o default do
+  menu) isso é todo canal visível de todo objeto listado. Medido no rig de referência: 670→798
+  keyframes em 54 peças e **43 peças visíveis → 0**. Agora inserir keyframe **segura o desenho
+  exposto** (comportamento Toon Boom); o branco continua entrando quando não há o que segurar (sem
+  frame ativo, ou end frame), e o flag mantém a outra função dele (semear um frame recém-desenhado
+  com os traços anteriores). O caminho legado de anotações (`ANIMTYPE_GPLAYER`) não foi tocado.
+  (2) **O Interpolate esvaziava camadas sem par** (`grease_pencil_interpolate.cc`): o `layer_mask`
+  guardava **toda** camada, inclusive as sem intervalo interpolável, então o `init` inseria nelas
+  um BREAKDOWN **vazio** e o `update` sobrescrevia com nada o que houvesse no frame — e como só o
+  *Cancel* restaura, confirmar deixava a camada em branco dali em diante. O mask passa a ser
+  reduzido às camadas com mapeamento (a mesma garantia que o `interpolate_sequence` já tinha).
+  Junto: o `invoke` chamava só os status indicators, e o modal só preenche os keyframes no
+  primeiro `MOUSEMOVE` — invocar pelo menu e confirmar de imediato esvaziava **todos** os alvos;
+  passa a chamar o `update`. Prova A/B no mesmo arquivo, frame 4, peça `boca`: o binário b16 cria
+  4 breakdowns vazios (`dente-line`, `dentes`, `fundo`, `lingua`), o binário novo cria **0**.
+  **Segundo bloco — a deform curve virou animável de verdade.** O gizmo keyava só o ponto
+  arrastado, mas tangente `AUTO` é recalculada a partir dos vizinhos: sem key neles a curva
+  carregava as tangentes da pose e **o desenho não voltava ao repouso**. `keyframe_whole_curve()`
+  keya a curva inteira; resíduo de ida-e-volta ao frame de repouso no dinossauro: `torso.004`
+  0.1954→0.0000, `braco.e` 0.0980→0.0000, `braco.d` 0.0821→0.0000 (as outras 5 já estavam em 0).
+  E as keys **não apareciam em lugar nenhum**: `animdata_filter_dopesheet_ob` (`anim_filter.cc`)
+  passa a listar a animação das curvas do modifier `GREASE_PENCIL_CURVE` **sob o objeto do
+  desenho** — quem se seleciona é a peça, mas a Action mora no data-block da curva. Como o Dope
+  Sheet do workspace 2D abre em modo **Grease Pencil**, que lista só camadas, o arquivo que
+  carrega PegRig agora abre em modo **Dope Sheet** (`scripts/startup/nuclear_timeline_mode.py`,
+  handler `load_post`; nada é gravado no arquivo, e storyboard sem rig fica no modo GP). Ensinar o
+  modo GP a listar F-Curves foi **rejeitado**: o próprio upstream avisa no código que exigiria
+  mexer em quase todo operador que testa `ANIMCONT_GPENCIL` (seleção, delete, snap, copy/paste), e
+  o canal apareceria desenhado recusando ser editado — pior que hoje. **Terceiro bloco —
+  Entremeio.** O registro de gerados guardava só a identidade `[peg, canal, frame]`, então quando o
+  artista repunha um in-between (promovendo-o a pose-chave real) a geração seguinte o reconhecia
+  como "meu" e **apagava a pose do artista** — o oposto do P1 do PRD. O registro passa a guardar os
+  valores escritos, e `clear_generated`/`clear_generated_entries` comparam o valor atual da F-Curve
+  (epsilon 1e-5) antes de apagar; se divergiu, o frame só sai do registro e o keyframe fica.
+  Junto, os dois guarda-corpos pós-escrita (drift em âncora e exposição GP) **revertem** a escrita
+  e cancelam com erro, em vez de só avisar — antes falhavam abertos. Sincronizado do repo-fonte
+  `entremeio` em `2245e15`, 50 testes passam. Vão junto o painel `Rig ▸ Deform Curve`
+  (`c52c8f31128`, 885 linhas) e os fixes de Entremeio de 28/07 (clamp anti-overshoot, drift medido
+  antes/depois, `anchors_span` ignorando biblioteca de poses e Cell Library, rig alvo = o que a
+  cena usa). **Fora do escopo por decisão do usuário:** o Armature→PegRig nativo
+  (`nuclear_rig_auto.py`, +374 linhas) segue na working tree, e o addon `nuclear_storyboard` (repo
+  separado, hoje só um symlink de dev com 682 linhas não commitadas) entra numa release futura
+  quando o desenvolvimento fechar — o app template `Storyboarding` já viajava no pacote e continua
+  indo. ⚠️ **Pegadinha do carimbo:** o `buildinfo.cmake` do upstream usa `git rev-parse @{u}`, o
+  **upstream tracking branch** — não o HEAD local. O primeiro pacote saiu carimbado
+  `0a5197b4a15a` (o que estava no `origin/Nuclear`), sem cobrir os 4 commits locais; **pushe antes
+  de buildar** ou o hash do splash/relatório de crash aponta para a release errada. Refeito:
+  commit de release → push → `ninja install` (regenera buildinfo e re-linka, 6 passos) →
+  re-empacotar, e o carimbo virou `b9877095b4d0` == HEAD == `origin/Nuclear`. **Manutenção do
+  servidor:** os `nuclear.zip.bak*` foram podados de 18 para 2 (ficaram `bak-pre-1.7.4` = b16 e
+  `bak-pre-1.7.3` = b15), liberando ~9 GB — o disco saiu de **89% → 88%**, fechando a pendência
+  que se arrastava desde a b14. Compilado em `build_nuclear_2d` (container `blender`, preset
+  `nuclear_2d.cmake`, ninja **-j2** por causa da RAM disputada com duas GUIs abertas do usuário).
+  Smoke 2D ALL PASS; staging podado 1175 MB → 865 MB; zip de **340 MB** (357.250.470 bytes);
+  verify-zip (updater + 2615 arquivos de `scipy`, sem peso morto 3D) + check-manifest OK.
+  Publicado em duas fases (`nuclear.zip.new` + `version.json.new` → sha conferido no servidor →
+  **os dois `mv` no mesmo comando**, para nunca existir instante com manifesto e zip descasados);
+  sha256 do zip live == manifesto live == resposta pública ==
+  `86a0413710e257405f4d4553e3c6f9a328a4292db61eee3ec5d53c00922346ac`, e o `content-length` público
+  confere. Backup da 1.7.3/b16: `nuclear.zip.bak-pre-1.7.4`. `ping.php`/`instalarNuclear.sh` não
+  tocados.
+
+- **Nuclear 1.7.3 (Beta) — `NUCLEAR_BUILD = 16` — PUBLICADO (2026-07-28), superado pela 1.7.4.** PATCH que fecha a
   lacuna estrutural exposta pela 1.7.2: **o updater que aplica uma release é o da versão
   ANTERIOR**, então toda mudança em como o `.desktop` é escrito chega uma release atrasada. Na
   prática: a b15 trocou o template do lançador para `2D_Animation`, mas quem aplicou a b15 foi o
@@ -774,27 +843,41 @@ Atualizado em 2026-07-28.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.7.3 (Beta) — `NUCLEAR_BUILD = 16` (2026-07-28, deploy
+- **Versão em produção:** Nuclear 1.7.4 (Beta) — `NUCLEAR_BUILD = 17` (2026-07-31, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live e com a resposta pública).
-  Máquinas em qualquer build ≤ 15 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  Máquinas em qualquer build ≤ 16 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
   1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → 1.7.0/b13 (2026-07-27) →
-  1.7.1/b14 (2026-07-27) → 1.7.2/b15 (2026-07-28) → **1.7.3/b16 (2026-07-28)**.
-- **nuclear.zip (b10, em produção):** 646.600.712 bytes, sha256
-  `22c5eb30e4d35058f6cb6977972db781caa373a14abaec71017b2f3aee65cf25` — **refresh do banner do
-  updater (2026-07-06), mesmo build/version**; o zip inicial da 1.5.0 (646.626.577 bytes, sha256
-  `8494b0a702652dd179faac27c90c51e3d3dbad63c1a3fc314374252c111335f1`) foi substituído sem bump.
-  Auto-contido por construção (updater + deps Python do fork no `bin`); verify-zip + check-manifest
-  OK antes de cada publish. Backups no servidor: `nuclear.zip.bak-pre-1.5.0-updaterfix` (zip
-  1.5.0/b10 inicial), `nuclear.zip.bak-pre-1.5.0` (zip 1.4.4/b9 anterior),
-  `nuclear.zip.bak-pre-1.4.4` (zip 1.4.3/b8), `nuclear.zip.bak-pre-1.4.3` (zip 1.4.2/b7),
-  `nuclear.zip.bak-pre-1.4.2` (zip 1.3.2/b6), `nuclear.zip.bak-pre-1.3.0` (zip 1.3.0/b4).
-- **Build dir:** `Nuclear/build` nesta máquina (checkout `Nuclear-git/Nuclear`), ou
-  `~/Documentos/GitHub/build_nuclear_full` na máquina primária (out-of-source; container distrobox
-  **`blender`** — ou `blenderdev` com toolchain reconstruído via dnf se o `blender` corromper,
-  ver entrada 1.4.4/b9). `ninja -j2 nice`. Empacotamento manual: `cp -al bin Nuclear` → **rm
-  `Nuclear/versions`+`Nuclear/current`** (relíquias de auto-update ~5GB) → stamp → `zip -r`
-  (deps já no `bin`). ⚠️ O `nuclear_release.sh` não exclui `versions/current` sozinho.
+  1.7.1/b14 (2026-07-27) → 1.7.2/b15 (2026-07-28) → 1.7.3/b16 (2026-07-28) →
+  **1.7.4/b17 (2026-07-31)**.
+- **nuclear.zip (b17, em produção):** 357.250.470 bytes, sha256
+  `86a0413710e257405f4d4553e3c6f9a328a4292db61eee3ec5d53c00922346ac` (2026-07-31). Auto-contido
+  por construção (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes de
+  cada publish. **Backups no servidor: só os 2 mais recentes** — `nuclear.zip.bak-pre-1.7.4` (zip
+  1.7.3/b16) e `nuclear.zip.bak-pre-1.7.3` (zip 1.7.2/b15). Os outros 16 foram podados em
+  2026-07-31 com autorização do usuário (eram ~10,7 GB acumulados desde a b1, com o disco a 89%);
+  **a política agora é guardar dois**, o que mantém rollback de duas versões. Apagar um `.bak`
+  antigo faz parte da rotina de publish — não deixe voltar a acumular.
+- **Build dir:** `~/Documentos/GitHub/build_nuclear_2d` nesta máquina (out-of-source, preset
+  `nuclear_2d.cmake`; container distrobox **`blender`** — ou `blenderdev` com toolchain
+  reconstruído via dnf se o `blender` corromper, ver entrada 1.4.4/b9). `nice ninja -j2` (o
+  `nuclear_release.sh` usa `-j3`; com GUIs do usuário abertas confira `free -m` antes e prefira
+  `-j2`, para um OOM não matar as janelas dele). ⚠️ **O default de `--build-dir` do
+  `nuclear_release.sh` está errado** — ele resolve para `~/Documentos/build_nuclear_2d` (dois
+  `dirname` a partir do repo), então **passe `--build-dir` sempre**. Empacotamento manual, se for
+  fazer à mão: `cp -al bin Nuclear` → **rm `Nuclear/versions`+`Nuclear/current`** (relíquias de
+  auto-update ~5GB) → stamp → `zip -r` (deps já no `bin`). O `nuclear_release.sh` **já faz** essa
+  poda sozinho desde a b14 (`rm -rf "$STAGE_DIR/versions" "$STAGE_DIR/current"`, mais o
+  `nuclear_prune_package.sh`) — a nota antiga que dizia o contrário estava desatualizada.
+- ⚠️ **Pushe os commits ANTES de buildar o release.** O `buildinfo.cmake` do upstream carimba o
+  binário com `git rev-parse @{u}` (o upstream tracking branch), **não** com o HEAD local: com
+  commits só locais, o `build hash` do splash e do relatório de crash aponta para a release
+  anterior. Fluxo certo: commit de release → `git push` → `ninja install` (regenera o buildinfo e
+  re-linka, ~6 passos) → empacotar. Custou um re-empacotamento na 1.7.4.
+- **Publique em duas fases:** suba `nuclear.zip.new` **e** `version.json.new`, confira o sha256 do
+  zip no servidor, e só então faça **os dois `mv` no mesmo comando `ssh`** — assim nunca existe um
+  instante com manifesto e zip descasados (subir o manifesto antes faria o updater baixar o zip
+  velho e falhar no checksum; subir só o zip faria o inverso).
 - **Instalador versionado:** publicado em `instalarNuclear-versionado.sh` (o `.sh` antigo
   segue sendo o flat).
 - **Telas:** diálogos fixos (`invoke_props_dialog`); primeira checagem 3 s após abrir;
