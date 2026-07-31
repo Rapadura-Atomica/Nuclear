@@ -44,6 +44,7 @@
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meta_types.h"
+#include "DNA_modifier_types.h"
 #include "DNA_movieclip_types.h"
 #include "DNA_node_types.h"
 #include "DNA_constraint_types.h"
@@ -3346,6 +3347,25 @@ static size_t animdata_filter_dopesheet_ob(bAnimContext *ac,
         if (fpeg->rig != nullptr && fpeg->rig->adt != nullptr) {
           tmp_items += animfilter_block_data(ac, &tmp_data, &fpeg->rig->id, filter_mode);
         }
+      }
+    }
+
+    /* Nuclear deform curves: same idea for the "Curve" modifier. Bending a limb keys the *curve*
+     * data-block, which lives on a separate object the animator never selects (posing happens with
+     * the drawing selected, through the control-point gizmos). Without this the keyframes are
+     * invisible in the Dope Sheet and the bend looks like it was never keyed. */
+    LISTBASE_FOREACH (ModifierData *, md, &ob->modifiers) {
+      if (md->type != eModifierType_GreasePencilCurve) {
+        continue;
+      }
+      const GreasePencilCurveModifierData *cmd =
+          reinterpret_cast<const GreasePencilCurveModifierData *>(md);
+      if (cmd->object == nullptr || cmd->object->data == nullptr) {
+        continue;
+      }
+      ID *curve_id = static_cast<ID *>(cmd->object->data);
+      if (GS(curve_id->name) == ID_CU_LEGACY && BKE_animdata_from_id(curve_id) != nullptr) {
+        tmp_items += animfilter_block_data(ac, &tmp_data, curve_id, filter_mode);
       }
     }
   }
