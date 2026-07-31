@@ -354,7 +354,7 @@ InterpolateOpData *InterpolateOpData::from_operator(const bContext &C, const wmO
       break;
   }
 
-  bool found_mapping = false;
+  Vector<int> mapped_layers;
   data->layer_data.reinitialize(grease_pencil.layers().size());
   data->layer_mask.foreach_index([&](const int layer_index) {
     const Layer &layer = grease_pencil.layer(layer_index);
@@ -367,14 +367,27 @@ InterpolateOpData *InterpolateOpData::from_operator(const bContext &C, const wmO
                                                                  data->exclude_breakdowns,
                                                                  use_selection,
                                                                  layer_data.curve_pairs);
-    found_mapping = found_mapping || has_curve_mapping;
+    if (has_curve_mapping) {
+      mapped_layers.append(layer_index);
+    }
   });
 
   /* No mapping between frames was found. */
-  if (!found_mapping) {
+  if (mapped_layers.is_empty()) {
     MEM_delete(data);
     return nullptr;
   }
+
+  /* Keep only the layers that have an interpolatable frame interval. A layer without one has no
+   * curve pairs, so interpolating it yields empty geometry -- and every user of the mask acts on
+   * the layer regardless: #grease_pencil_interpolate_init inserts an (empty) breakdown keyframe in
+   * it and #grease_pencil_interpolate_update then overwrites whatever drawing is on that frame
+   * with nothing. Confirming the operator does not restore it (only cancelling does), so the layer
+   * would silently lose its drawing from the current frame onwards. With "All Layers" this hits
+   * any layer whose exposure ends before the current frame -- routine in cut-out rigs, where a
+   * piece mixes animated line layers with held fills. #GREASE_PENCIL_OT_interpolate_sequence skips
+   * such layers for the same reason; masking here gives the modal operator the same guarantee. */
+  data->layer_mask = IndexMask::from_indices(mapped_layers.as_span(), data->layer_mask_memory);
 
   const std::optional<FramesMapKeyIntervalT> active_layer_interval = find_frames_interval(
       active_layer, current_frame, data->exclude_breakdowns);
@@ -897,12 +910,17 @@ static wmOperatorStatus grease_pencil_interpolate_invoke(bContext *C,
     grease_pencil_interpolate_exit(*C, *op);
     return OPERATOR_CANCELLED;
   }
-  InterpolateOpData &opdata = *static_cast<InterpolateOpData *>(op->customdata);
 
   /* Set cursor to indicate modal operator. */
   WM_cursor_modal_set(&win, WM_CURSOR_EW_SCROLL);
 
-  grease_pencil_interpolate_status_indicators(*C, opdata);
+  /* Fill the freshly created keyframes with the interpolation at the starting factor. #init only
+   * *creates* them (empty), and the modal handler first fills them on a MOUSEMOVE -- so confirming
+   * right away (invoking from a menu and pressing Enter) used to leave every target keyframe
+   * empty, erasing the drawing at the current frame. This also makes the first thing the artist
+   * sees the actual result instead of a blank frame. Calling update covers the status indicators
+   * too. */
+  grease_pencil_interpolate_update(*C, *op);
 
   WM_event_add_notifier(C, NC_GPENCIL | NA_EDITED, nullptr);
 
