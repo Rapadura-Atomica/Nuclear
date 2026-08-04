@@ -125,5 +125,6 @@ Esses dois são dados, não código — atualizá-los via `scp` é permitido. `p
 - [`tools/nuclear_claude/CLAUDE.md`](nuclear_claude/CLAUDE.md) — fonte da verdade do
   sistema de auto-update (modelo de versão completo, formato do `version.json`,
   troubleshooting, estado atual).
-- [`.claude/agents/nuclear-release.md`](../.claude/agents/nuclear-release.md) — o agente
-  Claude que faz a mesma coisa, se preferir pedir pra ele em vez de rodar você mesmo.
+- `.claude/agents/nuclear-release.md` — o agente Claude que faz a mesma coisa, se preferir
+  pedir pra ele em vez de rodar você mesmo. **Não é versionado:** o diretório `.claude/` é
+  configuração por desenvolvedor (ver `.gitignore`), então cada máquina mantém a sua cópia.

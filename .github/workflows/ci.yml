@@ -1,0 +1,115 @@
+# Nuclear CI — formatting gate for the files a push or pull request touches.
+#
+# It runs the very same tools as `make format` (clang-format for C/C++/shaders, autopep8
+# for Python), pinned to the versions the maintenance scripts require, so the CI can never
+# ask for something the local formatter would not produce.
+#
+# Only changed files are inspected: the repository carries Blender's full history (~6 GB)
+# and 2.4 GB of precompiled libraries in LFS, so the checkout is shallow and skips both
+# submodules and LFS — the formatters only need the working tree.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Formatação (arquivos alterados)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout raso (sem submódulos, sem LFS)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          submodules: false
+          lfs: false
+
+      - name: Resolver a base da comparação
+        id: base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # On pull_request the checkout is the merge commit, so HEAD^1 is the base.
+            base=$(git rev-parse HEAD^1)
+          elif [ -n "${BEFORE_SHA:-}" ] \
+            && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] \
+            && git fetch --no-tags --quiet --depth=1 origin "$BEFORE_SHA" 2>/dev/null; then
+            base=$BEFORE_SHA
+          elif git rev-parse -q --verify HEAD^ >/dev/null; then
+            # Fallback for a first push on a new branch: inspect the tip commit alone.
+            base=$(git rev-parse HEAD^)
+          else
+            base=""
+          fi
+          echo "sha=$base" >> "$GITHUB_OUTPUT"
+          echo "Base: ${base:-<nenhuma, nada a comparar>}"
+
+      - name: Listar os arquivos alterados
+        id: changed
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE_SHA" ]; then
+            : > changed.txt
+          else
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD > changed.txt
+          fi
+          # These extension lists mirror the ones inside the two maintenance scripts.
+          # Excluded directories (extern/, etc.) are filtered by the scripts themselves.
+          grep -E '\.(c|cc|cpp|cxx|h|hh|hpp|hxx|m|mm|osl|glsl|msl|metal)$' changed.txt > c_files.txt || true
+          grep -E '\.py$' changed.txt > py_files.txt || true
+          echo "has_c=$([ -s c_files.txt ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          echo "has_py=$([ -s py_files.txt ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          printf 'Alterados: %s | C/C++: %s | Python: %s\n' \
+            "$(wc -l < changed.txt)" "$(wc -l < c_files.txt)" "$(wc -l < py_files.txt)"
+
+      - name: Instalar Python
+        if: steps.changed.outputs.has_c == 'yes' || steps.changed.outputs.has_py == 'yes'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar os formatadores nas versões exigidas pelo repositório
+        if: steps.changed.outputs.has_c == 'yes' || steps.changed.outputs.has_py == 'yes'
+        run: |
+          set -euo pipefail
+          # Versions come from VERSION_MIN/VERSION_MAX_RECOMMENDED in the scripts under
+          # tools/utils_maintenance/ — bump them here whenever those change.
+          python -m pip install --quiet "clang-format==20.1.8" "autopep8==2.3.1"
+
+      - name: clang-format nos arquivos C/C++ alterados
+        if: steps.changed.outputs.has_c == 'yes'
+        run: xargs -a c_files.txt python tools/utils_maintenance/clang_format_paths.py
+
+      - name: autopep8 nos arquivos Python alterados
+        if: steps.changed.outputs.has_py == 'yes'
+        run: xargs -a py_files.txt python tools/utils_maintenance/autopep8_format_paths.py
+
+      - name: Conferir se os formatadores reescreveram algo
+        if: steps.changed.outputs.has_c == 'yes' || steps.changed.outputs.has_py == 'yes'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(cat c_files.txt py_files.txt)
+          if git diff --quiet -- "${files[@]}"; then
+            echo "Formatação OK."
+            exit 0
+          fi
+          echo "::error::Arquivos fora do padrão. Rode 'make format' e faça commit do resultado."
+          git --no-pager diff --stat -- "${files[@]}"
+          echo "----- diff completo -----"
+          git --no-pager diff -- "${files[@]}"
+          exit 1

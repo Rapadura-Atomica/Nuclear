@@ -944,14 +944,15 @@ static void insert_action_keys(bAnimContext *ac, short mode)
   }
   /* Grease Pencil layers ALWAYS hold the exposed drawing, regardless of "Additive Drawing"
    * (#GP_TOOL_FLAG_RETAIN_LAST). Upstream ties the two together, so with that option off -- its
-   * factory default -- pressing I over the dope sheet inserts an EMPTY keyframe on every channel it
-   * touches, which erases the drawing from that frame onwards. With `type='ALL'` that is every
-   * visible channel of every listed object: on a cut-out character it blanks the whole cast in one
-   * keystroke (measured on the reference rig: 128 keyframes over 54 pieces, 43 visible pieces -> 0).
-   * "Insert keyframe" must never destroy artwork, so in Nuclear it means "hold what is exposed here"
-   * -- the Toon Boom behaviour. #insert_grease_pencil_key still inserts a blank when there is
-   * genuinely nothing to hold (no active frame, or an end frame). The flag keeps its other job:
-   * seeding a newly drawn frame with the previous strokes (see grease_pencil_draw_ops.cc). */
+   * factory default -- pressing I over the dope sheet inserts an EMPTY keyframe on every channel
+   * it touches, which erases the drawing from that frame onwards. With `type='ALL'` that is
+   * every visible channel of every listed object: on a cut-out character it blanks the whole
+   * cast in one keystroke (measured on the reference rig: 128 keyframes over 54 pieces, 43
+   * visible pieces -> 0). "Insert keyframe" must never destroy artwork, so in Nuclear it means
+   * "hold what is exposed here" -- the Toon Boom behaviour. #insert_grease_pencil_key still
+   * inserts a blank when there is genuinely nothing to hold (no active frame, or an end frame).
+   * The flag keeps its other job: seeding a newly drawn frame with the previous strokes (see
+   * grease_pencil_draw_ops.cc). */
   const bool grease_pencil_hold_previous = true;
 
   /* insert keyframes */

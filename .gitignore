@@ -1,12 +1,15 @@
 # generic files to ignore
 .*
 
-# ...but DO version the project agents under .claude/agents/ (the `.*` above would
-# otherwise hide all of .claude/). Everything else in .claude/ (e.g. settings.local.json)
-# stays ignored.
-!/.claude/
-/.claude/*
-!/.claude/agents/
+# ...but the GitHub configuration IS versioned. Without this exception the `.*` rule above
+# hides `.github/` entirely, so a newly added workflow would silently never be committed
+# (the files already tracked there predate the rule, which is why they survived).
+!/.github/
+
+# Claude Code's per-developer configuration (agents, commands, local settings) is kept
+# out of version control: each developer maintains their own. The `.*` rule above already
+# hides it; this entry is explicit so the intent is not mistaken for an oversight.
+/.claude/
 
 # python temp paths
 __pycache__/
