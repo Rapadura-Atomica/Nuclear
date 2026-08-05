@@ -50,6 +50,9 @@ _BANK_START = 100000
 # Auto Rig's two-peg pattern: a skeleton piece binds to its own drawing peg under the joint.
 _DRAW_PEG_SUFFIX = " (ctrl)"
 _PEG_SUFFIX = "_curva"
+# Stamped on the curve OBJECT by the C bind/setup: the rest control points, 9 floats per Bezier
+# point (handle_left, co, handle_right), in curve-local space.
+_REST_PROP = "nuclear_curve_rest"
 
 
 # --------------------------------------------------------------------------- #
@@ -419,6 +422,63 @@ def _stale_bind(ob):
     return cells_unbound, cells_total, loose
 
 
+def _is_animated(curve_ob):
+    for holder in (curve_ob, curve_ob.data):
+        ad = getattr(holder, "animation_data", None)
+        if ad is not None and (ad.action is not None or ad.drivers):
+            return True
+    return False
+
+
+@contextlib.contextmanager
+def _at_rest(curve_ob):
+    """Put an ANIMATED curve back on its stamped rest shape for the duration of the block.
+
+    Binding takes the curve's current shape as the new rest. For a curve the artist shaped by
+    hand that is exactly right, but an animated curve is *posed* at whatever frame happens to be
+    current — binding there would nail the pose down as the rest and leave the limb permanently
+    bent. Measured on the EP06 dinosaur at frame 1: the tail curve sits 0.563 away from its rest,
+    the shin 0.077, the third 0.214.
+
+    The action is detached (the evaluated curve is what the bind samples, and the animation would
+    write straight over the restored points), the rest is restored, and both are put back
+    afterwards. Yields True when it had to do this."""
+    rest = curve_ob.get(_REST_PROP)
+    spline = _spline(curve_ob)
+    if not _is_animated(curve_ob) or rest is None or spline is None \
+            or len(rest) < len(spline.bezier_points) * 9:
+        yield False
+        return
+
+    posed = [(bp.co.copy(), bp.handle_left.copy(), bp.handle_right.copy())
+             for bp in spline.bezier_points]
+    ad = curve_ob.data.animation_data
+    action = ad.action if ad else None
+    slot = getattr(ad, "action_slot", None) if ad else None
+    if ad is not None:
+        ad.action = None
+    for i, bp in enumerate(spline.bezier_points):
+        bp.handle_left = rest[i * 9 + 0], rest[i * 9 + 1], rest[i * 9 + 2]
+        bp.co = rest[i * 9 + 3], rest[i * 9 + 4], rest[i * 9 + 5]
+        bp.handle_right = rest[i * 9 + 6], rest[i * 9 + 7], rest[i * 9 + 8]
+    curve_ob.data.update_tag()
+    bpy.context.view_layer.update()
+    try:
+        yield True
+    finally:
+        for bp, (co, hl, hr) in zip(spline.bezier_points, posed):
+            bp.co, bp.handle_left, bp.handle_right = co, hl, hr
+        if ad is not None:
+            ad.action = action
+            if slot is not None:
+                try:
+                    ad.action_slot = slot
+                except Exception:
+                    pass
+        curve_ob.data.update_tag()
+        bpy.context.view_layer.update()
+
+
 def _bind(context, ob, md, unbind=False):
     """Bind (or unbind) the piece, keeping the curve's own rig wiring intact.
 
@@ -428,8 +488,16 @@ def _bind(context, ob, md, unbind=False):
     dropped again — its ``parentinv`` already preserves the world matrix."""
     curve_ob = md.object
     had_constraint = curve_ob is not None and _followpeg(curve_ob) is not None
-    with _as_active(context, ob):
-        bpy.ops.object.greasepencil_curve_bind(modifier=md.name, unbind=unbind)
+    if curve_ob is None or unbind:
+        with _as_active(context, ob):
+            bpy.ops.object.greasepencil_curve_bind(modifier=md.name, unbind=unbind)
+    else:
+        with _at_rest(curve_ob) as restored:
+            if restored:
+                print("[Deform Curve] %s: curva animada -> bindando contra o repouso carimbado"
+                      % ob.name)
+            with _as_active(context, ob):
+                bpy.ops.object.greasepencil_curve_bind(modifier=md.name, unbind=False)
     if curve_ob is not None and had_constraint and curve_ob.parent is not None:
         curve_ob.parent = None
         curve_ob.matrix_parent_inverse = mathutils.Matrix.Identity(4)
