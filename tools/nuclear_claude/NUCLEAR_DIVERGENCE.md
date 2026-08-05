@@ -47,6 +47,32 @@ revisão se as APIs do core que eles consomem mudarem.
 ### Add-ons / scripts de startup
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs (+ `compute_grouped_layout` / operador `node.nuclear_peg_auto_layout` "Auto Layout": agrupa o grafo em frames por região do corpo — Braço D/E, Cabeça, Perna D/E, Tronco, Soltos — empacotados horizontalmente, derivados da hierarquia)
+- **Overlay de seleção do rig no viewport** (`nuclear_peg_graph.py`, 2026-08-05) — a peg e o objeto
+  passam a ter CORES DIFERENTES, no esquema do Harmony: **verde = peg** (o pivô, as outras pegs e a
+  arte que ela move) e **azul = objeto selecionado** (o outline nativo, que o tema Nuclear já pinta
+  de azul). Antes o overlay da peg usava `(0.16, 0.58, 1.00)` contra uma seleção de tema
+  `(0.15, 0.55, 1.00)` — a MESMA cor, então não havia distinção nenhuma para o artista fazer.
+  Junto, três correções na forma que a peg mostra:
+  (1) lê o objeto **avaliado**, então Deform Curve/Contour/qualquer modifier e a troca de célula da
+  Cell Library entram — lendo `ob.data` a forma ficava onde o desenho estava ANTES de deformar
+  (medido: 1,95 unidade de erro no `rabo` do dinossauro);
+  (2) o contorno deixou de ser um **convex hull** (que numa mão atravessa por cima dos dedos e numa
+  boca tapa a abertura) e passou a ser o **próprio traço do desenho**, exato por construção e uma
+  marca de tipo diferente do outline fino, que é o que separa peg de objeto ao olhar;
+  (3) respeita **masks**: camada coberta por matte do mesmo objeto é pulada (mesmo critério do
+  `layer_is_covered_by_own_mattes` em C++, com as mesmas recusas — cross-object, invertida,
+  Auto-Patch, matte que não desenha, e a salvaguarda de masks encadeadas), e o caso **cross-object**
+  é RECORTADO de verdade contra a área do matte (rasteriza o matte numa grade de tela, inunda o
+  exterior, o que sobra é o interior). Medido: sem o filtro, 36% do traço realçado do dinossauro
+  estava sob mask; `detalhe.torso` corta 51%, `antebraco.e` 64%, e as pupilas 0% (estão inteiras
+  dentro do olho — o controle de que não corta o que não deve).
+  Custo: 182 ms → **1,4 ms** por redraw (leitura em bloco via `foreach_get`/`curve_offsets` +
+  projeção NumPy; peça com modifier nunca é cacheada, porque deforma sem mexer em `matrix_world`).
+  ⚠️ O `_load_post` **tem** que continuar `@bpy.app.handlers.persistent`: sem o decorador o handler
+  é descartado ao carregar arquivo e todo o `_load_post` do peg_graph morre em silêncio (keymap do
+  Ctrl+B, msgbus da peg ativa, limpeza de caches). Ele também liga `show_outline_selected` (com um
+  tick de atraso, senão as screens ainda são as do arquivo anterior): esse flag é salvo DENTRO do
+  arquivo e os rigs de produção foram gravados com ele off, o que deixava só o verde na tela.
 - `scripts/startup/nuclear_squash_gizmo.py` — gizmos de squash & stretch (anchor/tip) no viewport
 - `scripts/startup/nuclear_cell_library.py` — Drawing Substitution (Fase 1): banco de cells fora-de-range + slider/atalhos (ver `CellLibraryFeature.md`)
 - `scripts/startup/nuclear_rig_auto.py` — Auto Rig ("esqueleto auto + ligação em lote"): operador `object.nuclear_rig_auto_skeleton` (casa peças por nome contra ontologia humanoide PT → monta espinha+membros num clique; não-casados ficam soltos) + `object.nuclear_rig_link_to_parent` (prende os selecionados sob o peg do ativo, padrão parent-to-active) + painel `VIEW3D_PT_nuclear_rig_auto` (aba "Rig"). Junta/pivô sempre geométrica (centróide da sobreposição filho∩pai). Python puro sobre a API de PegRig; refino no Peg Graph. Padrão do estúdio: **toda peça ganha uma peg** (não-reconhecidas viram peg raiz no composite). Validado headless vs `Carolina.blend` (56 pegs = 15 esqueleto + 41 acessório, pivôs nas juntas). Sem tool de toolbar (não edita `space_toolsystem_toolbar.py`). Doc: `tools/nuclear_claude/RigAutoFeature.md` (inclui a convenção de nomes). **Não cria ponto quente novo na §2.**

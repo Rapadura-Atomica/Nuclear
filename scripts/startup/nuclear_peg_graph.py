@@ -1653,8 +1653,42 @@ def _set_render_border_ctrl_b(active):
 
 
 @bpy.app.handlers.persistent
+def _enable_selection_outline():
+    """Turn Blender's selection outline back on in every 3D viewport of a rig file.
+
+    Nuclear shows a rig with two marks, and they only work as a pair: GREEN is the peg (our overlay,
+    always drawn) and BLUE is the selected object (Blender's own outline, painted blue by the
+    Nuclear theme). `show_outline_selected` is saved INSIDE the .blend/.nuc, and production rigs
+    were authored with it off -- so the blue half simply never appeared and every selection looked
+    like a peg. Session-only: nothing is written back to the file.
+    """
+    if not bpy.data.pegrigs:
+        return 0
+    changed = 0
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            if area.type != 'VIEW_3D':
+                continue
+            for space in area.spaces:
+                overlay = getattr(space, "overlay", None)
+                if overlay is not None and getattr(overlay, "show_outline_selected", True) is False:
+                    overlay.show_outline_selected = True
+                    changed += 1
+    return changed
+
+
+def _enable_selection_outline_deferred():
+    _enable_selection_outline()
+    return None
+
+
+@bpy.app.handlers.persistent
 def _load_post(*_args):
     _ensure_peg_pose_keymap()
+    # Deferred by a tick: at `load_post` the window still carries the previous file's screens, so
+    # flipping the overlay here would set it on the wrong ones and the loaded file would keep the
+    # outline off. Same trick the updater uses to fix its own launcher on startup.
+    bpy.app.timers.register(_enable_selection_outline_deferred, first_interval=0.1)
     _set_render_border_ctrl_b(False)  # keep Ctrl+B free for peg navigation
     _subscribe_active_peg()  # msgbus subscriptions are cleared on file load; re-arm.
     # Object names / rig pointers from the previous file are stale now.
@@ -1682,6 +1716,7 @@ def _save_pre(*_args):
 # -------------------------------------------------------------------------------------------------
 
 _PIVOT_DRAW_HANDLE = None
+_SILHOUETTE_DRAW_HANDLE = None
 
 
 def _peg_pivot_world(rig, idx):
@@ -1693,12 +1728,17 @@ def _peg_pivot_world(rig, idx):
     return pw @ (mathutils.Vector(peg.pivot) + mathutils.Vector(peg.translation))
 
 
-# Harmony-style colours: the posing/animation chain reads GREEN (rigging mode would be red).
+# Harmony-style colours, and the rule behind them: GREEN is the peg (the control), BLUE is the
+# drawing (the object). Blender's own selection outline is already blue here -- the Nuclear theme
+# sets `object_selected`/`object_active` to blue -- so nothing of ours may be blue, or the peg and
+# the selected object become the same colour and you cannot tell which one you are looking at.
+# That is exactly what used to happen: the peg outline was (0.16, 0.58, 1.00) against a theme
+# selection of (0.15, 0.55, 1.00).
 _CHAIN_GREEN = (0.25, 0.90, 0.35, 0.95)     # the live root->active hierarchy chain
 _CLIMB_GREEN = (0.55, 1.00, 0.55, 1.00)     # the segment the Ctrl+B climb has walked (brighter)
-_PEG_AMBER = (1.00, 0.75, 0.10, 1.00)       # the active peg's articulation (the "you are here")
-_PEG_FAINT = (1.00, 0.70, 0.10, 0.35)       # other pegs, for context
-_PEG_BLUE = (0.16, 0.58, 1.00, 0.95)        # outline around every drawing the active peg moves
+_PEG_MARK = (0.35, 1.00, 0.45, 1.00)        # the active peg's articulation (the "you are here")
+_PEG_FAINT = (0.35, 1.00, 0.45, 0.30)       # other pegs of the rig, for context
+_PEG_ART = (0.20, 0.85, 0.35, 0.90)         # artwork of every drawing the active peg moves
 
 
 def _view_ring(center, right, up, radius, segments=32):
@@ -1748,7 +1788,8 @@ _OUTLINE_LOCAL_CACHE = {}
 # also cleared on structural change (rebuild) and selection change (msgbus), so they persist across
 # the many idle/pose redraws in between instead of rescanning the scene every frame.
 _CONTROLLED_CACHE = {}   # (rig_ptr, sel_idx) -> [object names] the selected peg moves
-_HULL_CACHE = {}         # ob.name -> (frame, mw_key, view_key, screen_loop)
+_HULL_CACHE = {}         # ob.name -> (frame, mw_key, view_key, screen_segments)
+_MATTE_MASK_CACHE = {}   # cross-object matte silhouettes, keyed by pose+frame+view
 _SQUASH_BADGE_CACHE = {}  # rig_ptr -> (peg_count, {name: use_squash}); refreshed each depsgraph tick
 
 
@@ -1771,20 +1812,150 @@ def _invalidate_overlay_caches(*_args):
     keyed by frame and self-refreshes, so it is left intact here."""
     _CONTROLLED_CACHE.clear()
     _HULL_CACHE.clear()
+    _MATTE_MASK_CACHE.clear()
 
 
-def _gp_local_points(ob, cap=600):
-    """Capped object-LOCAL points of `ob`'s currently-visible Grease Pencil strokes at the current
-    frame. The view- and pose-independent part of the outline, so it can be cached."""
-    data = getattr(ob, "data", None)
-    if ob.type != 'GREASEPENCIL' or data is None:
-        return []
+def _node_is_drawn(data, name):
+    """True when `name` names a layer (or a group holding one) that actually draws."""
+    for layer in data.layers:
+        if layer.name == name:
+            return not layer.hide and getattr(layer, "opacity", 1.0) >= 1e-4
+    for layer in data.layers:
+        group = getattr(layer, "parent_group", None)
+        while group is not None:
+            if group.name == name:
+                if not layer.hide and getattr(layer, "opacity", 1.0) >= 1e-4:
+                    return True
+                break
+            group = getattr(group, "parent_group", None)
+    return False
+
+
+def _layer_is_covered_by_own_mattes(data, layer):
+    """True when everything this layer still shows sits inside a matte of the SAME object -- so the
+    highlight can skip it and let the matte's own strokes stand for the piece.
+
+    Without this the highlight traces artwork the mask cut away: on a cut-out rig the colour layer
+    is masked by the line layer, and its fill strokes spill well past the outline, so the green
+    would sit outside the drawing. This mirrors `layer_is_covered_by_own_mattes` in
+    `overlay_grease_pencil.hh`, and bails out on the same cases:
+
+    - a CROSS-OBJECT matte belongs to another piece, so dropping the layer would lose area only it
+      draws;
+    - an INVERTED mask shows what lies OUTSIDE the matte;
+    - AUTO-PATCH cuts only the stroke and keeps the fill, so the matte does not stand for the layer;
+    - a matte pointing at something that is not drawn cuts everything, which is not "covered".
+    """
+    if not getattr(layer, "use_masks", False):
+        return False
+
+    found = False
+
+    def masks_are_safe(masks):
+        nonlocal found
+        for mask in masks:
+            if mask.hide:
+                continue  # a disabled mask cuts nothing, so it cannot make us unsafe
+            if getattr(mask, "object", None) is not None:
+                return False
+            if mask.invert or getattr(mask, "use_auto_patch", False):
+                return False
+            if not _node_is_drawn(data, mask.name):
+                return False
+            found = True
+        return True
+
+    if not masks_are_safe(layer.mask_layers):
+        return False
+    group = getattr(layer, "parent_group", None)
+    while group is not None:
+        if not masks_are_safe(getattr(group, "mask_layers", ())):
+            return False
+        group = getattr(group, "parent_group", None)
+    return found
+
+
+def _layer_cross_object_mattes(data, layer):
+    """Objects whose artwork this layer is clipped against, or None when there is no cut this
+    scheme can express (no mask, an inverted one, or Auto-Patch, which keeps the fill)."""
+    if not getattr(layer, "use_masks", False):
+        return None
+    mattes = []
+
+    def collect(masks):
+        for mask in masks:
+            if mask.hide:
+                continue
+            if mask.invert or getattr(mask, "use_auto_patch", False):
+                return False
+            ob = getattr(mask, "object", None)
+            if ob is not None and ob.type == 'GREASEPENCIL':
+                mattes.append(ob)
+        return True
+
+    if not collect(layer.mask_layers):
+        return None
+    group = getattr(layer, "parent_group", None)
+    while group is not None:
+        if not collect(getattr(group, "mask_layers", ())):
+            return None
+        group = getattr(group, "parent_group", None)
+    return mattes or None
+
+
+def _gp_local_strokes(ob):
+    """Object-LOCAL geometry of `ob`'s visible Grease Pencil strokes at the current frame, as
+    `(positions, offsets)`: an Nx3 NumPy array of points, and the stroke boundaries into it
+    (`offsets[i]:offsets[i+1]` is stroke i). None when there is nothing to draw.
+
+    Reads the EVALUATED object, so the silhouette follows what is actually drawn: a Deform Curve,
+    Contour/Envelope or any other modifier moves the artwork, and reading `ob.data` (the original)
+    left the peg outline sitting where the drawing used to be -- measured at 1.95 units off on the
+    dinosaur's `rabo`, which is most of the piece.
+
+    Keeps the stroke boundaries, so the highlight never joins the end of one stroke to the start
+    of the next -- which would draw lines across the gaps of a hand or a mouth.
+    """
+    if ob.type != 'GREASEPENCIL':
+        return None
+    try:
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        eval_ob = ob.evaluated_get(depsgraph)
+    except Exception:
+        eval_ob = ob
+    data = getattr(eval_ob, "data", None)
+    if data is None:
+        return None
+
+    import numpy as np
+
     frame = bpy.context.scene.frame_current
-    pts = []
+
+    # Masked layers whose matte belongs to this same object add nothing the matte does not already
+    # show -- but only skip them while something is left to stand for the piece, because masks
+    # chain (a line layer masked by the colour layer it masks back) and dropping every layer would
+    # leave the peg with no shape at all.
+    drawn = [lay for lay in data.layers
+             if not getattr(lay, "hide", False) and getattr(lay, "opacity", 1.0) >= 1e-4]
+    covered = {lay.name for lay in drawn if _layer_is_covered_by_own_mattes(data, lay)}
+    if covered and len(covered) < len(drawn):
+        skip = covered
+    else:
+        skip = frozenset()
+
+    chunks = []
     for layer in data.layers:
         if getattr(layer, "hide", False):
             continue
+        # A fully transparent layer draws nothing, and `hide` alone does not catch it.
+        if getattr(layer, "opacity", 1.0) < 1e-4:
+            continue
+        if layer.name in skip:
+            continue
+        mattes = _layer_cross_object_mattes(data, layer)
         # The drawing exposed at the current frame: the latest keyframe at or before `frame`.
+        # Cell Library banks its cells past frame 100000 and exposes the chosen one as an ordinary
+        # keyframe here, so a hand/mouth/eye swap is picked up by this same rule.
         drawing, best = None, None
         for fr in layer.frames:
             n = fr.frame_number
@@ -1792,65 +1963,249 @@ def _gp_local_points(ob, cap=600):
                 best, drawing = n, fr.drawing
         if drawing is None:
             continue
+        # Whole arrays at a time: a per-point Python loop over the strokes was most of the cost of
+        # this overlay, and it runs again on every redraw for any piece a modifier deforms.
         try:
-            strokes = drawing.strokes
+            attr = drawing.attributes.get("position")
+            n_pts = len(attr.data)
+            if n_pts < 2:
+                continue
+            pos = np.empty(n_pts * 3, dtype=np.float32)
+            attr.data.foreach_get("vector", pos)
+            offs = np.empty(len(drawing.curve_offsets), dtype=np.int32)
+            drawing.curve_offsets.foreach_get("value", offs)
         except Exception:
             continue
-        for stroke in (strokes or []):
-            for pt in stroke.points:
-                pts.append(pt.position.copy())
-    if len(pts) > cap:
-        pts = pts[::len(pts) // cap + 1]
-    return pts
+        chunks.append((pos.reshape(n_pts, 3), offs, tuple(mattes) if mattes else None))
+
+    if not chunks:
+        return None
+
+    # Group by matte set: layers that need no cut merge into one block, and each distinct set of
+    # cross-object mattes gets a block of its own, to be clipped against them later.
+    by_matte = {}
+    for pos, offs, mattes in chunks:
+        by_matte.setdefault(mattes, []).append((pos, offs))
+
+    blocks = []
+    for mattes, group in by_matte.items():
+        if len(group) == 1:
+            blocks.append((group[0][0], group[0][1], mattes))
+            continue
+        # Concatenate, shifting each layer's offsets so the stroke boundaries stay right (the last
+        # offset of a layer is its point count).
+        positions = np.concatenate([g[0] for g in group])
+        offsets = [group[0][1]]
+        base = int(group[0][1][-1])
+        for pos, offs in group[1:]:
+            offsets.append(offs[1:] + base)
+            base += int(offs[-1])
+        blocks.append((positions, np.concatenate(offsets), mattes))
+    return blocks
 
 
-def _gp_world_points(ob, cap=600):
-    """World-space points of `ob`'s currently-visible Grease Pencil strokes, sampled to at most `cap`.
-    Empty for a non-GP or empty object. Follows the object (matrix_world), which is how a Follow Peg
-    constraint poses a drawing. Caches the local points so posing only pays the matrix transform."""
+def _gp_world_strokes(ob, clip=True):
+    """World-space `(positions, offsets)` of `ob`'s visible strokes, or None.
+
+    Follows the object (matrix_world), which is how a Follow Peg constraint poses a drawing.
+    The local geometry is cached per frame ONLY for objects without modifiers: a modifier deforms
+    the drawing without touching `matrix_world`, so caching those would freeze the highlight at the
+    shape the piece had when the cache was filled.
+    """
     if ob.type != 'GREASEPENCIL' or getattr(ob, "data", None) is None:
-        return []
-    frame = bpy.context.scene.frame_current
-    entry = _OUTLINE_LOCAL_CACHE.get(ob.name)
-    if entry is None or entry[0] != frame:
-        entry = (frame, _gp_local_points(ob, cap))
-        _OUTLINE_LOCAL_CACHE[ob.name] = entry
+        return None
+    if ob.modifiers:
+        local = _gp_local_strokes(ob)
+    else:
+        frame = bpy.context.scene.frame_current
+        entry = _OUTLINE_LOCAL_CACHE.get(ob.name)
+        if entry is None or entry[0] != frame:
+            entry = (frame, _gp_local_strokes(ob))
+            _OUTLINE_LOCAL_CACHE[ob.name] = entry
+        local = entry[1]
+    if local is None:
+        return None
+
+    import numpy as np
     mw = ob.matrix_world
-    return [mw @ p for p in entry[1]]
+    mat = np.array([[mw[r][c] for c in range(4)] for r in range(4)], dtype=np.float64)
+    return [(positions @ mat[:3, :3].T + mat[:3, 3], offsets, mattes if clip else None)
+            for (positions, offsets, mattes) in local]
 
 
-def _screen_hull_loop(pts3d, region, rv3d):
-    """Closed loop of the 3D points whose 2D screen projection is on the convex hull (Andrew's
-    monotone chain). A silhouette-hugging outline around the drawing, not a bounding box. Returns the
-    loop (closed) as a list of Vectors, or None when too few points project on screen."""
-    proj = []
-    for p in pts3d:
-        s = view3d_utils.location_3d_to_region_2d(region, rv3d, p)
-        if s is not None:
-            proj.append((s.x, s.y, p))
-    if len(proj) < 3:
+_MATTE_MASK_CELL = 4.0     # matte grid resolution in pixels
+_MATTE_MASK_MAX = 110      # cap per axis, so a zoomed-in matte cannot blow the grid up
+
+
+def _project(world, region, rv3d):
+    """(sx, sy, on_screen) for an Nx3 array of world points, in region pixels."""
+    import numpy as np
+    pm = rv3d.perspective_matrix
+    mat = np.array([[pm[r][c] for c in range(4)] for r in range(4)], dtype=np.float64)
+    clip = world @ mat[:3, :3].T + mat[:3, 3]
+    w = world @ mat[3, :3] + mat[3, 3]
+    on_screen = w > 1e-9
+    w = np.where(on_screen, w, 1.0)
+    sx = (clip[:, 0] / w * 0.5 + 0.5) * region.width
+    sy = (clip[:, 1] / w * 0.5 + 0.5) * region.height
+    return sx, sy, on_screen
+
+
+def _screen_matte_mask(mattes, region, rv3d):
+    """Filled screen-space area of `mattes`, as `(mask, ox, oy, cell)` -- a boolean grid where True
+    means "inside the matte". None when the mattes draw nothing.
+
+    A cross-object mask keeps only what falls inside ANOTHER piece's artwork, so the highlight of
+    the masked layer has to be clipped against it or it traces strokes the artist cannot see (the
+    dinosaur's `detalhe.torso`, cut by `torso.004` and `pelvis.004`, is the case that shows it).
+    Unlike the same-object case there is no shortcut: the matte belongs to a different piece, so
+    skipping the layer would hand over someone else's shape.
+
+    The area is found by rasterizing the matte's strokes into a coarse grid and flooding the
+    OUTSIDE from the border -- what the flood cannot reach is the filled interior. That fills a
+    closed shape while leaving gaps that open outwards (between fingers, the hole of a mouth) out.
+    """
+    import numpy as np
+    from collections import deque
+
+    xs, ys = [], []
+    for matte_ob in mattes:
+        blocks = _gp_world_strokes(matte_ob, clip=False)
+        if not blocks:
+            continue
+        for world, offsets, _m in blocks:
+            sx, sy, on_screen = _project(world, region, rv3d)
+            if on_screen.any():
+                xs.append(sx[on_screen])
+                ys.append(sy[on_screen])
+    if not xs:
         return None
-    proj.sort(key=lambda e: (e[0], e[1]))
-
-    def cross(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-    lower = []
-    for e in proj:
-        while len(lower) >= 2 and cross(lower[-2], lower[-1], e) <= 0:
-            lower.pop()
-        lower.append(e)
-    upper = []
-    for e in reversed(proj):
-        while len(upper) >= 2 and cross(upper[-2], upper[-1], e) <= 0:
-            upper.pop()
-        upper.append(e)
-    hull = lower[:-1] + upper[:-1]
-    if len(hull) < 3:
+    sx = np.concatenate(xs)
+    sy = np.concatenate(ys)
+    if len(sx) < 3:
         return None
-    loop = [e[2] for e in hull]
-    loop.append(loop[0])
-    return loop
+
+    min_x, max_x = float(sx.min()), float(sx.max())
+    min_y, max_y = float(sy.min()), float(sy.max())
+    cell = max(_MATTE_MASK_CELL,
+               (max_x - min_x) / _MATTE_MASK_MAX,
+               (max_y - min_y) / _MATTE_MASK_MAX)
+    cols = int((max_x - min_x) / cell) + 3
+    rows = int((max_y - min_y) / cell) + 3
+    if cols < 3 or rows < 3:
+        return None
+    ox, oy = min_x - cell, min_y - cell   # one empty ring, so the flood always has a start
+
+    ink = np.zeros((rows, cols), dtype=bool)
+    cx = ((sx - ox) / cell).astype(np.int32)
+    cy = ((sy - oy) / cell).astype(np.int32)
+    np.clip(cx, 0, cols - 1, out=cx)
+    np.clip(cy, 0, rows - 1, out=cy)
+    ink[cy, cx] = True
+    # Thicken by one cell: the sampled points are not continuous, and a hole in the ink would let
+    # the outside flood leak into the matte and eat the whole piece.
+    ink[:-1, :] |= ink[1:, :]
+    ink[1:, :] |= ink[:-1, :]
+    ink[:, :-1] |= ink[:, 1:]
+    ink[:, 1:] |= ink[:, :-1]
+
+    outside = np.zeros((rows, cols), dtype=bool)
+    outside[0, 0] = True
+    queue = deque([(0, 0)])
+    while queue:
+        y, x = queue.popleft()
+        for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+            if 0 <= ny < rows and 0 <= nx < cols and not outside[ny, nx] and not ink[ny, nx]:
+                outside[ny, nx] = True
+                queue.append((ny, nx))
+    return ~outside, ox, oy, cell
+
+
+def _inside_matte(mask_info, sx, sy):
+    """Boolean array: which of the projected points fall inside the matte area."""
+    import numpy as np
+    mask, ox, oy, cell = mask_info
+    rows, cols = mask.shape
+    cx = ((sx - ox) / cell).astype(np.int32)
+    cy = ((sy - oy) / cell).astype(np.int32)
+    valid = (cx >= 0) & (cx < cols) & (cy >= 0) & (cy < rows)
+    out = np.zeros(len(sx), dtype=bool)
+    out[valid] = mask[cy[valid], cx[valid]]
+    return out
+
+
+def _matte_mask_cached(mattes, region, rv3d):
+    """#_screen_matte_mask with a cache: the flood fill is the one expensive step left, and the
+    mask only changes when the mattes move, the frame changes or the view does."""
+    vm = rv3d.view_matrix
+    key = (tuple(o.name for o in mattes),
+           bpy.context.scene.frame_current,
+           tuple(round(v, 6) for o in mattes for row in o.matrix_world for v in row),
+           tuple(round(vm[r][c], 6) for r in range(3) for c in range(3)),
+           round(vm[3][0], 4), round(vm[3][1], 4), round(vm[3][2], 4),
+           region.width, region.height)
+    if key in _MATTE_MASK_CACHE:
+        return _MATTE_MASK_CACHE[key]
+    if len(_MATTE_MASK_CACHE) > 64:
+        _MATTE_MASK_CACHE.clear()
+    info = _screen_matte_mask(mattes, region, rv3d)
+    _MATTE_MASK_CACHE[key] = info
+    return info
+
+
+def _screen_stroke_segments(strokes3d, region, rv3d):
+    """The piece's own strokes, projected to region pixels, as a flat list of segment endpoints.
+
+    This IS the shape -- no inference. The old outline hulled the point cloud, which on a hand
+    bridges across the fingers, on a mouth fills the opening and on an eye swallows the curve; and
+    an inferred silhouette (rasterize + flood the outside) hugged those gaps correctly but cost
+    ~180 ms per redraw on a rig with deform curves, because a deformed piece can never be cached.
+    Highlighting the artwork itself is exact by construction, costs one matrix multiply per point,
+    and reads as a different KIND of mark from the selected object's blue outline -- lit-up artwork
+    against a thin outline, which is far easier to tell apart than two outlines in two colours.
+
+    Projected with the view's perspective matrix directly (NumPy, whole arrays at a time): calling
+    `location_3d_to_region_2d` per point was most of the old cost.
+    """
+    if not strokes3d:
+        return None
+    import numpy as np
+
+    pieces = []
+    for world, offsets, mattes in strokes3d:
+        n_pts = len(world)
+        if n_pts < 2:
+            continue
+        sx, sy, on_screen = _project(world, region, rv3d)
+
+        # A cross-object mask keeps only what falls inside the other piece's artwork.
+        if mattes:
+            mask_info = _matte_mask_cached(mattes, region, rv3d)
+            if mask_info is not None:
+                on_screen = on_screen & _inside_matte(mask_info, sx, sy)
+
+        # Every point starts a segment except the last of each stroke -- that is the whole reason
+        # the offsets are carried this far.
+        starts = np.ones(n_pts, dtype=bool)
+        last = offsets[1:].astype(np.int64) - 1
+        starts[last[(last >= 0) & (last < n_pts)]] = False
+        a = np.nonzero(starts)[0]
+        a = a[a + 1 < n_pts]
+        b = a + 1
+        keep = on_screen[a] & on_screen[b]
+        a, b = a[keep], b[keep]
+        if len(a) == 0:
+            continue
+        piece = np.empty((len(a) * 2, 2), dtype=np.float32)
+        piece[0::2, 0] = sx[a]
+        piece[0::2, 1] = sy[a]
+        piece[1::2, 0] = sx[b]
+        piece[1::2, 1] = sy[b]
+        pieces.append(piece)
+
+    if not pieces:
+        return None
+    return pieces[0] if len(pieces) == 1 else np.concatenate(pieces)
 
 
 def _safe_draw(fn):
@@ -1879,22 +2234,28 @@ def _controlled_drawings_cached(rig, sel_idx):
     return [objects.get(n) for n in names]
 
 
-def _outline_hull(ob, region, rv3d, frame):
-    """Screen-space silhouette hull for `ob`, cached per object until its frame, world matrix or the
-    view changes. On idle/hover redraws (nothing moved) this returns the cached loop instead of
-    re-projecting up to 600 points and rebuilding the convex hull every frame."""
+def _outline_silhouette(ob, region, rv3d, frame):
+    """Screen-space silhouette segments for `ob`, cached until its frame, world matrix, the view or
+    the region size changes. On idle/hover redraws (nothing moved) this returns the cached segments
+    instead of re-projecting and re-flooding every frame.
+
+    Objects with modifiers are NOT cached: a Deform Curve reshapes the drawing without touching
+    `matrix_world`, so a cached shape would lag behind the pose.
+    """
     mw = ob.matrix_world
     mw_key = (mw[0][0], mw[0][1], mw[0][2], mw[0][3], mw[1][0], mw[1][1], mw[1][2], mw[1][3],
               mw[2][0], mw[2][1], mw[2][2], mw[2][3], mw[3][0], mw[3][1], mw[3][2], mw[3][3])
     vm = rv3d.view_matrix
     view_key = (vm[0][0], vm[0][1], vm[0][2], vm[1][0], vm[1][1], vm[1][2], vm[2][0], vm[2][1],
-                vm[2][2], vm[3][0], vm[3][1], vm[3][2])
-    entry = _HULL_CACHE.get(ob.name)
-    if entry is not None and entry[0] == frame and entry[1] == mw_key and entry[2] == view_key:
-        return entry[3]
-    loop = _screen_hull_loop(_gp_world_points(ob), region, rv3d)
-    _HULL_CACHE[ob.name] = (frame, mw_key, view_key, loop)
-    return loop
+                vm[2][2], vm[3][0], vm[3][1], vm[3][2], region.width, region.height)
+    if not ob.modifiers:
+        entry = _HULL_CACHE.get(ob.name)
+        if entry is not None and entry[0] == frame and entry[1] == mw_key and entry[2] == view_key:
+            return entry[3]
+    segments = _screen_stroke_segments(_gp_world_strokes(ob), region, rv3d)
+    if not ob.modifiers:
+        _HULL_CACHE[ob.name] = (frame, mw_key, view_key, segments)
+    return segments
 
 
 @_safe_draw
@@ -1942,44 +2303,80 @@ def _draw_pivot_overlay():
             shader.uniform_float("color", _PEG_FAINT)
             batch_for_shader(shader, 'LINES', {"pos": others}).draw(shader)
 
-        # Every drawing this peg moves gets a blue outline hugging its silhouette (a screen-space
-        # convex hull of its strokes), replacing the old bounding-box squares. Drawn for the WHOLE
-        # controlled set -- including the drawings carried along through descendant pegs -- so the
-        # outline stays visible when the Ctrl+B climb lands on a parent peg whose drawings are not
-        # the active/selected object.
-        region = context.region
-        frame = context.scene.frame_current
-        gpu.state.line_width_set(2.0)
-        shader.uniform_float("color", _PEG_BLUE)
-        for ob in _controlled_drawings_cached(rig, sel):
-            if ob is None:
-                continue
-            loop = _outline_hull(ob, region, rv3d, frame)
-            if loop:
-                batch_for_shader(shader, 'LINE_STRIP', {"pos": loop}).draw(shader)
+        # The silhouettes of the drawings this peg moves are drawn in the POST_PIXEL pass
+        # (#_draw_peg_silhouettes) -- they live in screen space, so they cannot be expressed here.
 
         # The selected peg itself: a bright ring at its pivot (its rotation centre).
         c = pivot_world(sel)
         gpu.state.line_width_set(2.5)
-        shader.uniform_float("color", _PEG_AMBER)
+        shader.uniform_float("color", _PEG_MARK)
         batch_for_shader(shader, 'LINE_STRIP', {"pos": _view_ring(c, right, up, s)}).draw(shader)
 
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
 
 
+@_safe_draw
+def _draw_peg_silhouettes():
+    """Light up, in green, the artwork of every drawing the active peg moves.
+
+    Screen space (POST_PIXEL), because the strokes are projected to pixels -- see
+    #_screen_stroke_segments. GREEN because in this viewport blue already means "selected object"
+    (the Nuclear theme paints Blender's own selection outline blue); keeping the peg on a colour of
+    its own is what makes "which of the two am I looking at" answerable at a glance.
+    """
+    context = bpy.context
+    if context.mode != 'OBJECT':
+        return
+    rv3d = context.region_data
+    if rv3d is None:
+        return
+    rig, sel = _selected_peg_index(context)
+    if rig is None or sel < 0:
+        return
+
+    region = context.region
+    frame = context.scene.frame_current
+    found = []
+    for ob in _controlled_drawings_cached(rig, sel):
+        if ob is None:
+            continue
+        segs = _outline_silhouette(ob, region, rv3d, frame)
+        if segs is not None and len(segs):
+            found.append(segs)
+    if not found:
+        return
+    import numpy as np
+    segments = found[0] if len(found) == 1 else np.concatenate(found)
+
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.blend_set('ALPHA')
+    shader.bind()
+    shader.uniform_float("color", _PEG_ART)
+    gpu.state.line_width_set(2.0)
+    batch_for_shader(shader, 'LINES', {"pos": segments}).draw(shader)
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set('NONE')
+
+
 def _add_pivot_overlay():
-    global _PIVOT_DRAW_HANDLE
+    global _PIVOT_DRAW_HANDLE, _SILHOUETTE_DRAW_HANDLE
     if _PIVOT_DRAW_HANDLE is None:
         _PIVOT_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
             _draw_pivot_overlay, (), 'WINDOW', 'POST_VIEW')
+    if _SILHOUETTE_DRAW_HANDLE is None:
+        _SILHOUETTE_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_peg_silhouettes, (), 'WINDOW', 'POST_PIXEL')
 
 
 def _remove_pivot_overlay():
-    global _PIVOT_DRAW_HANDLE
+    global _PIVOT_DRAW_HANDLE, _SILHOUETTE_DRAW_HANDLE
     if _PIVOT_DRAW_HANDLE is not None:
         bpy.types.SpaceView3D.draw_handler_remove(_PIVOT_DRAW_HANDLE, 'WINDOW')
         _PIVOT_DRAW_HANDLE = None
+    if _SILHOUETTE_DRAW_HANDLE is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(_SILHOUETTE_DRAW_HANDLE, 'WINDOW')
+        _SILHOUETTE_DRAW_HANDLE = None
 
 
 # -------------------------------------------------------------------------------------------------
@@ -2035,7 +2432,7 @@ def _draw_node_highlight():
     gpu.state.blend_set('ALPHA')
     gpu.state.line_width_set(3.0)
     shader.bind()
-    shader.uniform_float("color", _PEG_AMBER)
+    shader.uniform_float("color", _PEG_MARK)
     batch_for_shader(shader, 'LINE_STRIP', {"pos": loop}).draw(shader)
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
