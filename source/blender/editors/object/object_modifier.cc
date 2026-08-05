@@ -18,6 +18,7 @@
 
 #include "DNA_armature_types.h"
 #include "DNA_array_utils.hh"
+#include "DNA_constraint_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_defaults.h"
 #include "DNA_grease_pencil_types.h"
@@ -3539,10 +3540,29 @@ static bool greasepencil_curve_bind_poll(bContext *C)
 /* Defined below (just before the curve-create helper); used here to refresh the rest snapshot. */
 static void curve_store_rest(Object *curve_ob);
 
-static bool greasepencil_curve_bind_drawings(
-    Depsgraph *depsgraph, Object *ob, Object *curve_ob, const bool unbind, ReportList *reports)
+/* True when `ob` tracks a peg rig through a Follow Peg constraint, i.e. it already has a source of
+ * motion of its own and must not be parented on top of it. */
+static bool object_follows_peg(const Object *ob)
+{
+  if (ob == nullptr) {
+    return false;
+  }
+  LISTBASE_FOREACH (const bConstraint *, con, &ob->constraints) {
+    if (con->type == CONSTRAINT_TYPE_FOLLOWPEG) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool greasepencil_curve_bind_drawings(Depsgraph *depsgraph,
+                                             Object *ob,
+                                             GreasePencilCurveModifierData *cmd,
+                                             const bool unbind,
+                                             ReportList *reports)
 {
   GreasePencil &grease_pencil = *static_cast<GreasePencil *>(ob->data);
+  Object *curve_ob = cmd->object;
 
   if (unbind) {
     for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
@@ -3554,7 +3574,10 @@ static bool greasepencil_curve_bind_drawings(
           drawing.strokes_for_write().attributes_for_write();
       attributes.remove(greasepencil_curve::ATTR_U);
       attributes.remove(greasepencil_curve::ATTR_OFFSET);
+      attributes.remove(greasepencil_curve::ATTR_BOUND);
     }
+    MEM_SAFE_FREE(cmd->rest_samples);
+    cmd->rest_samples_num = 0;
     return true;
   }
 
@@ -3569,11 +3592,16 @@ static bool greasepencil_curve_bind_drawings(
   const float4x4 gp_to_curve = curve_eval->world_to_object() * ob->object_to_world();
   const float3 plane_normal = math::normalize(float3x3(gp_to_curve) * float3(0.0f, 1.0f, 0.0f));
 
-  /* Sample the rest curve evenly by arc length once, in curve-local space. */
+  /* Sample the rest curve evenly by arc length once, in curve-local space. `sample_*` is packed
+   * (failed samples skipped) for the nearest-point search below, while `rest` keeps the full
+   * 256-entry table indexed by k, because that is how the modifier addresses it (it rounds the
+   * stored u back to k). */
   const int sample_count = 256;
+  const int stride = MOD_GREASE_PENCIL_CURVE_REST_STRIDE;
   Array<float3> sample_pos(sample_count);
   Array<float3x3> sample_frame(sample_count);
   Array<float> sample_u(sample_count);
+  float *rest = MEM_calloc_arrayN<float>(size_t(sample_count) * stride, __func__);
   int valid = 0;
   for (int k = 0; k < sample_count; k++) {
     const float u = float(k) / float(sample_count - 1);
@@ -3584,11 +3612,31 @@ static bool greasepencil_curve_bind_drawings(
       sample_pos[valid] = pos;
       sample_frame[valid] = frame;
       valid++;
+      float *s = rest + size_t(k) * stride;
+      copy_v3_v3(s, pos);
+      copy_v3_v3(s + 3, frame[0]);
+      copy_v3_v3(s + 6, frame[1]);
+      copy_v3_v3(s + 9, frame[2]);
+    }
+    else if (k > 0) {
+      /* Carry the previous entry forward so a gap never leaves a zero (i.e. singular) frame for
+       * the deformer to invert. */
+      memcpy(rest + size_t(k) * stride, rest + size_t(k - 1) * stride, sizeof(float) * stride);
     }
   }
   if (valid == 0) {
+    MEM_freeN(rest);
     BKE_report(reports, RPT_ERROR, "Curve has no evaluated path to bind to");
     return false;
+  }
+  /* A leading gap kept its zeros above (nothing to carry forward from); backfill it from the
+   * first entry that did sample. */
+  int first_valid = 0;
+  while (first_valid < sample_count && is_zero_v3(rest + size_t(first_valid) * stride + 3)) {
+    first_valid++;
+  }
+  for (int k = 0; k < first_valid && first_valid < sample_count; k++) {
+    memcpy(rest + size_t(k) * stride, rest + size_t(first_valid) * stride, sizeof(float) * stride);
   }
   for (GreasePencilDrawingBase *base : grease_pencil.drawings()) {
     if (base->type != GP_DRAWING) {
@@ -3603,10 +3651,16 @@ static bool greasepencil_curve_bind_drawings(
     bke::MutableAttributeAccessor attributes = curves.attributes_for_write();
     attributes.remove(greasepencil_curve::ATTR_U);
     attributes.remove(greasepencil_curve::ATTR_OFFSET);
+    attributes.remove(greasepencil_curve::ATTR_BOUND);
     bke::SpanAttributeWriter<float> w_u = attributes.lookup_or_add_for_write_only_span<float>(
         greasepencil_curve::ATTR_U, bke::AttrDomain::Point);
     bke::SpanAttributeWriter<float3> w_off = attributes.lookup_or_add_for_write_only_span<float3>(
         greasepencil_curve::ATTR_OFFSET, bke::AttrDomain::Point);
+    /* Marks these points as the ones the binding covers. Points added later default to false, so
+     * the deformer knows to leave them alone instead of reading a `u` of 0 they never got. */
+    bke::SpanAttributeWriter<bool> w_bound = attributes.lookup_or_add_for_write_only_span<bool>(
+        greasepencil_curve::ATTR_BOUND, bke::AttrDomain::Point);
+    w_bound.span.fill(true);
     for (const int64_t i : positions.index_range()) {
       const float3 q = math::transform_point(gp_to_curve, positions[i]);
       int best = 0;
@@ -3625,7 +3679,16 @@ static bool greasepencil_curve_bind_drawings(
     }
     w_u.finish();
     w_off.finish();
+    w_bound.finish();
   }
+  /* Hand the sampled rest curve to the modifier: it is what lets the deformer measure each point's
+   * offset against the LIVE drawing on every evaluation, instead of replaying the snapshot written
+   * above (which is kept only so a build without this can still open the file). */
+  MEM_SAFE_FREE(cmd->rest_samples);
+  cmd->rest_samples = rest;
+  cmd->rest_samples_num = sample_count;
+  copy_m4_m4(cmd->rest_gp_to_curve, reinterpret_cast<const float (*)[4]>(gp_to_curve.ptr()));
+
   /* The curve's current shape is now the rest pose; snapshot it so Reset can return here after the
    * artist bends the curve. */
   curve_store_rest(curve_ob);
@@ -3645,10 +3708,17 @@ static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op
   const bool unbind = RNA_boolean_get(op->ptr, "unbind");
 
   /* Ensure the deform curve is parented to the drawing, so it tracks every motion of the object -
-   * including a Follow Peg constraint - and the binding stays valid. Curves built by the setup
-   * operator already are; this self-heals older/hand-made curves on (re)bind. The world-preserving
-   * parentinv keeps the curve from jumping, so the binding sampled below is unchanged. */
-  if (!unbind && cmd->object != nullptr && cmd->object->parent != ob) {
+   * and the binding stays valid. Curves built by the setup operator already are; this self-heals
+   * older/hand-made curves on (re)bind. The world-preserving parentinv keeps the curve from
+   * jumping, so the binding sampled below is unchanged.
+   *
+   * A curve that already carries a Follow Peg constraint is skipped: it tracks the rig on its own,
+   * and parenting it to a drawing that follows the same peg transforms it TWICE. That is invisible
+   * at rest and doubles every move the moment the peg is posed (measured: the peg moves 1.0 and
+   * the drawing moves 2.0), which reads as the piece distorting on its own. */
+  if (!unbind && cmd->object != nullptr && cmd->object->parent != ob &&
+      !object_follows_peg(cmd->object))
+  {
     Main *bmain = CTX_data_main(C);
     cmd->object->parent = ob;
     cmd->object->partype = PAROBJECT;
@@ -3658,7 +3728,7 @@ static wmOperatorStatus greasepencil_curve_bind_exec(bContext *C, wmOperator *op
     DEG_id_tag_update(&cmd->object->id, ID_RECALC_TRANSFORM | ID_RECALC_GEOMETRY);
   }
 
-  if (!greasepencil_curve_bind_drawings(depsgraph, ob, cmd->object, unbind, op->reports)) {
+  if (!greasepencil_curve_bind_drawings(depsgraph, ob, cmd, unbind, op->reports)) {
     return OPERATOR_CANCELLED;
   }
 

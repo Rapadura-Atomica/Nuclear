@@ -33,6 +33,13 @@ namespace blender::greasepencil_curve {
 /* Internal attribute names holding the per-point binding. */
 inline constexpr const char *ATTR_U = ".gp_curve_u";
 inline constexpr const char *ATTR_OFFSET = ".gp_curve_off";
+/**
+ * True on the points that were present when the drawing was bound. Points added afterwards (a
+ * stroke drawn on a bound piece) are default-initialized to false, and the deformer leaves them
+ * alone — without this they would inherit `u = 0` and pile onto the very start of the curve.
+ * Missing on files bound before this existed, where every point counts as bound.
+ */
+inline constexpr const char *ATTR_BOUND = ".gp_curve_bound";
 
 /**
  * Evaluate the deform curve at arc-length parameter `u` in [0, 1], in the curve object's local

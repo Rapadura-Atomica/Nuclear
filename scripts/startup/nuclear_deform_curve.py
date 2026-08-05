@@ -23,6 +23,13 @@ Every operator here is idempotent, refuses to run with Auto Keying on (it would
 silently key — and un-do — the edit on the next frame change), and reports what it
 measured. "Check Deform Curves" is the read-only version: it names every problem
 above without touching the file.
+
+A binding covers the points that existed when it was made, and nothing else. Editing a
+bound drawing is safe (the deformer measures the offset against the live points), but a
+cell drawn *after* the bind has no binding at all and stays rigid while its neighbours
+bend, and a stroke added to a bound cell does not bend either. Both are counted by
+``_stale_bind`` and called out in the panel, because neither shows up as an error —
+the piece just quietly stops agreeing with itself.
 """
 
 import contextlib
@@ -34,6 +41,9 @@ from bpy.types import Operator, Panel
 
 _MOD_TYPE = "GREASE_PENCIL_CURVE"
 _U_ATTR = ".gp_curve_u"
+# Written by the bind on the points it covered. Points drawn afterwards default to False and the
+# deformer skips them, so they stay where they were drawn instead of piling onto the curve's start.
+_BOUND_ATTR = ".gp_curve_bound"
 # nuclear_cell_library parks its drawing library in a frame bank up here; those frames are
 # alternative drawings (mouths, hands), never part of the piece's own extent.
 _BANK_START = 100000
@@ -100,9 +110,9 @@ def _tips(curve_ob):
     """(tip, opposite) control-point indices. The tip is the END OF THE CHAIN — the top for an
     upright limb — because that is the end whose displacement the children must inherit.
 
-    The tilt reference is the far end, not the neighbouring point: between neighbours the angle
-    explodes (0.2 of height and 0.6 of sideways travel reads as 70°), while the full chord
-    tracks how much the drawing actually leaned."""
+    The opposite end is only a fallback shape reference now: the tilt driver reads the tip's own
+    HANDLE (see ``_write_drivers``), because the chord between the two ends underreports the
+    lean the modifier actually applies."""
     bp = _spline(curve_ob).bezier_points
     first, last = bp[0].co, bp[-1].co
     # Z decides (an upright limb); a flat one (a tail) falls back to X.
@@ -338,14 +348,75 @@ def _as_active(context, ob):
 
 
 def _bind_quality(ob):
-    """(u_min, u_max) over every bound point, or None when the piece is not bound."""
+    """(u_min, u_max) over every bound point, or None when the piece is not bound.
+
+    Points drawn after the bind are excluded: they carry a default ``u`` of 0 that would drag
+    ``u_min`` to zero and make a perfectly fitted curve read as "runs past the drawing"."""
     us = []
     for layer in ob.data.layers:
         for frame in layer.frames:
-            attr = frame.drawing.attributes.get(_U_ATTR)
-            if attr is not None:
+            attrs = frame.drawing.attributes
+            attr = attrs.get(_U_ATTR)
+            if attr is None:
+                continue
+            flag = attrs.get(_BOUND_ATTR)
+            if flag is not None and len(flag.data) == len(attr.data):
+                us += [v.value for v, f in zip(attr.data, flag.data) if f.value]
+            else:
                 us += [v.value for v in attr.data]
     return (min(us), max(us)) if us else None
+
+
+def _has_binding(ob):
+    """Whether any drawing of ``ob`` carries a binding. Cheap enough for a panel redraw — it
+    stops at the first one and never touches individual points."""
+    for layer in ob.data.layers:
+        for frame in layer.frames:
+            if frame.drawing.attributes.get(_U_ATTR) is not None:
+                return True
+    return False
+
+
+def _count_true(attr, count):
+    """How many entries of a boolean attribute are True, read in bulk.
+
+    The panel calls this on every redraw, so it goes through ``foreach_get`` (a C-level copy)
+    instead of walking thousands of RNA elements in Python."""
+    try:
+        import numpy as np
+        buf = np.zeros(count, dtype=bool)
+        attr.data.foreach_get("value", buf)
+        return int(buf.sum())
+    except Exception:
+        return sum(1 for v in attr.data if v.value)
+
+
+def _stale_bind(ob):
+    """What the binding of ``ob`` no longer covers, as (cells_unbound, cells_total, loose_points).
+
+    A binding is per drawing and per point. Three things make it fall behind without anyone
+    touching the curve: a cell drawn after the bind has no binding at all (it stays rigid while
+    its neighbours bend), a stroke added to a bound cell has no binding of its own, and a
+    drawing whose point count no longer matches turns the whole cell unbound."""
+    cells_unbound = cells_total = loose = 0
+    for layer in ob.data.layers:
+        for frame in layer.frames:
+            if frame.frame_number >= _BANK_START:
+                continue
+            attrs = frame.drawing.attributes
+            points = attrs.get("position")
+            if points is None or len(points.data) == 0:
+                continue
+            n = len(points.data)
+            cells_total += 1
+            u = attrs.get(_U_ATTR)
+            if u is None or len(u.data) != n:
+                cells_unbound += 1
+                continue
+            flag = attrs.get(_BOUND_ATTR)
+            if flag is not None and len(flag.data) == n:
+                loose += n - _count_true(flag, n)
+    return cells_unbound, cells_total, loose
 
 
 def _bind(context, ob, md, unbind=False):
@@ -369,14 +440,14 @@ def _bind(context, ob, md, unbind=False):
 # --------------------------------------------------------------------------- #
 # Drivers: the curve tip drives a peg, so the children follow the deformation
 # --------------------------------------------------------------------------- #
-def _add_var(driver, name, curve_data, point, axis):
+def _add_var(driver, name, curve_data, point, axis, prop="co"):
     var = driver.variables.new()
     var.name = name
     var.type = "SINGLE_PROP"
     target = var.targets[0]
     target.id_type = "CURVE"
     target.id = curve_data
-    target.data_path = "splines[0].bezier_points[%d].co[%d]" % (point, axis)
+    target.data_path = "splines[0].bezier_points[%d].%s[%d]" % (point, prop, axis)
     return var
 
 
@@ -396,10 +467,9 @@ def _write_drivers(rig, peg_index, curve_ob, use_rotation=True):
     without rewriting them leaves the peg pushing the limb off the body by however much the
     control points moved."""
     curve_data = curve_ob.data
-    top, far = _tips(curve_ob)
+    top, _far = _tips(curve_ob)
     bezier = _spline(curve_ob).bezier_points
     p_top = bezier[top].co.copy()
-    p_far = bezier[far].co.copy()
 
     _clear_drivers(rig, peg_index)
     peg = rig.pegs[peg_index]
@@ -414,15 +484,30 @@ def _write_drivers(rig, peg_index, curve_ob, use_rotation=True):
         driver.expression = "p - (%r)" % getattr(p_top, comp)
 
     if use_rotation:
+        # The tilt to copy is the curve's TANGENT at the tip, read off that point's own handle.
+        # That tangent is what the modifier uses to orient the drawing at u = 0, so it is what
+        # the peg must reproduce for the head and arms to stay welded to the collar.
+        #
+        # Until 2026-07-31 this measured the chord to the OPPOSITE end, and underreported the
+        # turn: on the EP05 servants, moving the tip 0.6 sideways leans the drawing 32.3° while
+        # the chord reads 17.6° — 15° that the head and arms never got. Worse when only the
+        # MIDDLE point is bent: neither end moves, the chord sees no rotation at all and the peg
+        # sits still while the drawing leans those same 32°.
+        # (The fear that motivated the chord — "between neighbours the angle explodes" — does
+        # not apply to the handle: it IS the slope of the curve there, not a secant between two
+        # control points.)
+        #
+        # Rotating a peg about Y takes +Z to +X, the same sign as atan2 in the character plane.
+        side = "handle_left" if top == 0 else "handle_right"    # the handle pointing outwards
+        h_top = getattr(bezier[top], side).copy()
         driver = rig.driver_add("pegs[%d].rotation" % peg_index, 1).driver
         driver.type = "SCRIPTED"
-        _add_var(driver, "x0", curve_data, top, 0)
-        _add_var(driver, "z0", curve_data, top, 2)
-        _add_var(driver, "x1", curve_data, far, 0)
-        _add_var(driver, "z1", curve_data, far, 2)
-        # Rotating a peg about Y takes +Z to +X, the same sign as atan2 in the character plane.
+        _add_var(driver, "x0", curve_data, top, 0, side)
+        _add_var(driver, "z0", curve_data, top, 2, side)
+        _add_var(driver, "x1", curve_data, top, 0)
+        _add_var(driver, "z1", curve_data, top, 2)
         driver.expression = "atan2(x0 - x1, z0 - z1) - atan2(%r, %r)" % (
-            p_top.x - p_far.x, p_top.z - p_far.z)
+            h_top.x - p_top.x, h_top.z - p_top.z)
 
 
 def _link_curve_to_rig(context, ob, curve_ob, use_rotation=True):
@@ -748,6 +833,14 @@ class OBJECT_OT_nuclear_curve_check(Operator):
                 # u = 0 is the tip: slack there is what makes a head leave its collar.
                 issues.append("bind u %.3f-%.3f (curve runs past the drawing)" % quality)
 
+            if quality is not None:
+                cells_unbound, cells_total, loose = _stale_bind(ob)
+                if cells_unbound:
+                    issues.append("%d of %d cell(s) drawn after the bind (they stay rigid)"
+                                  % (cells_unbound, cells_total))
+                if loose:
+                    issues.append("%d point(s) drawn after the bind (they do not bend)" % loose)
+
             bounds = _drawing_bounds(ob)
             if bounds is not None and _spline(curve_ob) is not None:
                 lo, hi = bounds
@@ -843,6 +936,21 @@ class VIEW3D_PT_nuclear_deform_curve(Panel):
 
         if context.scene.tool_settings.use_keyframe_insert_auto:
             layout.label(text="Auto Keying is on", icon="ERROR")
+
+        # The binding only covers what was on screen when it was made. Say so where the artist is
+        # looking, instead of letting a new stroke sit there refusing to bend.
+        ob = context.active_object
+        if (ob is not None and ob.type == "GREASEPENCIL" and _curve_modifier(ob) is not None
+                and _has_binding(ob)):
+            cells_unbound, _cells_total, loose = _stale_bind(ob)
+            if cells_unbound or loose:
+                box = layout.box()
+                box.label(text="Drawn after the bind:", icon="ERROR")
+                if cells_unbound:
+                    box.label(text="%d cell(s) do not bend" % cells_unbound)
+                if loose:
+                    box.label(text="%d point(s) do not bend" % loose)
+                box.operator("object.nuclear_curve_bind", text="Bind Again", icon="CON_FOLLOWPATH")
 
         layout.separator()
         layout.operator("object.nuclear_curve_check", icon="VIEWZOOM")

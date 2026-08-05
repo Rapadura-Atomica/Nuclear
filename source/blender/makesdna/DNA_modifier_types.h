@@ -2917,7 +2917,29 @@ typedef struct GreasePencilCurveModifierData {
   /** #CurveModifierDefaultAxis (MOD_CURVE_POSX..). Axis along which the curve deforms. */
   short deform_axis;
   char _pad[2];
+  /**
+   * Nuclear: the REST curve captured at bind time, in curve-local space — #rest_samples_num
+   * entries of 12 floats each: the position (3), then the planar frame as 3 column vectors (9),
+   * evenly spaced by arc length. With it the deformer measures every point's offset against the
+   * LIVE drawing instead of replaying the snapshot taken at bind time, so redrawing or editing a
+   * bound piece keeps working. Null in files bound before this existed; those fall back to the
+   * per-point `.gp_curve_off` snapshot, which reproduces the old behaviour exactly.
+   */
+  float *rest_samples;
+  /** Number of 12-float entries in #rest_samples. */
+  int rest_samples_num;
+  char _pad2[4];
+  /**
+   * Grease Pencil local space -> curve local space as it was at bind time. Points are carried into
+   * the rest curve's space with THIS matrix, not the live one, so moving the curve object away
+   * from the drawing still drags the drawing along exactly as it did before the rest curve
+   * existed. Only meaningful while #rest_samples is set.
+   */
+  float rest_gp_to_curve[4][4];
 } GreasePencilCurveModifierData;
+
+/** Floats per entry of #GreasePencilCurveModifierData::rest_samples (position + 3x3 frame). */
+#define MOD_GREASE_PENCIL_CURVE_REST_STRIDE 12
 
 typedef enum GreasePencilMaskModifierFlag {
   /* Show the masked strokes OUTSIDE the matte silhouette instead of inside. */

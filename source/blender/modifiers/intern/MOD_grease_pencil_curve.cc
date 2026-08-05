@@ -7,13 +7,23 @@
  *
  * Grease Pencil "Curve" deform modifier: deforms strokes along a curve object.
  * The artist creates a bezier curve over the drawing, positions/shapes it, then
- * binds it (see OBJECT_OT_greasepencil_curve_bind): each point stores its rest-pose
- * offset in the curve's local frame, so bending the curve bends the drawing locally
- * (Toon Boom style) while the rest pose stays identical. Until bound the modifier is
- * a pass-through, letting 2D animators bend a drawing without needing an armature.
+ * binds it (see OBJECT_OT_greasepencil_curve_bind): each point stores the arc-length
+ * parameter of its nearest point on the rest curve, so bending the curve bends the
+ * drawing locally (Toon Boom style) while the rest pose stays identical. Until bound
+ * the modifier is a pass-through, letting 2D animators bend a drawing without needing
+ * an armature.
+ *
+ * The binding says *where along the curve* a point belongs — never what it looks like.
+ * The offset from the curve is measured against the live drawing on every evaluation
+ * (using the rest curve stored on the modifier at bind time), so a bound piece can still
+ * be redrawn, erased and nudged: the edit shows up as drawn and rides the bend. Points
+ * added after the bind carry no binding (`ATTR_BOUND` is false) and are left untouched
+ * rather than being dragged to the start of the curve.
  */
 
 #include <algorithm>
+
+#include "MEM_guardedalloc.h"
 
 #include "DNA_defaults.h"
 #include "DNA_modifier_types.h"
@@ -72,12 +82,17 @@ static void copy_data(const ModifierData *md, ModifierData *target, const int fl
 
   BKE_modifier_copydata_generic(md, target, flag);
   modifier::greasepencil::copy_influence_data(&cmd->influence, &tcmd->influence, flag);
+  /* The generic copy duplicated the pointer, not the array. */
+  if (cmd->rest_samples != nullptr) {
+    tcmd->rest_samples = static_cast<float *>(MEM_dupallocN(cmd->rest_samples));
+  }
 }
 
 static void free_data(ModifierData *md)
 {
   auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(md);
   modifier::greasepencil::free_influence_data(&cmd->influence);
+  MEM_SAFE_FREE(cmd->rest_samples);
 }
 
 static void foreach_ID_link(ModifierData *md, Object *ob, IDWalkFunc walk, void *user_data)
@@ -166,22 +181,49 @@ static void modify_curves(ModifierData *md,
       curves, cmd->influence);
 
   /* Bound mode (see OBJECT_OT_greasepencil_curve_bind): each point stored the arc-length
-   * parameter `u` of its nearest point on the rest curve plus its offset in the curve's local
-   * frame there. We rebuild `curve(u) + frame(u) * offset` on the (possibly bent) curve, which
-   * keeps the rest pose identical and bends each section locally — the 2D / Toon Boom behaviour.
-   * Without a binding we fall back to the legacy mesh-style curve deform. */
+   * parameter `u` of its nearest point on the rest curve. We rebuild `curve(u) + frame(u) *
+   * offset` on the (possibly bent) curve, which keeps the rest pose identical and bends each
+   * section locally — the 2D / Toon Boom behaviour. Without a binding the modifier is a
+   * pass-through (see the `else` branch).
+   *
+   * Where that `offset` comes from is what makes an edited drawing survive:
+   * - with a rest curve stored on the modifier (`rest_samples`, written by the bind), it is
+   *   measured LIVE — the point's current position against the rest curve at `u`. Redrawing,
+   *   erasing or nudging the drawing then shows up as drawn, and the rest pose is an exact
+   *   identity (an orthonormal frame times its own transpose);
+   * - otherwise (files bound by an older build) it falls back to the `.gp_curve_off` snapshot
+   *   taken at bind time, which reproduces the previous behaviour byte for byte — but freezes
+   *   the drawing as it was when it was bound. */
   const bke::AttributeAccessor attributes = curves.attributes();
   const bke::AttributeReader<float> bind_u = attributes.lookup<float>(
       greasepencil_curve::ATTR_U, bke::AttrDomain::Point);
   const bke::AttributeReader<float3> bind_off = attributes.lookup<float3>(
       greasepencil_curve::ATTR_OFFSET, bke::AttrDomain::Point);
-  const bool bound = bind_u && bind_off && bind_u.varray.size() == positions.size();
+  const bke::AttributeReader<bool> bind_flag = attributes.lookup<bool>(
+      greasepencil_curve::ATTR_BOUND, bke::AttrDomain::Point);
+  const bool has_rest = cmd->rest_samples != nullptr &&
+                        cmd->rest_samples_num == CurveSampleTable::sample_count;
+  const bool has_offsets = bind_off && bind_off.varray.size() == positions.size();
+  /* A per-point flag marks the points that existed at bind time; without it (older files) every
+   * point counts as bound. */
+  const bool has_flag = bind_flag && bind_flag.varray.size() == positions.size();
+  const bool bound = bind_u && bind_u.varray.size() == positions.size() &&
+                     (has_rest || has_offsets);
 
   if (bound) {
     const VArray<float> u_values = bind_u.varray;
-    const VArray<float3> offsets = bind_off.varray;
+    const VArray<float3> offsets = has_offsets ? bind_off.varray :
+                                                 VArray<float3>::from_single(float3(0.0f),
+                                                                             positions.size());
+    const VArray<bool> point_bound = has_flag ?
+                                         bind_flag.varray :
+                                         VArray<bool>::from_single(true, positions.size());
     const float4x4 curve_to_gp = ctx->object->world_to_object() *
                                  cmd->object->object_to_world();
+    /* Bind-time, not live: see #GreasePencilCurveModifierData::rest_gp_to_curve. Using the live
+     * matrix here would stop the drawing from following a curve object that is moved away from
+     * it, which is a behaviour riggers already rely on. */
+    const float4x4 rest_gp_to_curve = float4x4(cmd->rest_gp_to_curve);
 
     /* The posed-curve sample table is shared across drawings and built once in
      * modify_geometry_set(); the parallel loop below only reads it. */
@@ -190,13 +232,34 @@ static void modify_curves(ModifierData *md,
     curves_mask.foreach_index(GrainSize(512), [&](const int64_t curve_i) {
       const IndexRange points = points_by_curve[curve_i];
       for (const int64_t point_i : points) {
+        if (!point_bound[point_i]) {
+          /* Drawn after the bind: it has no `u` of its own (the default 0 would pile the whole
+           * new stroke onto the very start of the curve). Leave it where the artist drew it
+           * until the piece is bound again. */
+          continue;
+        }
         const int idx = math::clamp(
             int(math::round(u_values[point_i] * float(sample_count - 1))), 0, sample_count - 1);
         if (!table.ok[idx]) {
           continue;
         }
+        float3 offset;
+        if (has_rest) {
+          const float *sample = cmd->rest_samples +
+                                idx * MOD_GREASE_PENCIL_CURVE_REST_STRIDE;
+          const float3 rest_pos(sample[0], sample[1], sample[2]);
+          float3x3 rest_frame;
+          rest_frame[0] = float3(sample[3], sample[4], sample[5]);
+          rest_frame[1] = float3(sample[6], sample[7], sample[8]);
+          rest_frame[2] = float3(sample[9], sample[10], sample[11]);
+          const float3 p_curve = math::transform_point(rest_gp_to_curve, positions[point_i]);
+          offset = math::transpose(rest_frame) * (p_curve - rest_pos);
+        }
+        else {
+          offset = float3(offsets[point_i]);
+        }
         const float3 target = math::transform_point(
-            curve_to_gp, table.pos[idx] + table.frame[idx] * float3(offsets[point_i]));
+            curve_to_gp, table.pos[idx] + table.frame[idx] * offset);
         const float factor = cmd->strength * vgroup_weights[point_i];
         positions[point_i] = math::interpolate(positions[point_i], target, factor);
       }
@@ -307,6 +370,11 @@ static void blend_write(BlendWriter *writer, const ID * /*id_owner*/, const Modi
 
   BLO_write_struct(writer, GreasePencilCurveModifierData, cmd);
   modifier::greasepencil::write_influence_data(writer, &cmd->influence);
+  if (cmd->rest_samples != nullptr) {
+    BLO_write_float_array(writer,
+                          int64_t(cmd->rest_samples_num) * MOD_GREASE_PENCIL_CURVE_REST_STRIDE,
+                          cmd->rest_samples);
+  }
 }
 
 static void blend_read(BlendDataReader *reader, ModifierData *md)
@@ -314,6 +382,9 @@ static void blend_read(BlendDataReader *reader, ModifierData *md)
   auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(md);
 
   modifier::greasepencil::read_influence_data(reader, &cmd->influence);
+  BLO_read_float_array(reader,
+                       int64_t(cmd->rest_samples_num) * MOD_GREASE_PENCIL_CURVE_REST_STRIDE,
+                       &cmd->rest_samples);
 }
 
 }  // namespace blender
