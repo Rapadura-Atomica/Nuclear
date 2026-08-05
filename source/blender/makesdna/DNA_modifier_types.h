@@ -3182,8 +3182,9 @@ typedef struct GreasePencilContourModifierData {
   char _pad[4];
   /**
    * Nuclear: when non-empty, the cage is the first stroke of this layer (a layer of THIS Grease
-   * Pencil object), instead of the external #object curve/mesh. The layer is a hidden deform guide;
-   * binding captures its stroke as the rest contour and editing it deforms the rest of the drawing.
+   * Pencil object), instead of the external #object curve/mesh. The layer is a hidden deform
+   * guide; binding captures its stroke as the rest contour and editing it deforms the rest of the
+   * drawing.
    */
   char cage_layer[64];
 } GreasePencilContourModifierData;
@@ -3194,9 +3195,9 @@ typedef enum GreasePencilContourFlag {
   /** The rest contour is bound (stored in #bind_co); use it instead of the live cage rest. */
   MOD_GREASE_PENCIL_CONTOUR_BOUND = (1 << 1),
   /**
-   * Nuclear: treat the cage as a LINE guide (open spine / scattered handles) and deform with Moving
-   * Least Squares instead of closed-contour MVC. Set by the "Create Spine Controllers" operator;
-   * the layer-cage path always uses MLS regardless of this flag.
+   * Nuclear: treat the cage as a LINE guide (open spine / scattered handles) and deform with
+   * Moving Least Squares instead of closed-contour MVC. Set by the "Create Spine Controllers"
+   * operator; the layer-cage path always uses MLS regardless of this flag.
    */
   MOD_GREASE_PENCIL_CONTOUR_LINE_GUIDE = (1 << 2),
 } GreasePencilContourFlag;

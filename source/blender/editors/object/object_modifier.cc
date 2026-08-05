@@ -4027,10 +4027,10 @@ void OBJECT_OT_greasepencil_curve_setup(wmOperatorType *ot)
 /** \name Grease Pencil Curve Deform Reset Operator
  *
  * Sends the Deform Curve's Bezier control points back to the rest shape snapshotted at creation /
- * Bind, so the curve deform returns to a no-op. "All" resets the whole curve; "Selected" resets only
- * the selected control points (a selected knot resets its handles too) - the natural per-point reset
- * while shaping the curve in Edit Mode. Bound to Alt+R (Object Mode on the curve, and Curve Edit
- * Mode for the selected case); non-curve objects fall through to native Alt+R.
+ * Bind, so the curve deform returns to a no-op. "All" resets the whole curve; "Selected" resets
+ * only the selected control points (a selected knot resets its handles too) - the natural
+ * per-point reset while shaping the curve in Edit Mode. Bound to Alt+R (Object Mode on the curve,
+ * and Curve Edit Mode for the selected case); non-curve objects fall through to native Alt+R.
  * \{ */
 
 enum {
@@ -4091,7 +4091,8 @@ static wmOperatorStatus greasepencil_curve_reset_exec(bContext *C, wmOperator *o
                                    curve_ob->id.properties, CURVE_REST_PROP, IDP_ARRAY) :
                                nullptr;
   if (prop == nullptr || prop->subtype != IDP_FLOAT || prop->len < 9) {
-    BKE_report(op->reports, RPT_ERROR, "This curve has no stored rest pose (create or bind it first)");
+    BKE_report(
+        op->reports, RPT_ERROR, "This curve has no stored rest pose (create or bind it first)");
     return OPERATOR_CANCELLED;
   }
   const float *rest = IDP_array_float_get(const_cast<IDProperty *>(prop));
@@ -4238,9 +4239,8 @@ static bool greasepencil_contour_bind_modifier(Depsgraph *depsgraph,
     const int frame = (gp_eval != nullptr && gp_eval->runtime != nullptr) ?
                           gp_eval->runtime->eval_frame :
                           0;
-    if (gp_eval == nullptr ||
-        !blender::modifier::greasepencil::contour_sample_gp_layer(
-            *gp_eval, cmd->cage_layer, frame, contour))
+    if (gp_eval == nullptr || !blender::modifier::greasepencil::contour_sample_gp_layer(
+                                  *gp_eval, cmd->cage_layer, frame, contour))
     {
       BKE_report(reports,
                  RPT_ERROR,
@@ -4442,9 +4442,12 @@ static Object *greasepencil_envelope_create_for_drawing(bContext *C,
   return curve_ob;
 }
 
-/* Hide/show an object in the view layer via its base (the "eye" toggle). Keeps the object evaluated
- * — so a hidden cage curve still deforms — it only stops drawing/selecting it. */
-static void envelope_base_set_hidden(Scene *scene, ViewLayer *view_layer, Object *ob, const bool hide)
+/* Hide/show an object in the view layer via its base (the "eye" toggle). Keeps the object
+ * evaluated — so a hidden cage curve still deforms — it only stops drawing/selecting it. */
+static void envelope_base_set_hidden(Scene *scene,
+                                     ViewLayer *view_layer,
+                                     Object *ob,
+                                     const bool hide)
 {
   BKE_view_layer_synced_ensure(scene, view_layer);
   Base *base = BKE_view_layer_base_find(view_layer, ob);
@@ -4485,7 +4488,8 @@ static bool envelope_get_rest(const Object *emp, blender::float3 &r_rest)
   if (emp->id.properties == nullptr) {
     return false;
   }
-  IDProperty *prop = IDP_GetPropertyTypeFromGroup(emp->id.properties, ENVELOPE_REST_PROP, IDP_ARRAY);
+  IDProperty *prop = IDP_GetPropertyTypeFromGroup(
+      emp->id.properties, ENVELOPE_REST_PROP, IDP_ARRAY);
   if (prop == nullptr || prop->subtype != IDP_FLOAT || prop->len != 3) {
     return false;
   }
@@ -4530,7 +4534,8 @@ static Object *envelope_add_hook(Main *bmain,
    * reads as 2D handles and can't be accidentally rotated/scaled. */
   emp->dtx |= OB_DRAW_IN_FRONT;
   emp->protectflag = OB_LOCK_ROT | OB_LOCK_ROTW | OB_LOCK_ROT4D | OB_LOCK_SCALE;
-  /* Remember the home pose so the Reset operator can restore it (and mark this as a controller). */
+  /* Remember the home pose so the Reset operator can restore it (and mark this as a controller).
+   */
   envelope_store_rest(emp, local_loc);
 
   HookModifierData *hmd = (HookModifierData *)BKE_modifier_new(eModifierType_Hook);
@@ -4631,9 +4636,9 @@ static void greasepencil_envelope_add_controls(
 }
 
 /* Build an OPEN Bezier curve running along the spine (centerline) of `ob`'s longest stroke,
- * resampled to a handful of evenly-spaced anchors, lying in the drawing plane and identity-parented
- * to the drawing. The art follows this line (MLS), so grabbing its controls bends the drawing along
- * the stroke. Returns the new curve object or null on failure. */
+ * resampled to a handful of evenly-spaced anchors, lying in the drawing plane and
+ * identity-parented to the drawing. The art follows this line (MLS), so grabbing its controls
+ * bends the drawing along the stroke. Returns the new curve object or null on failure. */
 static Object *greasepencil_spine_create_for_drawing(bContext *C, Object *ob, ReportList *reports)
 {
   using namespace blender;
@@ -4844,8 +4849,8 @@ void OBJECT_OT_greasepencil_spine_controllers(wmOperatorType *ot)
 }
 
 /* Toggle the visibility of the Contour cage's Object-Mode controllers (the anchor/handle empties).
- * They are found via the cage curve's Hook modifiers, so the toggle works for both the envelope and
- * the spine rig. The cage curve stays hidden; only the controllers show/hide. */
+ * They are found via the cage curve's Hook modifiers, so the toggle works for both the envelope
+ * and the spine rig. The cage curve stays hidden; only the controllers show/hide. */
 static wmOperatorStatus greasepencil_contour_toggle_controls_exec(bContext *C, wmOperator *op)
 {
   Scene *scene = CTX_data_scene(C);
@@ -5020,8 +5025,8 @@ void OBJECT_OT_greasepencil_envelope_setup(wmOperatorType *ot)
  * cage returns to its bound shape and the deform becomes a no-op again. "All" resets every
  * controller of the active drawing's guide; "Selected" resets only the selected controllers
  * (resetting an anchor also resets its two handles, which are parented to it). Bound to Alt+R in
- * Object Mode for the selected case; when the active object is not a controller the operator passes
- * the event through to native rotation-clear.
+ * Object Mode for the selected case; when the active object is not a controller the operator
+ * passes the event through to native rotation-clear.
  * \{ */
 
 enum {
@@ -5067,7 +5072,8 @@ static wmOperatorStatus greasepencil_contour_reset_exec(bContext *C, wmOperator 
   int reset_num = 0;
 
   if (mode == ENVELOPE_RESET_ALL) {
-    /* Reset every controller of the active drawing's Contour guide (found via the cage's Hooks). */
+    /* Reset every controller of the active drawing's Contour guide (found via the cage's Hooks).
+     */
     GreasePencilContourModifierData *cmd = (GreasePencilContourModifierData *)
         edit_modifier_property_get(op, active, eModifierType_GreasePencilContour);
     if (cmd == nullptr || cmd->object == nullptr) {
@@ -5130,8 +5136,10 @@ static wmOperatorStatus greasepencil_contour_reset_invoke(bContext *C,
                                                           wmOperator *op,
                                                           const wmEvent * /*event*/)
 {
-  /* "All" needs the modifier the panel button points at; "Selected" works straight off selection. */
-  if (RNA_enum_get(op->ptr, "mode") == ENVELOPE_RESET_ALL && !edit_modifier_invoke_properties(C, op))
+  /* "All" needs the modifier the panel button points at; "Selected" works straight off selection.
+   */
+  if (RNA_enum_get(op->ptr, "mode") == ENVELOPE_RESET_ALL &&
+      !edit_modifier_invoke_properties(C, op))
   {
     return OPERATOR_CANCELLED;
   }
@@ -5141,7 +5149,11 @@ static wmOperatorStatus greasepencil_contour_reset_invoke(bContext *C,
 void OBJECT_OT_greasepencil_contour_reset(wmOperatorType *ot)
 {
   static const EnumPropertyItem mode_items[] = {
-      {ENVELOPE_RESET_ALL, "ALL", 0, "All", "Reset every controller of this guide to its rest pose"},
+      {ENVELOPE_RESET_ALL,
+       "ALL",
+       0,
+       "All",
+       "Reset every controller of this guide to its rest pose"},
       {ENVELOPE_RESET_SELECTED,
        "SELECTED",
        0,

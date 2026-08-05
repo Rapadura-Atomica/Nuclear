@@ -421,9 +421,9 @@ class GreasePencil : Overlay {
    * Nuclear: draw one masked layer clipped to its mattes, through the stencil buffer.
    *
    * The mattes are rasterized with \a ref -- no colour, no depth -- and the layer is then drawn
-   * testing for that value, so only the part the artist sees reaches the buffer. Each pair uses its
-   * own \a ref, so no clear is needed between them; that is why this has to live in a pass with
-   * guaranteed draw order (#PassSimple).
+   * testing for that value, so only the part the artist sees reaches the buffer. Each pair uses
+   * its own \a ref, so no clear is needed between them; that is why this has to live in a pass
+   * with guaranteed draw order (#PassSimple).
    */
   static void draw_masked_layer_stencil(Resources &res,
                                         PassSimple &pass,

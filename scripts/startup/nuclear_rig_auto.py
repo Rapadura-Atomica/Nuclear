@@ -75,6 +75,7 @@ _FACE_LABEL = {
 def _side_label(name, side):
     return "%s.%s" % (name, "e" if side == "L" else "d") if side else name
 
+
 # Studio pattern: a skeleton piece has a structural JOINT peg (the articulation, in the chain) AND
 # its own DRAWING peg (this suffix) that the drawing binds to, so the piece keeps an independent
 # translation/rotation/scale separate from the joint it hangs on.

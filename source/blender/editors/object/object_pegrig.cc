@@ -316,7 +316,8 @@ static wmOperatorStatus pegrig_select_parent_exec(bContext *C, wmOperator * /*op
 void OBJECT_OT_pegrig_select_parent(wmOperatorType *ot)
 {
   ot->name = "Select Parent Peg";
-  ot->description = "Make the parent of the active peg the controlled peg (climb the rig hierarchy)";
+  ot->description =
+      "Make the parent of the active peg the controlled peg (climb the rig hierarchy)";
   ot->idname = "OBJECT_OT_pegrig_select_parent";
 
   ot->exec = pegrig_select_parent_exec;
@@ -419,8 +420,8 @@ static wmOperatorStatus pegrig_squash_enable_exec(bContext *C, wmOperator *op)
     const float3 bottom = math::transform_point(to_local, float3(cx, cy, wmin.z));
     const float3 top = math::transform_point(to_local, float3(cx, cy, wmax.z));
     /* Anchor the squash at the peg's PIVOT so the deform originates from the joint (the same point
-     * rotation/scale pivot around), with the tip straight above it along LOCAL Z. Its length is the
-     * drawing's vertical extent. Keeping the axis purely vertical - not a world-bounds-tilted
+     * rotation/scale pivot around), with the tip straight above it along LOCAL Z. Its length is
+     * the drawing's vertical extent. Keeping the axis purely vertical - not a world-bounds-tilted
      * anchor->tip - stops a posed peg from squashing on a diagonal. */
     float height = math::distance(bottom, top);
     if (height < 1e-5f) {

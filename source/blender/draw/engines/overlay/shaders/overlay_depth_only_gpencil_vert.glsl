@@ -57,7 +57,8 @@ void main()
    * object order (#GreasePencil::compute_selection_depth_planes). */
   if (!gp_stroke_order3d) {
     bool is_persp = drw_view().winmat[3][3] == 0.0f;
-    float3 ray_dir = is_persp ? (drw_view().viewinv[3].xyz - world_pos) : drw_view().viewinv[2].xyz;
+    float3 ray_dir = is_persp ? (drw_view().viewinv[3].xyz - world_pos) :
+                                drw_view().viewinv[2].xyz;
     float3 isect = gp_select_ray_plane_intersection(world_pos, ray_dir, gp_depth_plane);
     float4 ndc = drw_point_world_to_homogenous(isect);
     gl_Position.z = (ndc.z / ndc.w) * gl_Position.w;

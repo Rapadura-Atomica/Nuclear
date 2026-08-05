@@ -147,8 +147,8 @@ static void build_sample_table(ModifierData *md,
                                CurveSampleTable &table)
 {
   const auto *cmd = reinterpret_cast<GreasePencilCurveModifierData *>(md);
-  /* Same drawing-plane normal (in curve-local space) used when binding, so the planar frame matches
-   * and the rest pose stays an identity. */
+  /* Same drawing-plane normal (in curve-local space) used when binding, so the planar frame
+   * matches and the rest pose stays an identity. */
   const float4x4 gp_to_curve = cmd->object->world_to_object() * ctx->object->object_to_world();
   const float3 plane_normal = math::normalize(float3x3(gp_to_curve) * float3(0.0f, 1.0f, 0.0f));
 
@@ -195,8 +195,8 @@ static void modify_curves(ModifierData *md,
    *   taken at bind time, which reproduces the previous behaviour byte for byte — but freezes
    *   the drawing as it was when it was bound. */
   const bke::AttributeAccessor attributes = curves.attributes();
-  const bke::AttributeReader<float> bind_u = attributes.lookup<float>(
-      greasepencil_curve::ATTR_U, bke::AttrDomain::Point);
+  const bke::AttributeReader<float> bind_u = attributes.lookup<float>(greasepencil_curve::ATTR_U,
+                                                                      bke::AttrDomain::Point);
   const bke::AttributeReader<float3> bind_off = attributes.lookup<float3>(
       greasepencil_curve::ATTR_OFFSET, bke::AttrDomain::Point);
   const bke::AttributeReader<bool> bind_flag = attributes.lookup<bool>(
@@ -212,14 +212,12 @@ static void modify_curves(ModifierData *md,
 
   if (bound) {
     const VArray<float> u_values = bind_u.varray;
-    const VArray<float3> offsets = has_offsets ? bind_off.varray :
-                                                 VArray<float3>::from_single(float3(0.0f),
-                                                                             positions.size());
-    const VArray<bool> point_bound = has_flag ?
-                                         bind_flag.varray :
-                                         VArray<bool>::from_single(true, positions.size());
-    const float4x4 curve_to_gp = ctx->object->world_to_object() *
-                                 cmd->object->object_to_world();
+    const VArray<float3> offsets = has_offsets ?
+                                       bind_off.varray :
+                                       VArray<float3>::from_single(float3(0.0f), positions.size());
+    const VArray<bool> point_bound = has_flag ? bind_flag.varray :
+                                                VArray<bool>::from_single(true, positions.size());
+    const float4x4 curve_to_gp = ctx->object->world_to_object() * cmd->object->object_to_world();
     /* Bind-time, not live: see #GreasePencilCurveModifierData::rest_gp_to_curve. Using the live
      * matrix here would stop the drawing from following a curve object that is moved away from
      * it, which is a behaviour riggers already rely on. */
@@ -245,8 +243,7 @@ static void modify_curves(ModifierData *md,
         }
         float3 offset;
         if (has_rest) {
-          const float *sample = cmd->rest_samples +
-                                idx * MOD_GREASE_PENCIL_CURVE_REST_STRIDE;
+          const float *sample = cmd->rest_samples + idx * MOD_GREASE_PENCIL_CURVE_REST_STRIDE;
           const float3 rest_pos(sample[0], sample[1], sample[2]);
           float3x3 rest_frame;
           rest_frame[0] = float3(sample[3], sample[4], sample[5]);
@@ -258,8 +255,8 @@ static void modify_curves(ModifierData *md,
         else {
           offset = float3(offsets[point_i]);
         }
-        const float3 target = math::transform_point(
-            curve_to_gp, table.pos[idx] + table.frame[idx] * offset);
+        const float3 target = math::transform_point(curve_to_gp,
+                                                    table.pos[idx] + table.frame[idx] * offset);
         const float factor = cmd->strength * vgroup_weights[point_i];
         positions[point_i] = math::interpolate(positions[point_i], target, factor);
       }
@@ -301,9 +298,9 @@ static void modify_geometry_set(ModifierData *md,
    * shared curve cache via BKE_where_on_path(), which is not safe to call concurrently. */
   CurveSampleTable table;
   build_sample_table(md, ctx, table);
-  /* Serial across drawings on purpose: although the table is now prebuilt, keeping the drawing loop
-   * serial preserves the original ordering. The per-point reconstruction inside modify_curves() is
-   * still parallelised (it only reads the pre-sampled table). */
+  /* Serial across drawings on purpose: although the table is now prebuilt, keeping the drawing
+   * loop serial preserves the original ordering. The per-point reconstruction inside
+   * modify_curves() is still parallelised (it only reads the pre-sampled table). */
   for (Drawing *drawing : drawings) {
     modify_curves(md, ctx, table, *drawing);
   }
@@ -333,12 +330,12 @@ static void panel_draw(const bContext *C, Panel *panel)
     PointerRNA bind_ptr = bind_row->op(
         "OBJECT_OT_greasepencil_curve_bind", IFACE_("Bind to Rest Pose"), ICON_NONE);
     RNA_boolean_set(&bind_ptr, "unbind", false);
-    PointerRNA unbind_ptr = bind_row->op("OBJECT_OT_greasepencil_curve_bind", IFACE_("Unbind"),
-                                         ICON_NONE);
+    PointerRNA unbind_ptr = bind_row->op(
+        "OBJECT_OT_greasepencil_curve_bind", IFACE_("Unbind"), ICON_NONE);
     RNA_boolean_set(&unbind_ptr, "unbind", true);
-    /* Reset the curve to its rest shape: all of it, or the points selected on the curve. "Selected"
-     * acts on the curve's current point selection (set it in the curve's Edit Mode); the mode values
-     * mirror the operator's enum (0 = All, 1 = Selected). */
+    /* Reset the curve to its rest shape: all of it, or the points selected on the curve.
+     * "Selected" acts on the curve's current point selection (set it in the curve's Edit Mode);
+     * the mode values mirror the operator's enum (0 = All, 1 = Selected). */
     uiLayout *reset_row = &layout->row(true);
     PointerRNA reset_all = reset_row->op(
         "OBJECT_OT_greasepencil_curve_reset", IFACE_("Reset All"), ICON_LOOP_BACK);

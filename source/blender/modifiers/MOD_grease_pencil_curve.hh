@@ -55,8 +55,7 @@ inline bool sample_curve(const Object &curve_ob,
                          float3x3 &r_frame)
 {
   float vec[4], dir[3], quat[4];
-  if (!BKE_where_on_path(
-          &curve_ob, math::clamp(u, 0.0f, 1.0f), vec, dir, quat, nullptr, nullptr))
+  if (!BKE_where_on_path(&curve_ob, math::clamp(u, 0.0f, 1.0f), vec, dir, quat, nullptr, nullptr))
   {
     return false;
   }
