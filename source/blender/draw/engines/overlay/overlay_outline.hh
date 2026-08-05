@@ -34,6 +34,13 @@ class Outline : Overlay {
   /* Detect edges inside the ID pass and output color for each of them. */
   PassSimple outline_resolve_ps_ = {"Resolve"};
 
+  /* Nuclear: masked Grease Pencil layers, clipped to their mattes so the outline traces the
+   * artwork instead of the raw fill. Ordered pass -- matte then layer, per pair. */
+  PassSimple outline_masked_ps_ = {"Prepass.masked_gpencil"};
+  uint8_t stencil_ref_ = 1;
+  DRWState outline_layer_state_ = DRWState(0);
+  int clipping_plane_count_ = 0;
+
   TextureFromPool object_id_tx_ = {"outline_ob_id_tx"};
   TextureFromPool tmp_depth_tx_ = {"outline_depth_tx"};
 
@@ -87,6 +94,15 @@ class Outline : Overlay {
         sub.push_constant("is_transform", is_transform);
         prepass_gpencil_ps_ = &sub;
       }
+      /* Nuclear: same target and state, but with guaranteed draw order. */
+      outline_layer_state_ = DRW_STATE_WRITE_COLOR | DRW_STATE_WRITE_DEPTH |
+                             DRW_STATE_DEPTH_LESS_EQUAL;
+      clipping_plane_count_ = state.clipping_plane_count;
+      stencil_ref_ = 1;
+      outline_masked_ps_.init();
+      outline_masked_ps_.bind_ubo(OVERLAY_GLOBALS_SLOT, &res.globals_buf);
+      outline_masked_ps_.bind_ubo(DRW_CLIPPING_UBO_SLOT, &res.clip_planes_buf);
+      outline_masked_ps_.framebuffer_set(&prepass_fb_);
       {
         auto &sub = pass.sub("Mesh");
         sub.shader_set(res.shaders->outline_prepass_mesh.get());
@@ -150,8 +166,21 @@ class Outline : Overlay {
         break;
       }
       case OB_GREASE_PENCIL:
-        GreasePencil::draw_grease_pencil(
-            res, *prepass_gpencil_ps_, state.scene, ob_ref.object, manager.unique_handle(ob_ref));
+        /* Nuclear: the outline traces the selected piece, so it has to follow the artwork the
+         * artist sees -- not the raw fill that the mask cut away. Without this the outline of a
+         * masked piece balloons far past its own drawing. */
+        GreasePencil::draw_grease_pencil_clipped(res,
+                                                 *prepass_gpencil_ps_,
+                                                 outline_masked_ps_,
+                                                 manager,
+                                                 state.scene,
+                                                 ob_ref.object,
+                                                 manager.unique_handle(ob_ref),
+                                                 select::SelectMap::select_invalid_id(),
+                                                 stencil_ref_,
+                                                 outline_layer_state_,
+                                                 clipping_plane_count_,
+                                                 res.shaders->outline_prepass_gpencil.get());
         break;
       case OB_MESH:
         if (state.xray_enabled_and_not_wire) {
@@ -251,6 +280,10 @@ class Outline : Overlay {
 
     manager.submit_only(outline_prepass_ps_, view);
     manager.submit_only(outline_prepass_flat_ps_, view);
+    /* Nuclear: the clipped layers. The prepass already cleared the stencil to 0. */
+    if (stencil_ref_ > 1) {
+      manager.submit(outline_masked_ps_, view);
+    }
 
     GPU_framebuffer_bind(framebuffer);
     manager.submit(outline_resolve_ps_, view);

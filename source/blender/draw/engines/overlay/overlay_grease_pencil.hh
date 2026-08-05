@@ -8,6 +8,10 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cstdlib>
+
+#include "BLI_array.hh"
 #include "BLI_bounds.hh"
 #include "BLI_math_matrix.h"
 #include "BLI_math_matrix.hh"
@@ -267,11 +271,372 @@ class GreasePencil : Overlay {
     }
   }
 
+  /* Nuclear: is this node drawn as part of this object's own artwork? (see
+   * #layer_is_covered_by_own_mattes) */
+  static bool mask_target_is_drawn(const bke::greasepencil::TreeNode &node)
+  {
+    if (node.is_layer()) {
+      return node.as_layer().is_visible();
+    }
+    for (const bke::greasepencil::Layer *leaf : node.as_group().layers()) {
+      if (leaf->is_visible()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Nuclear: true when everything this layer still shows is guaranteed to sit inside a matte that
+   * belongs to the same object -- so, for selection and for the outline, the layer itself adds no
+   * area of its own.
+   *
+   * The cut lives in the Grease Pencil engine (`draw_mask`), not here, so a masked layer used to
+   * answer with its raw fill: on a cut-out rig the colour layer is masked by the line layer, and
+   * the fill spills well past the outline. We cannot rasterize the mask in this pass, but we do
+   * not have to when the mask is subtractive *within one object*: what survives it is a subset of
+   * the matte's own area, and both carry the same object identity, so the matte already stands for
+   * every one of those pixels.
+   *
+   * Requires at least one mask, and every one of them to be positive, local to this object, and
+   * pointing at a node that is actually drawn. A single mask failing any of those makes the whole
+   * thing unsafe, so we bail out and keep the layer. A cross-object matte is exactly such a case:
+   * it belongs to another piece, so dropping the layer would lose area that only it draws.
+   */
+  static bool layer_is_covered_by_own_mattes(const ::GreasePencil &grease_pencil,
+                                             const bke::greasepencil::Layer &layer)
+  {
+    bool found = false;
+
+    auto masks_are_safe = [&](const ListBase &masks) -> bool {
+      LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &masks) {
+        if (mask->object != nullptr) {
+          /* Cross-object matte: it stands for another piece, not for this one. */
+          return false;
+        }
+        if ((mask->flag & GP_LAYER_MASK_INVERT) != 0) {
+          /* Inverted: what shows is *outside* the matte. */
+          return false;
+        }
+        if ((mask->flag & GP_LAYER_MASK_HIDE) != 0) {
+          /* Disabled mask: it does not cut anything. */
+          continue;
+        }
+        const bke::greasepencil::TreeNode *node = grease_pencil.find_node_by_name(
+            mask->layer_name);
+        if (node == nullptr || !mask_target_is_drawn(*node)) {
+          return false;
+        }
+        found = true;
+      }
+      return true;
+    };
+
+    if (!masks_are_safe(layer.masks)) {
+      return false;
+    }
+    /* Masks inherited from the ancestor groups/pegs cut this layer just the same. */
+    for (const bke::greasepencil::LayerGroup *group = layer.as_node().parent_group();
+         group != nullptr;
+         group = group->as_node().parent_group())
+    {
+      if (!masks_are_safe(group->masks)) {
+        return false;
+      }
+    }
+    return found;
+  }
+
+  /** Nuclear: one matte a masked layer is clipped against. */
+  struct MatteRef {
+    /** Null means a node of the masked layer's own object. */
+    Object *object;
+    /** Empty (with #object set) means the whole object. */
+    const char *node_name;
+  };
+
+  /**
+   * Nuclear: the mattes a layer must be clipped against when #layer_is_covered_by_own_mattes could
+   * not take its shortcut -- in practice a cross-object matte, which stands for another piece.
+   * False when there is nothing to cut, or an inverted mask (whose visible area lies *outside* the
+   * matte, which this scheme cannot express).
+   */
+  static bool gather_stencil_mattes(const ::GreasePencil &grease_pencil,
+                                    const bke::greasepencil::Layer &layer,
+                                    Vector<MatteRef> &r_mattes)
+  {
+    /* TEMPORARY (investigation only, remove before committing): A/B switch for the stencil cut. */
+    static const bool stencil_enabled = []() {
+      const char *env = std::getenv("NUCLEAR_GP_STENCIL");
+      return (env == nullptr) || !STREQ(env, "0");
+    }();
+    if (!stencil_enabled) {
+      return false;
+    }
+
+    if (!layer.use_masks() || layer_is_covered_by_own_mattes(grease_pencil, layer)) {
+      return false;
+    }
+
+    Vector<MatteRef> mattes;
+    auto collect = [&](const ListBase &masks) -> bool {
+      LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &masks) {
+        if ((mask->flag & GP_LAYER_MASK_HIDE) != 0) {
+          continue;
+        }
+        if ((mask->flag & GP_LAYER_MASK_INVERT) != 0) {
+          return false;
+        }
+        if (mask->object == nullptr) {
+          const bke::greasepencil::TreeNode *node = grease_pencil.find_node_by_name(
+              mask->layer_name);
+          if (node == nullptr || !mask_target_is_drawn(*node)) {
+            continue;
+          }
+        }
+        mattes.append({mask->object, mask->layer_name});
+      }
+      return true;
+    };
+
+    if (!collect(layer.masks)) {
+      return false;
+    }
+    for (const bke::greasepencil::LayerGroup *group = layer.as_node().parent_group();
+         group != nullptr;
+         group = group->as_node().parent_group())
+    {
+      if (!collect(group->masks)) {
+        return false;
+      }
+    }
+    if (mattes.is_empty()) {
+      return false;
+    }
+    r_mattes = std::move(mattes);
+    return true;
+  }
+
+  /**
+   * Nuclear: draw one masked layer clipped to its mattes, through the stencil buffer.
+   *
+   * The mattes are rasterized with \a ref -- no colour, no depth -- and the layer is then drawn
+   * testing for that value, so only the part the artist sees reaches the buffer. Each pair uses its
+   * own \a ref, so no clear is needed between them; that is why this has to live in a pass with
+   * guaranteed draw order (#PassSimple).
+   */
+  static void draw_masked_layer_stencil(Resources &res,
+                                        PassSimple &pass,
+                                        Manager &manager,
+                                        const Scene *scene,
+                                        Object *ob,
+                                        ResourceHandleRange res_handle,
+                                        select::ID select_id,
+                                        const int layer_index,
+                                        const Span<MatteRef> mattes,
+                                        const uint8_t ref,
+                                        const DRWState layer_state,
+                                        const int clipping_plane_count,
+                                        gpu::Shader *shader)
+  {
+    {
+      auto &sub = pass.sub("Matte");
+      sub.shader_set(shader);
+      sub.state_set(DRW_STATE_WRITE_STENCIL | DRW_STATE_STENCIL_ALWAYS, clipping_plane_count);
+      sub.state_stencil(0xFF, ref, 0xFF);
+      for (const MatteRef &matte : mattes) {
+        Object *matte_ob = (matte.object != nullptr) ? matte.object : ob;
+        ::GreasePencil &matte_gp = DRW_object_get_data_for_drawing<::GreasePencil>(*matte_ob);
+        const bool whole_object = (matte.node_name == nullptr) || (matte.node_name[0] == '\0');
+
+        ResourceHandleRange matte_handle = res_handle;
+        if (matte_ob != ob) {
+          ObjectRef matte_ref(matte_ob);
+          matte_handle = manager.unique_handle(matte_ref);
+        }
+
+        auto keep = [&](const int i) {
+          if (whole_object) {
+            return true;
+          }
+          const bke::greasepencil::Layer &l = *matte_gp.layers()[i];
+          if (STREQ(l.name().c_str(), matte.node_name)) {
+            return true;
+          }
+          for (const bke::greasepencil::LayerGroup *g = l.as_node().parent_group(); g != nullptr;
+               g = g->as_node().parent_group())
+          {
+            if (STREQ(g->name().c_str(), matte.node_name)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        /* The matte only carves the stencil: it must not register a hit of its own. */
+        draw_grease_pencil(res,
+                           sub,
+                           scene,
+                           matte_ob,
+                           matte_handle,
+                           select::SelectMap::select_invalid_id(),
+                           false,
+                           keep);
+      }
+    }
+    {
+      auto &sub = pass.sub("MaskedLayer");
+      sub.shader_set(shader);
+      sub.state_set(layer_state | DRW_STATE_STENCIL_EQUAL, clipping_plane_count);
+      sub.state_stencil(0x00, ref, 0xFF);
+      draw_grease_pencil(res, sub, scene, ob, res_handle, select_id, true, [layer_index](int i) {
+        return i == layer_index;
+      });
+    }
+  }
+
+  /**
+   * Nuclear: draw a Grease Pencil object the way it looks on screen: plain layers in \a pass, and
+   * any layer needing a real mask cut redrawn in \a stencil_pass clipped to its mattes.
+   */
+  static void draw_grease_pencil_clipped(Resources &res,
+                                         PassMain::Sub &pass,
+                                         PassSimple &stencil_pass,
+                                         Manager &manager,
+                                         const Scene *scene,
+                                         Object *ob,
+                                         ResourceHandleRange res_handle,
+                                         select::ID select_id,
+                                         uint8_t &r_stencil_ref,
+                                         const DRWState layer_state,
+                                         const int clipping_plane_count,
+                                         gpu::Shader *stencil_shader)
+  {
+    ::GreasePencil &grease_pencil = DRW_object_get_data_for_drawing<::GreasePencil>(*ob);
+
+    Vector<int> cut_layers;
+    Vector<Vector<MatteRef>> cut_mattes;
+    for (const int i : grease_pencil.layers().index_range()) {
+      const bke::greasepencil::Layer &layer = *grease_pencil.layers()[i];
+      if (!layer.is_visible()) {
+        continue;
+      }
+      Vector<MatteRef> mattes;
+      if (gather_stencil_mattes(grease_pencil, layer, mattes)) {
+        cut_layers.append(i);
+        cut_mattes.append(std::move(mattes));
+      }
+    }
+
+    if (cut_layers.is_empty()) {
+      draw_grease_pencil(res, pass, scene, ob, res_handle, select_id, true);
+      return;
+    }
+
+    draw_grease_pencil(res, pass, scene, ob, res_handle, select_id, true, [&](const int i) {
+      return !cut_layers.contains(i);
+    });
+
+    for (const int i : cut_layers.index_range()) {
+      if (r_stencil_ref == 0) {
+        r_stencil_ref = 1;
+      }
+      draw_masked_layer_stencil(res,
+                                stencil_pass,
+                                manager,
+                                scene,
+                                ob,
+                                res_handle,
+                                select_id,
+                                cut_layers[i],
+                                cut_mattes[i],
+                                r_stencil_ref,
+                                layer_state,
+                                clipping_plane_count,
+                                stencil_shader);
+      r_stencil_ref++;
+    }
+  }
+
+  /**
+   * Nuclear: give each Grease Pencil object a flat depth plane that follows the *render* order.
+   *
+   * The Grease Pencil engine paints objects back-to-front, sorted by the depth of the object
+   * ORIGIN (#gpencil_object_cache_add / `gpencil_tobject_dist_sort`), and clears the depth buffer
+   * between objects (#Instance::draw_object) -- so where the strokes actually sit in depth never
+   * decides which piece covers which. The selection prepass had no such notion: the fragment
+   * shader skips the depth plane under `SELECT_ENABLE`, so hits were resolved by the raw geometric
+   * depth of the stroke, with ties broken by distance to the cursor. On a cut-out rig those two
+   * orders are unrelated -- measured on production rigs, 22% of the overlapping pairs came out
+   * inverted, and on a rig whose pieces all share one origin there was no correlation at all.
+   *
+   * So in selection mode we rebuild the engine's order here (every object is known by now) and
+   * hand each object a plane at a distinct depth that follows it. Ordering is only nudged where it
+   * has to be: an object keeps its own depth unless the object in front of it is not strictly
+   * closer, which keeps Grease Pencil consistent with the rest of the scene.
+   */
+  static void compute_selection_depth_planes(View &view, Resources &res)
+  {
+    const int64_t count = res.depth_planes_count;
+    /* Same axis the engine sorts along: `camera_z_axis`, the camera Z axis in world space. */
+    const float3 camera_z_axis = view.forward();
+
+    Array<int64_t> order(count);
+    Array<float> camera_z(count);
+    for (const int64_t i : IndexRange(count)) {
+      order[i] = i;
+      camera_z[i] = math::dot(camera_z_axis, res.depth_planes[i].object_origin);
+    }
+
+    /* Stable sort, back to front: the engine's own comparison, and the stability is what
+     * reproduces its tie-breaking (objects sharing an origin keep the sync order). */
+    std::stable_sort(order.begin(), order.end(), [&](const int64_t a, const int64_t b) {
+      return camera_z[a] < camera_z[b];
+    });
+
+    /* Separation used to break ties, small enough not to reorder anything against the rest of the
+     * scene, large enough to survive a 24 bit depth buffer. */
+    float extent = 0.0f;
+    for (const int64_t i : IndexRange(count)) {
+      extent = math::max(extent, math::reduce_max(res.depth_planes[i].bounds.size()));
+    }
+    if (count > 1) {
+      extent = math::max(extent, camera_z[order[count - 1]] - camera_z[order[0]]);
+    }
+    const float step = math::max(extent, 1.0f) * 1e-4f;
+
+    float previous = 0.0f;
+    const Object *previous_object = nullptr;
+    for (const int64_t rank : IndexRange(count)) {
+      const int64_t i = order[rank];
+      GreasePencilDepthPlane &plane = res.depth_planes[i];
+      float depth = camera_z[i];
+      if (rank > 0) {
+        /* One object can be drawn more than once -- a masked layer is pulled out of the main pass
+         * to be clipped -- and every one of those draws has to land on the SAME plane, or the
+         * pulled-out layer would be pushed behind its own piece and fail the depth test. */
+        depth = (plane.object == previous_object) ? previous : math::max(depth, previous + step);
+      }
+      previous = depth;
+      previous_object = plane.object;
+
+      /* Anchor a plane facing the viewer at that depth. */
+      const float3 anchor = plane.object_origin + camera_z_axis * (depth - camera_z[i]);
+      const float3 normal = view.is_persp() ? math::normalize(view.location() - anchor) :
+                                              camera_z_axis;
+      plane.plane = float4(normal, -math::dot(normal, anchor));
+    }
+  }
+
   static void compute_depth_planes(Manager &manager,
                                    View &view,
                                    Resources &res,
                                    const State & /*state*/)
   {
+    if (res.is_selection()) {
+      compute_selection_depth_planes(view, res);
+      return;
+    }
     for (auto i : IndexRange(res.depth_planes_count)) {
       GreasePencilDepthPlane &plane = res.depth_planes[i];
       const float4x4 &object_to_world =
@@ -302,12 +667,21 @@ class GreasePencil : Overlay {
     manager.submit(edit_grease_pencil_ps_, view_edit_cage_);
   }
 
+  /**
+   * \param cull_invisible_layers: Nuclear -- skip the layers that draw nothing on screen (fully
+   * transparent, or entirely eaten by their own mask). Used where the geometry stands for the
+   * artwork the artist sees: resolving a click, and tracing the selection outline. The plain depth
+   * prepass leaves it off and keeps upstream behaviour.
+   */
+  template<typename PassT>
   static void draw_grease_pencil(Resources &res,
-                                 PassMain::Sub &pass,
+                                 PassT &pass,
                                  const Scene *scene,
                                  Object *ob,
                                  ResourceHandleRange res_handle,
-                                 select::ID select_id = select::SelectMap::select_invalid_id())
+                                 select::ID select_id = select::SelectMap::select_invalid_id(),
+                                 const bool cull_invisible_layers = false,
+                                 FunctionRef<bool(int)> layer_filter = {})
   {
     using namespace blender;
     using namespace blender::ed::greasepencil;
@@ -325,12 +699,38 @@ class GreasePencil : Overlay {
       GreasePencilDepthPlane &plane = res.depth_planes[index];
       plane.bounds = BKE_object_boundbox_get(ob).value_or(blender::Bounds(float3(0)));
       plane.handle = res_handle;
+      plane.object_origin = float3(ob->object_to_world().location());
+      plane.object = ob;
 
       pass.push_constant("gp_depth_plane", &plane.plane);
     }
 
     int t_offset = 0;
     const Vector<DrawingInfo> drawings = retrieve_visible_drawings(*scene, grease_pencil, true);
+
+    /* Nuclear: masks can chain (a line layer masked by the colour layer that it masks back), and
+     * dropping *every* layer would leave the object with no area at all -- so the shortcut only
+     * applies while something is left to stand for the piece. */
+    bool skip_masked_layers = false;
+    if (cull_invisible_layers) {
+      int drawn = 0;
+      int covered = 0;
+      for (const DrawingInfo info : drawings) {
+        if (info.onion_id != 0) {
+          continue;
+        }
+        const bke::greasepencil::Layer &l = *grease_pencil.layers()[info.layer_index];
+        if (l.opacity < 1e-4f) {
+          continue;
+        }
+        drawn++;
+        if (l.use_masks() && layer_is_covered_by_own_mattes(grease_pencil, l)) {
+          covered++;
+        }
+      }
+      skip_masked_layers = (covered > 0 && covered < drawn);
+    }
+
     for (const DrawingInfo info : drawings) {
 
       gpu::VertBuf *position_tx = draw::DRW_cache_grease_pencil_position_buffer_get(scene, ob);
@@ -352,6 +752,21 @@ class GreasePencil : Overlay {
       const IndexMask visible_strokes = ed::greasepencil::retrieve_visible_strokes(
           *ob, info.drawing, memory);
 
+      const bke::greasepencil::Layer &layer = *grease_pencil.layers()[info.layer_index];
+
+      /* Nuclear: a fully transparent layer draws nothing, yet `Layer::is_visible()` only looks at
+       * the hide flag -- so it used to stay clickable. Only skip it when resolving a click; the
+       * depth prepass keeps its upstream behaviour. */
+      const bool hide_transparent_layer = cull_invisible_layers && (layer.opacity < 1e-4f);
+
+      /* Nuclear: see #layer_is_covered_by_own_mattes -- the masked layer adds no area the matte
+       * does not already stand for, so it stops answering with its raw fill. */
+      const bool hide_masked_layer = skip_masked_layers && layer.use_masks() &&
+                                     layer_is_covered_by_own_mattes(grease_pencil, layer);
+
+      /* Nuclear: caller restricted the draw (the stencil cut draws matte and layer separately). */
+      const bool filtered_out = layer_filter && !layer_filter(info.layer_index);
+
       visible_strokes.foreach_index([&](const int stroke_i) {
         const IndexRange points = points_by_curve[stroke_i];
         const int material_index = stroke_materials[stroke_i];
@@ -364,7 +779,9 @@ class GreasePencil : Overlay {
         const int num_stroke_vertices = (points.size() +
                                          int(cyclic[stroke_i] && (points.size() >= 3)));
 
-        if (hide_material || hide_onion) {
+        if (hide_material || hide_onion || hide_transparent_layer || hide_masked_layer ||
+            filtered_out)
+        {
           t_offset += num_stroke_triangles;
           t_offset += num_stroke_vertices * 2;
           return;

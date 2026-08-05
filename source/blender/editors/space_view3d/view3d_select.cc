@@ -2461,9 +2461,81 @@ static Base *mouse_select_object_center(const ViewContext *vc, Base *startbase, 
   return basact;
 }
 
+/**
+ * Nuclear: object pick that prefers whatever sits exactly under the cursor.
+ *
+ * The upstream cascade (#mixed_bones_object_selectbuffer) opens at a 14 pixel radius and narrows
+ * only when more than one object answers -- so a neighbouring piece a dozen pixels away can win a
+ * click that landed well inside another one. On a cut-out rig, where the pieces are small and
+ * packed, that is where most wrong picks come from: measured on the reference rig, 19 of 21 misses
+ * came from a piece that did not even cover the clicked pixel. Widening still helps when the click
+ * misses every drawing, so start tight and only grow when nothing at all answers.
+ */
+static int object_selectbuffer_tight(const ViewContext *vc,
+                                     GPUSelectBuffer *buffer,
+                                     const int mval[2],
+                                     const bool do_nearest)
+{
+  const eV3DSelectMode select_mode = do_nearest ? VIEW3D_SELECT_PICK_NEAREST :
+                                                  VIEW3D_SELECT_PICK_ALL;
+  const int radii[] = {2, 5, 14};
+  int hits = 0;
+
+  view3d_gpu_select_cache_begin();
+  for (const int radius : radii) {
+    const int64_t ofs = buffer->storage.size();
+    rcti rect;
+    BLI_rcti_init_pt_radius(&rect, mval, radius);
+    hits = view3d_gpu_select(vc, buffer, &rect, select_mode, VIEW3D_SELECT_FILTER_NOP);
+    if (hits > 0) {
+      if (ofs > 0) {
+        /* Shift results to the beginning, as the upstream cascade does. */
+        blender::MutableSpan<GPUSelectResult> storage = buffer->storage.as_mutable_span();
+        std::copy(storage.begin() + ofs, storage.begin() + ofs + hits, storage.begin());
+      }
+      break;
+    }
+  }
+  view3d_gpu_select_cache_end();
+  return hits;
+}
+
+/**
+ * Nuclear: drop the non-drawing hits when a drawing answered too.
+ *
+ * A cut-out rig carries helper objects -- deform curves above all -- that lie right on top of the
+ * artwork they bend. The Peg Pose pick exists to grab drawings, so a helper must never win a click
+ * that landed on one. They stay reachable: when no drawing is under the cursor nothing is dropped,
+ * so clicking a curve away from the art still selects it.
+ */
+static int selectbuffer_prefer_grease_pencil(const ViewContext *vc,
+                                             GPUSelectBuffer *buffer,
+                                             const int hits)
+{
+  BKE_view_layer_synced_ensure(vc->scene, vc->view_layer);
+
+  blender::MutableSpan<GPUSelectResult> storage = buffer->storage.as_mutable_span();
+  int kept = 0;
+  for (int i = 0; i < hits; i++) {
+    const int select_id = storage[i].id & 0xFFFF;
+    LISTBASE_FOREACH (Base *, base, BKE_view_layer_object_bases_get(vc->view_layer)) {
+      if (base->object->runtime->select_id != select_id) {
+        continue;
+      }
+      if (base->object->type == OB_GREASE_PENCIL) {
+        storage[kept++] = storage[i];
+      }
+      break;
+    }
+  }
+
+  return (kept > 0) ? kept : hits;
+}
+
 static Base *ed_view3d_give_base_under_cursor_ex(bContext *C,
                                                  const int mval[2],
-                                                 int *r_material_slot)
+                                                 int *r_material_slot,
+                                                 const bool use_cycle)
 {
   Depsgraph *depsgraph = CTX_data_ensure_evaluated_depsgraph(C);
   Base *basact = nullptr;
@@ -2475,10 +2547,29 @@ static Base *ed_view3d_give_base_under_cursor_ex(bContext *C,
 
   const ViewContext vc = ED_view3d_viewcontext_init(C, depsgraph);
 
-  const bool do_nearest = !XRAY_ACTIVE(vc.v3d);
+  bool do_nearest = !XRAY_ACTIVE(vc.v3d);
   const bool do_material_slot_selection = r_material_slot != nullptr;
-  const int hits = mixed_bones_object_selectbuffer(
-      &vc, &buffer, mval, VIEW3D_SELECT_FILTER_NOP, do_nearest, false, do_material_slot_selection);
+  int hits;
+  if (use_cycle && !do_material_slot_selection) {
+    /* Nuclear: tight tolerance (see #object_selectbuffer_tight) plus cycling -- clicking the same
+     * spot again steps to the object behind, like the regular select does. Without the cycle a
+     * wrong pick has no way out. */
+    const bool has_motion = WM_cursor_test_motion_and_update(mval);
+    do_nearest = do_nearest && has_motion;
+    hits = object_selectbuffer_tight(&vc, &buffer, mval, do_nearest);
+    if (hits > 1) {
+      hits = selectbuffer_prefer_grease_pencil(&vc, &buffer, hits);
+    }
+  }
+  else {
+    hits = mixed_bones_object_selectbuffer(&vc,
+                                           &buffer,
+                                           mval,
+                                           VIEW3D_SELECT_FILTER_NOP,
+                                           do_nearest,
+                                           false,
+                                           do_material_slot_selection);
+  }
 
   if (hits > 0) {
     const bool has_bones = (r_material_slot == nullptr) &&
@@ -2492,7 +2583,12 @@ static Base *ed_view3d_give_base_under_cursor_ex(bContext *C,
 
 Base *ED_view3d_give_base_under_cursor(bContext *C, const int mval[2])
 {
-  return ed_view3d_give_base_under_cursor_ex(C, mval, nullptr);
+  return ed_view3d_give_base_under_cursor_ex(C, mval, nullptr, false);
+}
+
+Base *ED_view3d_give_base_under_cursor_cycle(bContext *C, const int mval[2])
+{
+  return ed_view3d_give_base_under_cursor_ex(C, mval, nullptr, true);
 }
 
 Object *ED_view3d_give_object_under_cursor(bContext *C, const int mval[2])
@@ -2508,7 +2604,7 @@ Object *ED_view3d_give_material_slot_under_cursor(bContext *C,
                                                   const int mval[2],
                                                   int *r_material_slot)
 {
-  Base *base = ed_view3d_give_base_under_cursor_ex(C, mval, r_material_slot);
+  Base *base = ed_view3d_give_base_under_cursor_ex(C, mval, r_material_slot, false);
   if (base) {
     return base->object;
   }

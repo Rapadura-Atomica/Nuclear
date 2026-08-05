@@ -209,13 +209,18 @@ static bFollowPegConstraint *active_followpeg(Object *ob)
   return con ? static_cast<bFollowPegConstraint *>(con->data) : nullptr;
 }
 
-static wmOperatorStatus pegrig_pick_invoke(bContext *C, wmOperator * /*op*/, const wmEvent *event)
+static wmOperatorStatus pegrig_pick_exec(bContext *C, wmOperator *op)
 {
   Scene *scene = CTX_data_scene(C);
   ViewLayer *view_layer = CTX_data_view_layer(C);
   View3D *v3d = CTX_wm_view3d(C);
 
-  Base *base = ED_view3d_give_base_under_cursor(C, event->mval);
+  int mval[2];
+  RNA_int_get_array(op->ptr, "location", mval);
+
+  /* Cycling: clicking the same spot again steps to the piece behind, so a pick that lands on the
+   * wrong drawing is one more click away from the right one. */
+  Base *base = ED_view3d_give_base_under_cursor_cycle(C, mval);
 
   base_deselect_all(scene, view_layer, v3d, SEL_DESELECT);
 
@@ -237,6 +242,12 @@ static wmOperatorStatus pegrig_pick_invoke(bContext *C, wmOperator * /*op*/, con
   return OPERATOR_FINISHED;
 }
 
+static wmOperatorStatus pegrig_pick_invoke(bContext *C, wmOperator *op, const wmEvent *event)
+{
+  RNA_int_set_array(op->ptr, "location", event->mval);
+  return pegrig_pick_exec(C, op);
+}
+
 void OBJECT_OT_pegrig_pick(wmOperatorType *ot)
 {
   ot->name = "Pick Peg";
@@ -244,9 +255,22 @@ void OBJECT_OT_pegrig_pick(wmOperatorType *ot)
   ot->idname = "OBJECT_OT_pegrig_pick";
 
   ot->invoke = pegrig_pick_invoke;
+  ot->exec = pegrig_pick_exec;
   ot->poll = ED_operator_view3d_active;
 
   ot->flag = OPTYPE_UNDO;
+
+  PropertyRNA *prop = RNA_def_int_vector(ot->srna,
+                                         "location",
+                                         2,
+                                         nullptr,
+                                         INT_MIN,
+                                         INT_MAX,
+                                         "Location",
+                                         "Mouse location in region coordinates",
+                                         INT_MIN,
+                                         INT_MAX);
+  RNA_def_property_flag(prop, PROP_HIDDEN);
 }
 
 static bool pegrig_select_parent_poll(bContext *C)

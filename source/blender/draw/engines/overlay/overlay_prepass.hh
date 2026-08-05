@@ -61,6 +61,11 @@ class ImagePrepass : Overlay {
 class Prepass : Overlay {
  private:
   PassMain ps_ = {"prepass"};
+  /* Nuclear: Grease Pencil layers whose mask has to be rasterized. Ordered pass: each pair writes
+   * its matte to the stencil and then draws the layer against it. */
+  PassSimple masked_ps_ = {"prepass.masked_gpencil"};
+  uint8_t stencil_ref_ = 1;
+  DRWState prepass_state_ = DRWState(0);
   PassMain::Sub *mesh_ps_ = nullptr;
   PassMain::Sub *mesh_flat_ps_ = nullptr;
   PassMain::Sub *hair_ps_ = nullptr;
@@ -89,12 +94,21 @@ class Prepass : Overlay {
     bool use_cull = res.globals_buf.backface_culling;
     DRWState backface_cull_state = use_cull ? DRW_STATE_CULL_BACK : DRWState(0);
 
+    prepass_state_ = DRW_STATE_WRITE_DEPTH | DRW_STATE_DEPTH_LESS_EQUAL;
+
     ps_.init();
     ps_.bind_ubo(OVERLAY_GLOBALS_SLOT, &res.globals_buf);
     ps_.bind_ubo(DRW_CLIPPING_UBO_SLOT, &res.clip_planes_buf);
     ps_.state_set(DRW_STATE_WRITE_DEPTH | DRW_STATE_DEPTH_LESS_EQUAL | backface_cull_state,
                   state.clipping_plane_count);
     res.select_bind(ps_);
+
+    /* Nuclear: the clipped Grease Pencil layers (see #draw_grease_pencil_clipped). */
+    stencil_ref_ = 1;
+    masked_ps_.init();
+    masked_ps_.bind_ubo(OVERLAY_GLOBALS_SLOT, &res.globals_buf);
+    masked_ps_.bind_ubo(DRW_CLIPPING_UBO_SLOT, &res.clip_planes_buf);
+    res.select_bind(masked_ps_);
     {
       auto &sub = ps_.sub("Mesh");
       sub.shader_set(res.is_selection() ? res.shaders->depth_mesh_conservative.get() :
@@ -269,12 +283,29 @@ class Prepass : Overlay {
            * The grease pencil engine already renders it properly. */
           return;
         }
-        GreasePencil::draw_grease_pencil(res,
-                                         *grease_pencil_ps_,
-                                         state.scene,
-                                         ob_ref.object,
-                                         manager.unique_handle(ob_ref),
-                                         res.select_id(ob_ref));
+        if (res.is_selection()) {
+          /* Nuclear: resolving a click -- only what is on screen may answer. */
+          GreasePencil::draw_grease_pencil_clipped(res,
+                                                   *grease_pencil_ps_,
+                                                   masked_ps_,
+                                                   manager,
+                                                   state.scene,
+                                                   ob_ref.object,
+                                                   manager.unique_handle(ob_ref),
+                                                   res.select_id(ob_ref),
+                                                   stencil_ref_,
+                                                   prepass_state_,
+                                                   state.clipping_plane_count,
+                                                   res.shaders->depth_grease_pencil.get());
+        }
+        else {
+          GreasePencil::draw_grease_pencil(res,
+                                           *grease_pencil_ps_,
+                                           state.scene,
+                                           ob_ref.object,
+                                           manager.unique_handle(ob_ref),
+                                           res.select_id(ob_ref));
+        }
         return;
       default:
         break;
@@ -325,6 +356,12 @@ class Prepass : Overlay {
     /* Should be fine to use the line buffer since the prepass only writes to the depth buffer. */
     GPU_framebuffer_bind(framebuffer);
     manager.submit_only(ps_, view);
+    /* Nuclear: the masked layers, clipped. Drawn after the rest so the stencil scratch pad cannot
+     * disturb any other object. */
+    if (stencil_ref_ > 1) {
+      GPU_framebuffer_clear_stencil(framebuffer, 0);
+      manager.submit(masked_ps_, view);
+    }
   }
 };
 

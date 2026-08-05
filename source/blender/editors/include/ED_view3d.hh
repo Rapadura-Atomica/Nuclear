@@ -1124,6 +1124,11 @@ void ED_view3d_draw_setup_view(const wmWindowManager *wm,
  * `mval` comes from event->mval, only use within region handlers.
  */
 Base *ED_view3d_give_base_under_cursor(bContext *C, const int mval[2]);
+/**
+ * Nuclear: same as above, but repeated clicks on one spot walk down the objects under the cursor
+ * instead of returning the same one. Used by the Peg Pose pick.
+ */
+Base *ED_view3d_give_base_under_cursor_cycle(bContext *C, const int mval[2]);
 Object *ED_view3d_give_object_under_cursor(bContext *C, const int mval[2]);
 Object *ED_view3d_give_material_slot_under_cursor(bContext *C,
                                                   const int mval[2],

@@ -1,172 +1,185 @@
-# Handoff — Nuclear 1.7.1/b14: perdas de dados (pegs, prefs) + crash do Outliner (2026-07-27)
+# Handoff — seleção de pegs no viewport (hit-test do Grease Pencil) — 2026-08-04
 
 ## Objetivo
 
-O usuário abriu a sessão dizendo que a nova versão do Nuclear "retrocedeu" o rebrand
-`blender` → Nuclear. A investigação partiu disso e desembocou em **três perdas de dados reais**
-em produção, todas corrigidas e publicadas na **1.7.1 / NUCLEAR_BUILD 14**.
+O usuário relatou: **"clico numa peça do rig e vem outra"**, e depois **"as masks ainda aparecem
+e as pegs continuam destoantes dos objetos"**. A meta é fazer o clique (e o contorno de seleção)
+no viewport corresponderem ao desenho que o artista vê, num rig cut-out 2D de Grease Pencil.
+
+Nada foi commitado. Tudo vive na working tree do repo `~/Documentos/GitHub/Nuclear`, branch
+`Nuclear` (HEAD `e189ca8ee59`).
 
 ## Estado atual
 
-**Tudo commitado na branch `Nuclear` e presente no `origin`** (working tree limpo).
-Commits desta sessão, do mais antigo para o mais novo:
+**Diagnóstico completo (contexto que não se redescobre sozinho — detalhes na memória
+`nuclear-selecao-peg-diverge-do-render`).** Eram QUATRO causas somadas, não uma:
 
-| commit | o quê |
-|---|---|
-| `5650284a200` | crash do Outliner + ruído de log do auto-key + `bezt[-1]` + updater cria o `.desktop` |
-| `e19bb623119` | `verify-zip` reprova pacote sem poda |
-| `bec553b0122` | **pegs**: Follow Peg passa a contar usuário no PegRig |
-| `09b76ec32f3` | **prefs**: instância antiga não sobrescreve mais preferências novas |
-| `3f6a91902eb` | release 1.7.1 / build 14 |
+1. **Duas ordens de profundidade sem relação.** O engine GP pinta os objetos ordenados pela
+   profundidade da **origem** do objeto (`gpencil_cache_utils.cc:54`) e limpa o depth buffer entre
+   eles — a geometria não decide nada. O prepass de seleção resolvia pelo `gl_FragCoord.z`
+   **geométrico** do traço, porque o fragment shader pula o depth plane sob `SELECT_ENABLE`.
+2. **Tolerância de 14 px** do pick (`mixed_bones_object_selectbuffer`): abre larga e só estreita
+   quando mais de um objeto responde — num rig denso, a peça vizinha roubava o clique. Era a
+   **maior** fonte de erro (19 de 21 no rig de referência), não a ordem.
+3. **Masks ignoradas no hit-test** — o corte só existe no engine (`draw_mask`). Num rig cut-out
+   isso é a maioria do desenho: 21 das 23 masks do dinossauro recortam a camada de cor pela de
+   linha, então a área clicável era o fill **bruto**, que extravasa o contorno. É o que o usuário
+   sentia como "a peg não bate com o objeto".
+4. **Objetos auxiliares** (deform curves) ficam por cima da arte e disputavam o clique.
 
-⚠️ `origin/Nuclear` já tem `3f6a91902eb`, mas **esta sessão nunca deu `git push`** — provavelmente
-uma sessão Claude paralela empurrou (ver memória `parallel-claude-sessions-git-branch-collision`).
-Confirmado com `git ls-remote origin refs/heads/Nuclear`. Antes de commitar qualquer coisa nova,
-cheque `git branch --show-current` e o reflog.
+**Implementado e medido (build atual em `~/Documentos/GitHub/build_nuclear_2d/bin/nuclear`):**
 
-### Publicado e verificado
+- Ordem do clique alinhada à do render (`compute_selection_depth_planes` reconstrói o sort do
+  engine; o **vertex** shader grava a profundidade sob `SELECT_ENABLE`, porque no fragment o
+  upstream não pode — quebra o early depth test).
+- Tolerância: `object_selectbuffer_tight()` começa em 2 px e só alarga (5, 14) se **nada**
+  responder. Só no Pick Peg; o `view3d.select` padrão não foi tocado.
+- Ciclo no Pick Peg (clicar de novo desce para a peça de trás) + propriedade `location` no
+  operador (é assim que o teste automatizado dispara cliques).
+- Camada com `opacity < 1e-4` deixa de ser clicável (`is_visible()` do upstream só olha HIDE).
+- Mask **do mesmo objeto**: atalho sem rasterizar nada — o que sobrevive à mask é subconjunto do
+  matte, e o select id é por objeto, então basta não desenhar a camada mascarada.
+- Mask **cross-object**: corte real por **stencil** (matte escreve `ref`, camada desenha com
+  `STENCIL_EQUAL`, num `PassSimple`). Vale para clique e contorno.
+- Deform curves: `selectbuffer_prefer_grease_pencil()` descarta hits que não são desenho quando
+  algum desenho respondeu.
 
-- **Nuclear 1.7.1 (Beta), build 14**, no ar em `https://rapaduraatomica.com.br/estacao/`.
-- zip = **357.337.194 bytes (340 MB)**, sha256
-  `1481548d02db95a9e7520438033febdd0afc0dc06a27c91217814217355cbdaa`.
-  Zip no servidor == manifesto == resposta pública (os três conferidos).
-- Backup da b13 no servidor: `nuclear.zip.bak-pre-1.7.1`.
-- **Update testado ponta a ponta**: o b13 detectou, baixou, validou checksum e aplicou.
-  Esta máquina (192.168.0.19) está em `~/Nuclear/versions/1.7.1-b14`, `current` apontando para lá.
-  O apply também rodou o cleanup pendente desde a b12 (removeu `~/.cache/blender`).
-- `ping.php` / `instalarNuclear.sh` **não** foram tocados (deploy de código segue manual).
+**Números — clique REAL na GUI** (script `teste_clique_gui.py`, grade de 18 px, "defensável" =
+topo da pilha ou linha da peça a ≤4 px):
 
-### O que foi consertado (todos validados com repro antes/depois)
+| rig | antes (build 17) | agora |
+|---|---|---|
+| Atena | 73,1% | **96,2%** |
+| Dinossauro | 56,5% | **89,1%** |
+| Lala | 22,2% | **83,3%** |
+| Carolina | 59,5% | **76,0%** |
 
-1. **Pegs sumindo** (a queixa mais grave). `followpeg_id_looper` em
-   `source/blender/blenkernel/intern/constraint.cc` reportava o PegRig com `is_reference = false`
-   (`IDWALK_CB_NOP`), **sem contar usuário**. No take real da Carolina: 4 objetos seguindo o rig e
-   `users = 1`. Quando o último usuário contado saía (o `NuclearPegTree` "Peg Graph"), o rig ia a
-   zero e era descartado no save **com as 80 pegs**. Repro: remover o Peg Graph + salvar → antes
-   `pegrigs=0`, depois `pegrigs=1 pegs=80`. Torna obsoleto o workaround `use_fake_user=True`.
-2. **Preferências resetando** (addons/atalhos). Prefs são gravadas inteiras a partir do estado em
-   memória, sem merge — a última instância a gravar vence, e uma janela aberta há horas escreve o
-   estado de quando abriu. Agora o mtime do `userpref.blend` é rastreado e o save **automático**
-   (saída) pula quando o disco está mais novo; **"Save Preferences" explícito continua forçando**.
-3. **Crash do Outliner** (SIGSEGV real, coredump na .29 após 1h23 de trabalho).
-   `tree_element_id_type_to_index()` repassava o `-1` de `BKE_idtype_idcode_to_index()` e o
-   chamador fazia `merged->num_elements[-1]++` — escrita fora dos limites que corrompia o array
-   vizinho do `MergedIconRow`, levando a deref de nulo em `outliner_draw_iconrow_doit`.
-4. **Pacote inflado**: a b13 foi empacotada à mão e pulou a poda (578 MB). Voltou a 340 MB, e o
-   `verify-zip` agora **reprova** pacote com peso morto.
+Regressão conferida: smoke 2D **ALL PASS** e render **idêntico pixel a pixel** (360.000 px, diff
+máx 0,0) contra o binário publicado.
 
-### A queixa original do rebrand: era o lançador, não o código
-
-A máquina `bazzite-2` (192.168.0.29) nunca recebeu o `Nuclear.desktop`; abria pelo shim `blender`,
-então menu/systemd/journal diziam "blender" com binário e UI corretamente em Nuclear. Instalei o
-lançador lá e aposentei dois órfãos de set/2025 como `.orfao.bak`. A raiz (`_refresh_desktop` só
-reescrevia, nunca criava) foi corrigida — mas **só age a partir do update que PARTIR da b14**,
-porque quem aplica é o updater da versão em execução.
+**⚠️ O que está em aberto e é uma decisão do usuário.** O corte por stencil é uma **troca**, não
+ganho puro: zera os erros de mask nos 4 rigs (inclusive `detalhe.torso`, o caso que o usuário
+apontou), mas corta um pouco mais que o real e cobra em tolerância. Comparado com o estado
+"só atalho local, sem stencil": Atena e Lala **idênticos**; dinossauro 91,3% → 89,1%; Carolina
+80,2% → **76,0%** (tolerância 0 → 15). O usuário foi perguntado se quer perseguir esses 15 pontos
+da Carolina ou fechar assim — **ainda não respondeu**.
 
 ## Próximos passos
 
-1. **Perguntar ao usuário sobre as duas pendências abaixo** (ele ainda não respondeu).
-2. Se ele autorizar a poda de backups do servidor:
-   `ssh araga286 'cd ~/public_html/addon/rapaduraatomica/estacao && ls -l nuclear.zip.bak*'`
-   — manter os 2-3 mais recentes, apagar o resto.
-3. **Crash não investigado**: SIGSEGV de 16/07 na .29 em `GHOST_GetDPIHint` ←
-   `WM_window_dpi_set_userdef` ← `wm_window_close` ← `WM_window_open` ← `render_view_open`
-   (abrir/fechar a janela de render OpenGL). Coredump guardado lá:
-   `ssh 192.168.0.29 'coredumpctl info 11517'`. Stack diferente do crash do Outliner.
-4. Opcional: o pacote publicado **não tem** `pyclipper`, `triangle`, `skimage` — já não estavam
-   nem na b13. Se algum recurso depende deles, está faltando desde antes; a regra de ouro nº4 do
-   CLAUDE.md ainda os lista.
+1. **Aguardar a decisão do usuário** sobre a troca acima. Para reverter o stencil e voltar aos
+   91,3%/80,2% (com o cross-object errado de novo), basta `gather_stencil_mattes()` em
+   `source/blender/draw/engines/overlay/overlay_grease_pencil.hh` devolver `false` sempre.
+2. Se for perseguir os 15 pontos da Carolina: a suspeita **não investigada** é que o matte
+   rasteriza silhueta ligeiramente menor que a real — o shader não faz `discard` em modo seleção
+   e o depth plane do matte é computado à parte. Comece comparando a área do matte no stencil com
+   a área do fill do objeto matte.
+3. Commitar. Mensagem em **inglês**, Conventional Commit, **sem** linha `Co-Authored-By`
+   (regra do usuário). Sugestão: `fix(overlay): make Grease Pencil picking match what is drawn`.
+   ⚠️ **Commitar SÓ os arquivos desta frente** (lista abaixo) — a working tree tem outra frente
+   misturada.
+4. Só depois, se o usuário quiser, publicar release (agente `nuclear-release`; regras em
+   `tools/nuclear_claude/CLAUDE.md` §5-10, e **pushar antes de buildar**).
 
 ## Decisões tomadas (e por quê)
 
-- **`is_reference = true` no Follow Peg** → o PegRig é um ID de *dado*, igual à Action do Action
-  constraint (que passa `true`); só o *objeto*-alvo passa `false`, convenção do upstream contra
-  ciclos. REJEITADO: continuar com `use_fake_user` como workaround — mascara a causa.
-- **Guard de prefs só no caminho automático** → o explícito é pedido do usuário e deve vencer.
-  REJEITADO: avisar na UI a cada conflito (incomodaria no uso normal) e recarregar sozinho
-  (descartaria o que a instância tinha).
-- **Gate de peso morto no `verify-zip`, não só no `nuclear_release.sh`** → a b13 vazou justamente
-  por ter sido empacotada à mão, fora do script. O gate casa por allow-list de feature, espelhando
-  `nuclear_prune_package.sh`; libs que o 2D USA (OpenColorIO, OpenImageIO, OpenEXR) não são
-  acusadas, mesmo ausentes do NEEDED direto.
-- **`NO_KEY_NEEDED` rebaixado a `CLOG_DEBUG`**, não removido → o evento continua visível com
-  `--log "*anim*" --log-level 4`.
-- **Publicar em duas fases** (`nuclear.zip.new` → conferir sha no servidor → `mv`) → evita janela
-  com zip corrompido/parcial servido em produção.
+- **Profundidade escrita no VERTEX shader, não no fragment.** O upstream desligou o depth plane em
+  seleção porque reescrever `gl_FragDepth` quebra o early depth test exigido. No vertex é exato: o
+  plano é planar em world space, então interpolar z/w cai na mesma profundidade.
+- **Tolerância apertada só no Pick Peg.** Mexer na cascata do `view3d.select` afetaria a seleção
+  de malhas e ossos em todo o Blender — divergência grande com upstream, sem ganho para o 2D.
+- **REJEITADO — afundar os objetos-matte para trás de tudo.** Parecia resolver "o cutter rouba o
+  clique", mas na prática o matte é o **próprio desenho** (na receita da pupila, o olho recorta a
+  pupila): rebaixá-lo jogava o olho para trás do corpo. O teste de ordem pegou (8 pares
+  divergentes na Carolina). Não há como separar "cutter puro" de "desenho que também serve de
+  matte" sem marcação explícita do artista.
+- **REJEITADO — pular a camada mascarada também no caso cross-object.** O matte responde com outro
+  select id, e em `detalhe.torso` a camada mascarada é a **única** com conteúdo: a peça ficaria
+  sem contorno e sem área clicável.
+- **Onion skin: desligado no arquivo do dinossauro, não no código.** Não era bug — as camadas têm
+  frames em 1 e 3, então no frame 1 o onion desenhava a pose do frame 3 (as "manchas lilás").
+  Backup em `dinossauro_backup_pre-onion-off_2026-08-04.nuc`; volta pelo toggle "Onion" no header.
 
 ## Pegadinhas / lições desta sessão
 
-- ⚠️ **O `bin/` do `build_nuclear_2d` NÃO tem as deps Python do fork.** O `ninja install` não as
-  instala — foram postas por fora um dia. O primeiro zip da b14 saiu sem `scipy` e o `verify-zip`
-  reprovou (regra de ouro nº4). Copiei `scipy` + `scipy.libs` + dist-info (142 MB) do pacote
-  publicado para o `bin/` **e** para o staging. O `bin/` agora os tem, mas **confira sempre**.
-  Sem `scipy` o Auto Rig quebra (fit de Procrustes).
-- `tools/nuclear_release.sh` **pede confirmação interativa** e aborta sem tty — em sessão headless,
-  rode os passos do §5 do CLAUDE.md manualmente (bump → build → smoke → stamp → staging+poda →
-  zip → manifest → verify → publish).
-- `_update_available()` do updater lê a global `_latest`, preenchida por fetch assíncrono. Em
-  headless ela é `None` e a função retorna `False` — **não é bug**. Chame `nu._fetch_worker()`
-  antes de testar.
-- Testar persistência de preferências exige **duas instâncias reais**; um único processo headless
-  sempre "persiste" e esconde o problema.
-- O usuário roda **várias instâncias do Nuclear ao mesmo tempo**. Enquanto houver janela em build
-  ≤ b13 aberta, ela ainda sobrescreve as prefs ao fechar (foi o que apagou 4 addons dele às 21:05,
-  durante esta sessão; reabilitei `asset_manager`, `blender_mcp_addon`, `dpe_render_setup`,
-  `entremeio`).
-- Duas janelas no mesmo `.blend` continuam perigosas: o guard de hoje é **só para preferências**,
-  não para arquivos de trabalho.
-- Detalhes duráveis já estão na memória: `nuclear-prefs-duas-instancias`, `maquina-bazzite2-lan-29`,
-  `nuclear-auto-update`, `nuclear-auto-rig-contrato`. **Não duplicar aqui.**
-
-## Estado do take da Carolina (`DPE_EP06_C12T67`)
-
-Caminho: `~/Dropbox/Projetos/DragaoeoPocoEncantado/2_Producao/Longa/Ep06/DPE_EP06_C12/DPE_EP06_C12T67/blend_files/DPE_EP06_C12T67.blend`
-
-O usuário trocou a versão da personagem e **salvou às 21:05**, o que resolveu o dano sozinho:
-agora são 51 constraints Follow Peg com **os 51 ligados** ao rig novo `carolina_heroi.001`
-(80 pegs, `users=51`) e **zero objetos órfãos**. Antes eram 59 constraints com só 4 ligados, e os
-4 viviam justamente nos 8 objetos órfãos (que o Blender não salva).
-
-Sobrou o rig antigo `carolina_heroi` (80 pegs, `users=1`, sustentado só pelo Peg Graph) — resíduo.
-Os 8 órfãos foram perdidos no save; se precisarem ser recuperados, o `.blend1` de 21:05 é o backup
-da gravação anterior.
-
-Existe um script de reparo testado (religa constraints órfãos pelo `peg_name`) em
-`/tmp/claude-1001/-var-home-rapaduraatomica/240c9033-79d3-4f91-9584-85ef12be402d/scratchpad/reparo.py`
-— **provavelmente não é mais necessário**, e o scratchpad é volátil; o algoritmo é trivial de
-reescrever (para cada constraint `FOLLOW_PEG` com `rig is None` e `peg_name` válido, `c.rig = rig`).
+- **A causa que eu subestimei era a maior.** O diagnóstico inicial apontou a ordem de profundidade
+  como culpada; ao medir o clique real, 19 dos 21 erros vinham da **tolerância de 14 px**. Medir o
+  comportamento real mudou a prioridade — não confie só na leitura de código.
+- **A métrica estava cega para o que faltava.** O primeiro teste comparava com "topo da pilha
+  pelos fills", que também ignora mask — por isso os números pareciam bons enquanto o usuário via
+  o contrário. Corrigir a métrica veio antes de corrigir o código.
+- **⚠️ Capturar o viewport por script NÃO funciona nesta máquina.** `screen.screenshot_area`
+  devolve framebuffer obsoleto/corrompido (chuvisco colorido, e overlays que continuam aparecendo
+  mesmo com `show_overlays = False`). Perdi bastante tempo tirando conclusões visuais dessas
+  imagens. `render.opengl` sai limpo mas **não inclui overlays**, então não serve para conferir
+  contorno/gizmo. **Para validar qualquer coisa visual, peça a captura ao usuário.**
+- **A falha do stencil não era do stencil.** Na primeira tentativa as camadas mascaradas *sumiam*
+  (91,3% → 68,1%) e tudo apontava para o stencil. Era o **plano de profundidade**: cada
+  `draw_grease_pencil` registra um plano novo, e a camada recortada — um draw separado — ganhava
+  profundidade própria ATRÁS da própria peça, onde o depth test a matava. Correção: draws do mesmo
+  objeto compartilham um plano (`GreasePencilDepthPlane.object`).
+- `--debug-gpu-compile-shaders` **crasha neste build** (`Error source not found:
+  osd_patch_basis.glsl`, OpenSubdiv OFF no preset 2D). É **pré-existente**, idêntico no binário
+  publicado — não é regressão. Por isso o GLSL foi validado disparando seleções reais na GUI.
+- O tipo do shader no framework de draw é `gpu::Shader *`, não `GPUShader *` (custou um build).
 
 ## Arquivos e comandos relevantes
 
-- `source/blender/blenkernel/intern/constraint.cc` — `followpeg_id_looper` (fix das pegs).
-- `source/blender/blenkernel/intern/blendfile.cc` — `g_userpref_mtime_seen`,
-  `BKE_blendfile_userdef_write_all_ex()` (guard de prefs).
-- `source/blender/windowmanager/intern/wm_init_exit.cc` — chama o guard com `force = false`.
-- `source/blender/editors/space_outliner/outliner_draw.cc` — `tree_element_id_type_to_index()`.
-- `scripts/startup/nuclear_update.py` — `_install_desktop()` / `_refresh_desktop()`.
-- `tools/nuclear_release.py` — `verify-zip` com o gate de peso morto.
-- `tools/nuclear_claude/CLAUDE.md` §10 — estado do release (atualizado).
-- `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md` — as 3 seams novas registradas.
+**Arquivos DESTA frente (os únicos a commitar):**
+- `source/blender/draw/engines/overlay/overlay_grease_pencil.hh` — o grosso: ordem de
+  profundidade, atalho de mask local, corte por stencil, filtro de camada.
+- `source/blender/draw/engines/overlay/overlay_prepass.hh` — caminho do clique.
+- `source/blender/draw/engines/overlay/overlay_outline.hh` — caminho do contorno.
+- `source/blender/draw/engines/overlay/overlay_private.hh` — campos novos no depth plane.
+- `source/blender/draw/engines/overlay/shaders/overlay_depth_only_gpencil_vert.glsl` — grava a
+  profundidade sob `SELECT_ENABLE`.
+- `source/blender/editors/space_view3d/view3d_select.cc` — tolerância apertada, ciclo, preferência
+  por Grease Pencil.
+- `source/blender/editors/include/ED_view3d.hh` — declaração da variante com ciclo.
+- `source/blender/editors/object/object_pegrig.cc` — Pick Peg com ciclo + `location`.
+- `tools/nuclear_claude/NUCLEAR_DIVERGENCE.md` — registro da divergência (obrigatório pelo
+  CLAUDE.md; já atualizado com tudo acima).
 
+**⚠️ Arquivos modificados por OUTRA frente — NÃO commitar junto:**
+`scripts/startup/nuclear_deform_curve.py`, `scripts/startup/nuclear_rig_auto.py`,
+`source/blender/editors/object/object_modifier.cc`, `source/blender/makesdna/DNA_modifier_types.h`,
+`source/blender/modifiers/MOD_grease_pencil_curve.hh`,
+`source/blender/modifiers/intern/MOD_grease_pencil_curve.cc`,
+`tools/nuclear_claude/DeformCurveFeature.md`, `tools/nuclear_claude/RigAutoFeature.md`.
+São trabalho de Deform Curve / bind (rest samples), de outra sessão.
+
+**Comandos:**
 ```sh
-# build (container distrobox `blender`, preset 2D já configurado)
-distrobox enter blender -- bash -lc 'nice /usr/bin/ninja -C ~/Documentos/GitHub/build_nuclear_2d -j2'
-# smoke gate 2D (obrigatório antes de empacotar)
-~/Documentos/GitHub/build_nuclear_2d/bin/nuclear -b --factory-startup --python tools/smoke_nuclear2d.py
-# formatação (rodar de dentro do repo)
-distrobox enter blender -- bash -lc 'cd ~/Documentos/GitHub/Nuclear && make format PATHS="..."'
-# acesso à 2ª máquina (sshd vive desligado lá; pedir `sudo systemctl enable --now sshd` no teclado)
-ssh 192.168.0.29
+# build (container distrobox; ~10 min porque headers do overlay tocam muita coisa)
+distrobox enter blender -- bash -lc 'cd ~/Documentos/GitHub/build_nuclear_2d && \
+  nice -n15 /usr/bin/ninja -j2 install'
+
+# gate obrigatório
+~/Documentos/GitHub/build_nuclear_2d/bin/nuclear -b --factory-startup \
+  --python ~/Documentos/GitHub/Nuclear/tools/smoke_nuclear2d.py
+
+# teste do clique REAL (abre GUI por ~10 s, usa --factory-startup para não tocar as prefs)
+cd <scratchpad> && ~/Documentos/GitHub/build_nuclear_2d/bin/nuclear --factory-startup \
+  <rig.nuc> --python teste_clique_gui.py     # resultado em resultado_clique.txt
 ```
+
+**Scripts de medição** (no scratchpad da sessão, `/tmp/claude-1001/.../scratchpad/` — **copie para
+um lugar durável se quiser reusar**): `teste_clique_gui.py` (clique real na GUI, o mais
+importante), `diag_ordem.py` (as duas profundidades), `diag_mask.py` (área clicável vs visível),
+`diag_pivos.py` (pivô da peg vs bbox das peças), `render_ab.py` + `cmp_px.py` (A/B de render).
+
+**Rigs de teste:**
+- `~/Dropbox/.../9_ArquivosDeRig_PersonagensSecundarios/EP6/Dinossauro/dinossauro.nuc` — o mais
+  duro (origens todas em Y=0, 23 masks, 8 deform curves).
+- `~/Dropbox/.../9_ArquivosDeRig_PersonagensSecundarios/EP05/ATENA/atena_pegs.blend`
+- `~/Downloads/carolina_pegs_atualizada.blend` — 44 masks, o que mais sente o stencil.
+- `~/Downloads/conversão/lala/lala_atualizada.nuc`
 
 ## Pendências que dependem do usuário
 
-1. **Reiniciar o Nuclear** para as janelas abertas passarem a rodar a b14 (o `current` já aponta
-   para ela; as janelas antigas seguem na b13).
-2. **Rig `carolina_heroi` antigo** no T67: apagar (é resíduo) ou marcar `Fake User` para guardar.
-3. **Backups do servidor**: 11 arquivos `nuclear.zip.bak*` somando **9,5 GB**, disco a **89%**
-   (181 GB livres). Precisa de autorização para podar — é dado de produção.
-4. **Worker fantasma na .29**: `painel-worker-blender.service` foi **desabilitado** nesta sessão
-   (crash-loop HTTP 401, token placeholder `dev-worker-token-trocar`, sem `build_take.py`). A
-   estação de build real é a .19 (`bazzite-nuclear`). Confirmar que era mesmo descartável.
-5. **Os 8 objetos órfãos** perdidos no save do T67: decidir se vale recuperar do `.blend1`.
+- **Decidir a troca do stencil**: manter (mask cross-object correta, ~2-4 pontos de custo em
+  tolerância na Carolina e no dinossauro) ou reverter (mais preciso no geral, `detalhe.torso`
+  volta a responder fora do desenho). A pergunta foi feita e não respondida.
+- **Autorizar o commit** (e se quiser, o release).
+- Teste na mão: o dinossauro ficou aberto na GUI (PID 438626 nesta sessão) com tudo aplicado.
+- Decisão de workflow, à parte: as 8 deform curves do rig continuam clicáveis onde não há desenho
+  por baixo. Se elas nunca devem competir pelo clique, é outra mudança.

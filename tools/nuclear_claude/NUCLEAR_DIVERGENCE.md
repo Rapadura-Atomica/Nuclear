@@ -382,6 +382,118 @@ cut-out mistura camadas de linha animadas com fills segurados.
 |---|---|
 | `source/blender/editors/sculpt_paint/grease_pencil_interpolate.cc` | **Duas causas.** (a) `InterpolateOpData::from_operator()` só usava `find_curve_mapping_from_index()` como um OR global (`found_mapping`) e mantinha no `layer_mask` **toda** camada — inclusive as sem intervalo interpolável. `..._init()` então inseria nelas um BREAKDOWN **vazio** e `..._update()` sobrescrevia com geometria vazia; como só o *Cancel* restaura, confirmar deixava a camada em branco. Agora o mask é reduzido às camadas com mapeamento — a garantia que o `GREASE_PENCIL_OT_interpolate_sequence` já tinha via `if (!interval) return;`. (b) `..._invoke()` chamava só `..._status_indicators()`: o `init` apenas *cria* os keyframes (vazios) e o modal só os preenche no primeiro `MOUSEMOVE`, então invocar pelo menu e confirmar de imediato esvaziava **todos** os alvos. Passa a chamar `..._update()`. Medido no rig de referência: 4 keyframes vazios na `boca` antes, 0 depois. |
 
+### A seleção não empilhava as peças como o render (2026-08-04)
+Relato do usuário: "clico numa peça e vem outra, às vezes diverge muito do desenho".
+Duas ordens sem relação nenhuma. **Render:** o engine GP ordena os objetos pela profundidade
+da **origem** (`gpencil_object_cache_add`, `camera_z`) e limpa o depth buffer **entre**
+objetos (`Instance::draw_object`) — pintura pura, a geometria não decide nada. **Clique:** o
+prepass de seleção resolvia pelo `gl_FragCoord.z` **geométrico** do traço (o fragment shader
+pula o `gp_depth_plane` sob `SELECT_ENABLE`), com desempate por distância ao cursor
+(`select_lib.glsl`, `SELECT_PICK_NEAREST`). Medido: `carolina_pegs_atualizada.blend` 22,2%
+dos 90 pares sobrepostos **invertidos** (`CAPUZ` com 1,62 de diferença entre as duas
+profundidades); `lala_atualizada.nuc` (saída do `arm2peg`, todas as origens em Y=0) com
+98,6% dos pares empatados no render — nenhuma correlação. **Candidato a enviar upstream.**
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/draw/engines/overlay/overlay_grease_pencil.hh` | `compute_depth_planes()` ganha o caminho `compute_selection_depth_planes()`: com todos os objetos já sincronizados, reconstrói a ordem do engine (stable sort por `dot(view.forward(), origem)`, cuja estabilidade reproduz o desempate pela ordem de sync) e dá a cada objeto um plano numa profundidade distinta que a segue. A profundidade própria é mantida quando já é estritamente maior que a do objeto de trás — só empates são afastados, pelo passo `max(extensão, 1) * 1e-4`, para não reordenar GP contra o resto da cena. `draw_grease_pencil()` passa a gravar `object_origin` no plano e, **só em modo seleção**, a pular camadas com `opacity < 1e-4` — `TreeNode::is_visible()` olha apenas o flag HIDE, então camada 100% transparente seguia clicável. |
+| `source/blender/draw/engines/overlay/overlay_private.hh` | `GreasePencilDepthPlane` ganha `object_origin`. |
+| `source/blender/draw/engines/overlay/shaders/overlay_depth_only_gpencil_vert.glsl` | Sob `SELECT_ENABLE`, projeta o vértice sobre `gp_depth_plane` e escreve o resultado em `gl_Position.z`. É a contrapartida do que o fragment shader faz fora da seleção — lá ele **não pode** (reescrever `gl_FragDepth` quebra o early depth test exigido), mas no vertex é exato: o plano é planar em world space, então a interpolação de z/w cai na mesma profundidade. |
+| `source/blender/editors/space_view3d/view3d_select.cc` | Novo `object_selectbuffer_tight()`: a cascata do upstream (`mixed_bones_object_selectbuffer`) **abre** em raio 14 px e só estreita quando mais de um objeto responde, então uma peça vizinha a uma dúzia de pixels ganhava um clique que caiu dentro de outra — num rig cut-out isso era a **maior** fonte de erro (19 de 21 no rig de referência). A nova cascata começa em 2 px e só alarga (5, 14) quando **nada** responde, preservando a tolerância de quem clica no vazio. `ed_view3d_give_base_under_cursor_ex()` ganha `use_cycle`, que combina essa cascata com o desempate por movimento do cursor — novo `ED_view3d_give_base_under_cursor_cycle()`. O select padrão (`view3d.select`) **não** foi tocado. |
+| `source/blender/editors/include/ED_view3d.hh` | Declaração de `ED_view3d_give_base_under_cursor_cycle()`. |
+| `source/blender/editors/object/object_pegrig.cc` | `pegrig_pick` usa a variante acima e vira `invoke`+`exec` com propriedade `location` (mesmo padrão do `VIEW3D_OT_select`), o que também o torna chamável por script — é como o teste de ponta a ponta dispara cliques. Clicar de novo no mesmo ponto desce para a peça de trás; antes, um pick errado não tinha saída. |
+
+**Medido no clique de verdade** (GUI, 60 pontos amostrados sobre a Carolina; "defensável" = a peça
+que veio é o topo da pilha ou tem uma linha passando a ≤4 px do pixel):
+
+Métrica final (a que enxerga o recorte da mask; "defensável" = topo da pilha, ou linha da peça a
+≤4 px do pixel):
+
+| rig | acerto antes | acerto depois | ORDEM | TOLERÂNCIA |
+|---|---|---|---|---|
+| Dinossauro Gigante | 56,5% | **91,3%** | 25 → **0** | 5 → 3 |
+| Atena | 73,1% | **96,2%** | 4 → **0** | 8 → **0** |
+| Carolina | 59,5% | **80,2%** | 9 → 1 | 13 → **0** |
+| Lala | 22,2% | **83,3%** | 27 → 6 | 3 → **0** |
+
+Regressão conferida: smoke 2D ALL PASS e render do rig **idêntico pixel a pixel** (360.000 px,
+diferença máxima 0,0) contra o binário publicado — o conserto vive todo no caminho de seleção.
+⚠️ `--debug-gpu-compile-shaders` **crasha neste build** (`Error source not found:
+osd_patch_basis.glsl`, OpenSubdiv está OFF no preset 2D) — comportamento **pré-existente**,
+idêntico no binário publicado; por isso a validação do GLSL foi feita disparando seleções reais
+na GUI.
+
+### O hit-test ignorava as masks (2026-08-04)
+Relato: "as masks ainda aparecem e as pegs continuam destoantes dos objetos" — duas frases para
+o mesmo defeito. O corte da mask só existe no engine (`draw_mask`), e `draw_grease_pencil` do
+overlay não consulta `GreasePencilLayerMask`/`use_masks()`. No rig cut-out isso é a *maioria* do
+desenho: **21 das 23 masks do dinossauro** recortam a camada de cor pela camada de linha, então a
+área clicável de cada peça era o fill **bruto**, que extravasa muito além do contorno. Medido na
+Carolina: 56,2% da área clicável das camadas com mask é buraco invisível (`manga.d` 70,8%,
+`antebraco.e` 80,6%).
+
+Rasterizar a máscara no select pass exigiria stencil ou textura + `discard`, reabrindo a questão
+do early depth test que o upstream contornou. **Não é preciso quando a mask é subtrativa dentro
+de um objeto:** o que sobrevive à mask é subconjunto da área do matte, e o select id é **por
+objeto** — então o matte já responde por cada um desses pixels, e basta *não desenhar* a camada
+mascarada. A área clicável fica intacta onde o desenho aparece, e some exatamente o excedente
+invisível.
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/draw/engines/overlay/overlay_grease_pencil.hh` | `layer_is_covered_by_own_mattes()` + `mask_target_is_drawn()`: o atalho só vale se **toda** mask da camada (própria e herdada de grupo/peg) for positiva, local ao objeto e apontar para um nó de fato desenhado — mask invertida mostra área FORA do matte, e matte cross-object responde com outro id. Salvaguarda em `draw_grease_pencil()`: masks encadeiam (linha mascarada pela cor que ela mascara de volta), e descartar *todas* as camadas deixaria o objeto sem área clicável nenhuma, então o atalho só se aplica enquanto sobrar camada respondendo. |
+
+**Continua em aberto:** matte **cross-object**. No dinossauro sobram 3 pontos, todos da camada
+`detalhe.torso/Layer.002`, recortada pelos objetos `torso.004` e `pelvis.004`. Essa peça tem uma
+**única** camada com conteúdo (1 stroke de 316 pontos) e 47,5% de excedente (21.887 px de área
+bruta contra 11.498 visíveis) — pular a camada a deixaria sem contorno e sem área clicável, e o
+matte responde por outra peça, então só o corte real resolve.
+
+### Corte de mask cross-object por stencil (2026-08-04)
+Pares matte→camada num `PassSimple` (ordem garantida): o matte rasteriza `ref` no stencil
+(`DRW_STATE_WRITE_STENCIL`, sem cor nem profundidade) e a camada é desenhada com
+`DRW_STATE_STENCIL_EQUAL`; um `ref` por par dispensa clear entre eles. Em Prepass (clique) e
+Outline (contorno). O atalho local continua na frente — o stencil só entra onde ele não pode ir
+(`gather_stencil_mattes` devolve false quando `layer_is_covered_by_own_mattes` já resolve).
+
+⚠️ **A primeira tentativa falhou e a causa vale registrar:** as camadas mascaradas *sumiam* do
+buffer (dinossauro 91,3% → 68,1%). Não era o stencil — era o **plano de profundidade**. Cada
+chamada de `draw_grease_pencil` registra um plano novo, e como a camada recortada é um draw
+separado, o escalonamento de `compute_selection_depth_planes` lhe dava uma profundidade **própria**,
+atrás da peça a que ela pertence, onde o depth test a matava. Correção: `GreasePencilDepthPlane`
+ganha `object`, e draws do mesmo objeto compartilham uma profundidade só.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `overlay_grease_pencil.hh` | `MatteRef` + `gather_stencil_mattes()` + `draw_masked_layer_stencil()` + `draw_grease_pencil_clipped()`; `draw_grease_pencil()` vira template no tipo de pass e ganha `layer_filter`; planos agrupados por objeto. |
+| `overlay_prepass.hh` / `overlay_outline.hh` | `PassSimple` próprio para os pares, `ref` corrente, e submissão logo após o pass principal. |
+| `view3d_select.cc` | `selectbuffer_prefer_grease_pencil()`: com um desenho sob o cursor, os hits que não são desenho são descartados — as deform curves de um rig cut-out ficam bem em cima da arte que dobram. Elas seguem selecionáveis onde não há desenho por baixo. |
+
+**Resultado medido — troca, não ganho puro.** As masks cross-object deixam de responder
+(`MASK: 0` nos quatro rigs, `detalhe.torso` incluído), mas o corte sai um pouco mais agressivo que
+o real e cobra em tolerância:
+
+| rig | com atalho só | com stencil |
+|---|---|---|
+| Atena | 96,2% | **96,2%** (igual) |
+| Lala | 83,3% | **83,3%** (igual) |
+| Dinossauro | 91,3% (MASK 3) | 89,1% (MASK **0**) |
+| Carolina | 80,2% (TOL 0) | 76,0% (TOL 15) |
+
+Ou seja: o cross-object está resolvido, ao custo de ~2-4 pontos onde há muita mask (a Carolina tem
+44). A suspeita é que o matte rasteriza uma silhueta ligeiramente menor que a real — o shader não
+faz `discard` em modo seleção, então o quad do traço entra inteiro, e o depth plane do matte é
+computado à parte. **Não investigado ainda**; para reverter basta fazer `gather_stencil_mattes()`
+devolver false sempre.
+⚠️ Achado à parte: rigs com **deform curves** têm objetos `Curve` visíveis (8 no dinossauro) que
+também respondem ao clique. São controles, não desenho — decisão de workflow, não tratada aqui.
+
+**Tentado e revertido:** afundar para trás de tudo os objetos usados como matte cross-object.
+Parecia resolver "o cutter rouba o clique", mas na prática o matte é o **próprio desenho** (na
+receita da pupila, o olho recorta a pupila) — rebaixá-lo jogava o olho para trás do corpo
+inteiro. O teste de ordem pegou: 8 pares divergentes na Carolina, todos envolvendo um matte.
+Não há como separar "cutter puro" de "desenho que também serve de matte" sem marcação
+explícita do artista; e com a ordem já alinhada ao render o caso original não morde, porque o
+matte fica atrás de quem ele corta, que é onde o artista o vê.
+
 ---
 
 ## 3. Branding (subconjunto de pontos quentes + dados)
