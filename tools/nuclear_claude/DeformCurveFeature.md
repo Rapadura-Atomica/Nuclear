@@ -46,8 +46,16 @@ tree é um datablock à parte: sem rebuild + `use_fake_user` a peg nova some ao 
   de curva sobrando acima do desenho — e é o que descola a cabeça do pescoço, porque a peg
   filha pivoteia no topo da CURVA e anda o deslocamento inteiro, enquanto o topo do desenho
   (em `u > 0`) anda menos.
-- **A ponta é o fim da cadeia** (o topo, num membro em pé), e a referência de inclinação é a
-  extremidade OPOSTA, não o ponto vizinho: entre vizinhos o ângulo dispara.
+- **A ponta é o fim da cadeia** (o topo, num membro em pé), e a inclinação que a peg copia é a
+  **TANGENTE ali, lida pelo handle do próprio ponto** — é ela que o modifier usa para orientar o
+  desenho em `u = 0`. ⚠️ Até 2026-07-31 isto media a **corda** até a extremidade oposta e
+  subestimava o giro: nas servas do EP05, deslocar a ponta 0,6 inclina o desenho 32,3° e a corda
+  acusa 17,6° — 15° que a cabeça e os braços nunca recebiam, que é o "destoa do resto do corpo".
+  Pior dobrando só o ponto do MEIO: nenhuma extremidade se move, a corda não vê giro nenhum e a
+  peg fica parada enquanto o desenho inclina os mesmos 32°. Medido no MARTE (EP05) depois do
+  conserto: dobra de 0,4 no topo → 21,71°; dobra de 0,4 só no meio → −21,71° (era 0,00°). O medo
+  que motivou a corda ("entre vizinhos o ângulo dispara") não se aplica ao handle: ele é a
+  inclinação real da curva ali, não uma secante entre dois pontos de controle.
 - **Dois padrões de curva, não misturar:** curva **parenteada ao desenho e sem constraint**
   (o que o operador nativo cria) ou curva **com `FOLLOW_PEG` e sem parent** (o legado dos
   rigs convertidos). O bind sempre parenteia; para o segundo padrão o addon desfaz.
