@@ -503,10 +503,14 @@ shots saem idênticos. Medidas e conclusões em `~/dpe_tools/gp_pick_test/medida
 ⚠️ Achado à parte, não tratado: rigs com **deform curves** têm objetos `Curve` visíveis (8 no
 dinossauro) que também respondem ao clique. São controles, não desenho — decisão de workflow.
 
-⚠️ Falha latente, não tratada: o flag **Auto-Patch** das masks (`GP_LAYER_MASK_AUTO_PATCH`) corta
-só o traço e mantém o fill (`gp_mask_bypass`), mas `layer_is_covered_by_own_mattes` não o
-distingue de uma mask comum — numa camada com Auto-Patch o atalho tiraria área que o artista vê.
-Nenhum dos quatro rigs de referência usa o flag, então não morde hoje.
+**Auto-Patch respeitado pelo atalho (2026-08-05).** `GP_LAYER_MASK_AUTO_PATCH` corta só o traço
+e mantém o fill (`gp_mask_bypass`, `gpencil_engine_c.cc`), então o matte **não** responde pela
+camada — o colour art sobrevive ao corte inteiro. `layer_is_covered_by_own_mattes()` tratava esse
+flag como mask comum e teria tirado área que o artista vê. Junto: o teste de `HIDE` passou a vir
+**primeiro**, senão uma mask desativada que fosse cross-object ou invertida derrubava o atalho de
+graça, sem cortar nada. Provado com `teste_auto_patch.py` (liga o flag em memória e recompara os
+cliques na mesma sessão): na Carolina `coque` 168→174 e `cabelofrente.2` 51→52 voltam a responder;
+com o flag desligado os quatro rigs medem exatamente o mesmo de antes.
 
 **Tentado e revertido:** afundar para trás de tudo os objetos usados como matte cross-object.
 Parecia resolver "o cutter rouba o clique", mas na prática o matte é o **próprio desenho** (na

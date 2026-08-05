@@ -297,10 +297,11 @@ class GreasePencil : Overlay {
    * the matte's own area, and both carry the same object identity, so the matte already stands for
    * every one of those pixels.
    *
-   * Requires at least one mask, and every one of them to be positive, local to this object, and
-   * pointing at a node that is actually drawn. A single mask failing any of those makes the whole
-   * thing unsafe, so we bail out and keep the layer. A cross-object matte is exactly such a case:
-   * it belongs to another piece, so dropping the layer would lose area that only it draws.
+   * Requires at least one mask, and every enabled one to be positive, local to this object,
+   * cutting the whole layer, and pointing at a node that is actually drawn. A single mask failing
+   * any of those makes the whole thing unsafe, so we bail out and keep the layer. A cross-object
+   * matte is exactly such a case: it belongs to another piece, so dropping the layer would lose
+   * area that only it draws.
    */
   static bool layer_is_covered_by_own_mattes(const ::GreasePencil &grease_pencil,
                                              const bke::greasepencil::Layer &layer)
@@ -309,6 +310,11 @@ class GreasePencil : Overlay {
 
     auto masks_are_safe = [&](const ListBase &masks) -> bool {
       LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &masks) {
+        /* Disabled mask: it does not cut anything, so nothing about it can make us unsafe.
+         * Tested first, or a disabled cross-object matte would cost us the shortcut for free. */
+        if ((mask->flag & GP_LAYER_MASK_HIDE) != 0) {
+          continue;
+        }
         if (mask->object != nullptr) {
           /* Cross-object matte: it stands for another piece, not for this one. */
           return false;
@@ -317,9 +323,11 @@ class GreasePencil : Overlay {
           /* Inverted: what shows is *outside* the matte. */
           return false;
         }
-        if ((mask->flag & GP_LAYER_MASK_HIDE) != 0) {
-          /* Disabled mask: it does not cut anything. */
-          continue;
+        if ((mask->flag & GP_LAYER_MASK_AUTO_PATCH) != 0) {
+          /* Auto-Patch cuts only the stroke and keeps the fill (`gp_mask_bypass` in the Grease
+           * Pencil engine), so the matte does NOT stand for this layer -- its colour art survives
+           * the cut whole, and dropping the layer would take away area the artist sees. */
+          return false;
         }
         const bke::greasepencil::TreeNode *node = grease_pencil.find_node_by_name(
             mask->layer_name);
