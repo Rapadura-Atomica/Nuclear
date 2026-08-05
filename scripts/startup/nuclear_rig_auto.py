@@ -53,10 +53,27 @@ _SIDED = {"clavicle", "upperarm", "forearm", "hand", "thigh", "shin", "foot"}
 # torso; arms off a shoulder). Materialised only when a descendant limb piece routes through them; the
 # pivot is the mean of their matched children's sockets. If the artist DID draw a matching piece (e.g.
 # "quadril"/"ombro"), it binds to this joint like any other skeleton piece (two-peg pattern).
-_STRUCT_JOINTS = {
-    "pelvis":   {"label": "Quadril", "sided": False},
-    "clavicle": {"label": "Ombro",   "sided": True},
+_STRUCT_JOINTS = {"pelvis", "clavicle"}
+
+# Joint pegs are named after the ROLE, not after the drawing: piece names in a legacy library lie
+# often enough that a graph built on them is unreadable ("1antebraco.002" is a skirt, "cabelo1.004"
+# is an arm). The drawing peg keeps the piece's own name, so the artist still finds their piece.
+_ROLE_LABEL = {
+    "torso": "Tronco", "neck": "Pescoço", "head": "Cabeça", "clavicle": "Ombro",
+    "upperarm": "Braço", "forearm": "Antebraço", "hand": "Mão", "pelvis": "Quadril",
+    "thigh": "Coxa", "shin": "Canela", "foot": "Pé",
 }
+_FACE_LABEL = {
+    "eyebrow": "Sobrancelha", "eye": "Olho", "eyelid": "Pálpebra", "pupil": "Pupila",
+    "eyelash": "Cílio", "nose": "Nariz", "mouth": "Boca", "lip": "Lábio", "tooth": "Dente",
+    "tongue": "Língua", "ear": "Orelha", "cheek": "Bochecha", "chin": "Queixo",
+    "mustache": "Bigode", "beard": "Barba", "hair": "Cabelo", "bangs": "Franja",
+    "braid": "Trança",
+}
+
+
+def _side_label(name, side):
+    return "%s.%s" % (name, "e" if side == "L" else "d") if side else name
 
 # Studio pattern: a skeleton piece has a structural JOINT peg (the articulation, in the chain) AND
 # its own DRAWING peg (this suffix) that the drawing binds to, so the piece keeps an independent
@@ -73,7 +90,8 @@ _ROLE_SYNONYMS = {
     "forearm": ["antebraco", "antebrazo", "forearm"],
     "hand": ["mao", "mano", "hand"],
     "pelvis": ["quadril", "pelvis", "hip", "bacia", "cadera"],
-    "thigh": ["coxa", "thigh", "muslo", "femur"],
+    # "perna" is the DPE library's word for the thigh — the piece below it is always a "canela"
+    "thigh": ["coxa", "perna", "thigh", "muslo", "femur"],
     "shin": ["canela", "shin", "tibia", "espinilla"],
     "foot": ["pe", "pie", "foot"],
 }
@@ -84,7 +102,10 @@ _RIGHT = {"d", "dir", "direita", "r", "right", "der"}
 
 
 def _norm(name):
-    """Return (core, side) for a piece name. side in {'L','R',None}."""
+    """Return (core, side) for a piece name. side in {'L','R','?',None}, where '?' means the
+    name marks a side but not WHICH one — the studio's own convention is a leading 1/2
+    ('1braco', '2braco'), and which digit is screen-left varies per character, so geometry
+    decides later."""
     s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
     s = re.sub(r"\.\d+$", "", s)                      # strip a trailing .001 dup suffix
     side = None
@@ -93,6 +114,11 @@ def _norm(name):
         tok = m.group(1)
         side = "L" if tok in _LEFT else "R"
         s = s[: m.start()]
+    else:
+        m = re.match(r"([12])[._\- ]?(?=[a-z])", s)   # leading side digit
+        if m:
+            side = "?"
+            s = s[m.end():]
     s = re.sub(r"[._\- ]?\d+$", "", s)                # any other trailing digits
     s = s.strip("._- ")
     return s, side
@@ -148,6 +174,57 @@ def _match_face_role(name):
     if role not in _FACE_SIDED:
         side = None
     return role, side
+
+
+def _resolve_sides(cands, mid, pos, sided):
+    """Hand out the left/right slots of one role. A name that says which side wins it; the rest
+    are placed by where they actually are.
+
+    A paired limb is lateral and roughly symmetric, so the candidates FURTHEST from the body
+    axis are the real ones — that is what rejects a piece whose name lies (the skirt called
+    "1antebraco.002" sits dead centre between two proper forearms). Rejected candidates are
+    returned as leftovers and fall through to the accessory pass instead of poisoning the rig."""
+    if not sided:
+        return {None: cands[0][0]}, [ob for ob, _s in cands[1:]]
+    slots, undecided = {}, []
+    for ob, side in cands:
+        if side in ("L", "R") and side not in slots:
+            slots[side] = ob
+        else:
+            undecided.append(ob)
+    free = sorted(s for s in ("L", "R") if s not in slots)      # 'L' before 'R'
+    # Furthest from the axis first: that is what survives when a liar is in the running.
+    ranked = sorted(undecided, key=lambda o: -abs(pos(o) - mid))
+    take, leftover = ranked[:len(free)], ranked[len(free):]
+    # Among the survivors, order decides the side — a character standing off-centre or
+    # mid-stride puts both feet on the same side of the axis, so absolute position can't.
+    for ob, side in zip(sorted(take, key=pos), free):
+        slots[side] = ob
+    return slots, leftover
+
+
+def _assign_roles(objs, planar):
+    """piece -> (role, side) for the skeleton, and the reverse map. Roles are filled per role
+    so both sides of a pair are decided together."""
+    axis = planar[0]
+    xs = [_center_world(o)[axis] for o in objs]
+    mid = (min(xs) + max(xs)) * 0.5
+
+    by_role = {}
+    for ob in objs:
+        m = _match_role(ob.name)
+        if m is not None:
+            by_role.setdefault(m[0], []).append((ob, m[1]))
+
+    matched, keymap, rejected = {}, {}, []
+    for role, cands in by_role.items():
+        slots, leftover = _resolve_sides(cands, mid, lambda o: _center_world(o)[axis],
+                                         role in _SIDED)
+        rejected += leftover
+        for side, ob in slots.items():
+            keymap[(role, side)] = ob
+            matched[ob] = (role, side)
+    return matched, keymap, rejected
 
 
 # --------------------------------------------------------------------------- #
@@ -312,6 +389,267 @@ def _grouped_layout(rig):
 
 
 # --------------------------------------------------------------------------- #
+# Armature -> PegRig conversion
+# --------------------------------------------------------------------------- #
+# Legacy characters were rigged with a Grease Pencil Armature modifier: the chain and the
+# pivots were already approved by the animator, and every piece declares which bone drives it
+# through its VERTEX GROUPS. That is the whole mapping — no per-character name table needed:
+#
+#   * one JOINT peg per bone kept (pivot = the bone head in world space, exactly where the
+#     animator put it), the parenting copied from the bone hierarchy;
+#   * one DRAWING peg per piece under the joint its vertex group names;
+#   * bones nothing routes through are pruned; disconnected bone islands (a head chain drawn
+#     apart from the body chain) are re-anchored onto the nearest bone of the main island.
+#
+# Two vertex groups on one piece mean one of two things, told apart by name:
+#   * mirrored bones (1pe/2pe, perna.e/perna.d) -> the piece was duplicated for both sides and
+#     kept both groups. The competing pieces are matched to the candidate joints by their
+#     left-to-right order in the character plane;
+#   * anything else (a piece spanning eye + pupil) -> it binds to the candidates' lowest
+#     common ancestor, the deepest bone that rigidly carries all of them.
+
+def _mirror_core(name):
+    """Name stripped of side markers, so mirrored bones collapse onto one key.
+    '1pe' / '2pe' -> 'pe'; 'perna.e' / 'perna.d' -> 'perna'."""
+    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"\.\d+$", "", s)                      # a trailing .001 duplicate suffix
+    s = re.sub(r"^\d+[._\- ]?", "", s)                # a leading side digit ('1pe')
+    core, _side = _norm(s)                            # trailing side token / digits
+    return core
+
+
+def _bone_ancestry(parent_of, name):
+    """[name, parent, …, root]."""
+    chain, seen = [], set()
+    while name is not None and name not in seen:
+        seen.add(name)
+        chain.append(name)
+        name = parent_of.get(name)
+    return chain
+
+
+def _lowest_common_ancestor(parent_of, names):
+    chains = [_bone_ancestry(parent_of, n) for n in names]
+    common = set(chains[0])
+    for c in chains[1:]:
+        common &= set(c)
+    if not common:
+        return None
+    # deepest = the one furthest from the root along the first chain
+    return min((b for b in chains[0] if b in common), key=lambda b: chains[0].index(b))
+
+
+def _armature_of(objs):
+    """The armature driving these pieces: the one most of them are modified by, else the
+    single armature in the file."""
+    votes = {}
+    for ob in objs:
+        for m in ob.modifiers:
+            if m.type == "GREASE_PENCIL_ARMATURE" and m.object is not None:
+                votes[m.object] = votes.get(m.object, 0) + 1
+    if votes:
+        return max(votes, key=votes.get)
+    arms = [o for o in bpy.data.objects if o.type == "ARMATURE"]
+    return arms[0] if len(arms) == 1 else None
+
+
+def _resolve_bindings(arm, objs, planar):
+    """piece -> bone name, plus the pieces we could not place. Pure name/geometry reasoning;
+    nothing is modified."""
+    bones = {b.name: b for b in arm.data.bones}
+    parent_of = {b.name: (b.parent.name if b.parent else None) for b in arm.data.bones}
+    head = {n: arm.matrix_world @ bones[n].head_local for n in bones}
+
+    cands = {ob: [g.name for g in ob.vertex_groups if g.name in bones] for ob in objs}
+    bind, loose, mirrored = {}, [], {}
+    for ob, cs in cands.items():
+        if not cs:
+            loose.append(ob)
+        elif len(cs) == 1:
+            bind[ob] = cs[0]
+        elif len({_mirror_core(c) for c in cs}) == 1:
+            mirrored.setdefault(frozenset(cs), []).append(ob)   # duplicated for both sides
+        else:
+            # the piece's own name may point at one of them ('1olho' among eye + pupil)
+            own = _mirror_core(ob.name)
+            named = [c for c in cs if _mirror_core(c) == own]
+            bind[ob] = named[0] if len(named) == 1 else (_lowest_common_ancestor(parent_of, cs) or cs[0])
+
+    # Mirrored sets: absolute distance to the bone head lies (the drawings sit offset as a
+    # block), so match by left-to-right order instead — leftmost piece to leftmost joint.
+    axis = planar[0]
+    for cs, obs in mirrored.items():
+        obs_sorted = sorted(obs, key=lambda o: _center_world(o)[axis])
+        cs_sorted = sorted(cs, key=lambda c: head[c][axis])
+        for i, ob in enumerate(obs_sorted):
+            bind[ob] = cs_sorted[i] if i < len(cs_sorted) else _lowest_common_ancestor(parent_of, cs)
+    return bind, loose, head, parent_of
+
+
+def _kept_bone_tree(parent_of, head, used):
+    """Bones to materialise: every bone on the path from a used bone up to its root. Returns
+    (ordered bone names, parent map) with disconnected islands re-anchored onto the nearest
+    bone of the largest island, so a head chain drawn apart still follows the body."""
+    keep = set()
+    for u in used:
+        keep.update(_bone_ancestry(parent_of, u))
+
+    roots = [b for b in keep if parent_of.get(b) is None]
+    island = {}                                   # root -> its bones
+    for b in keep:
+        island.setdefault(_bone_ancestry(parent_of, b)[-1], []).append(b)
+    order = sorted(roots, key=lambda r: -len(island[r]))
+
+    parent = {b: parent_of.get(b) for b in keep}
+    anchored = set(island[order[0]]) if order else set()
+    for r in order[1:]:
+        near = min(anchored, key=lambda b: (head[b] - head[r]).length, default=None)
+        parent[r] = near
+        anchored.update(island[r])
+
+    ordered, placed = [], set()
+    for b in keep:                                # parents before children
+        stack = []
+        cur = b
+        while cur is not None and cur not in placed:
+            stack.append(cur)
+            cur = parent.get(cur)
+        for n in reversed(stack):
+            placed.add(n)
+            ordered.append(n)
+    return ordered, parent, order[0] if order else None
+
+
+def _bone_labels(bones, head, axis, parent):
+    """bone -> friendly joint name, for the bones whose OWN name is recognisable AND resolve to
+    exactly the expected count for their role (one per side).
+
+    A legacy armature carries a deform bone next to its joint bone ('1braco' hanging off
+    '1braco.001') and both read as an upper arm. The pair is told apart by structure: the one
+    with children IS the joint, the leaf is the deform. When that reading doesn't produce the
+    exact expected count the role is left alone — an animator's bone name is at least unique and
+    honest, while a wrong 'Braço.e' is worse than no label."""
+    has_kids = set(parent.values())
+    by_role = {}
+    for b in bones:
+        m = _match_role(b)
+        if m is not None:
+            by_role.setdefault(m[0], []).append((b, m[1]))
+    xs = [head[b][axis] for b in bones]
+    mid = (min(xs) + max(xs)) * 0.5 if xs else 0.0
+    span = (max(xs) - min(xs)) if xs else 0.0
+
+    out = {}
+    for role, cands in by_role.items():
+        sided = role in _SIDED
+        want = 2 if sided else 1
+        joints = [c for c in cands if c[0] in has_kids]
+        pool = next((p for p in (joints, cands) if len(p) == want), None)
+        if pool is None:
+            continue
+        if sided and abs(head[pool[0][0]][axis] - head[pool[1][0]][axis]) < span * 0.05:
+            continue                      # both on the same limb: a joint/deform pair, not a pair of sides
+        slots, _left = _resolve_sides(pool, mid, lambda b: head[b][axis], sided)
+        for side, b in slots.items():
+            out[b] = _side_label(_ROLE_LABEL.get(role, role), side)
+    return out
+
+
+def build_pegrig_from_armature(arm=None, objs=None, rig_name=None, drop_armature=True):
+    """Convert an armature-rigged cut-out character into a PegRig, in place. Returns a report
+    dict. Idempotent: re-running replaces any previous rig and its Follow Peg constraints."""
+    if objs is None:
+        objs = [o for o in bpy.data.objects if o.type == "GREASEPENCIL"]
+    if arm is None:
+        arm = _armature_of(objs)
+    if arm is None or not objs:
+        raise ValueError("need one armature and at least one Grease Pencil piece")
+    planar = _planar_axes(objs)
+
+    bind, loose, head, parent_of = _resolve_bindings(arm, objs, planar)
+
+    # Wipe any previous conversion, then drop the armature deform BEFORE binding pegs, so the
+    # pegs capture the drawing's own rest position (the armature is rarely exactly at rest).
+    for ob in bpy.data.objects:
+        for c in list(ob.constraints):
+            if c.type == "FOLLOW_PEG":
+                ob.constraints.remove(c)
+    for r in list(bpy.data.pegrigs):
+        bpy.data.pegrigs.remove(r)
+    if drop_armature:
+        for ob in objs:
+            for m in list(ob.modifiers):
+                if m.type == "GREASE_PENCIL_ARMATURE" and m.object is arm:
+                    ob.modifiers.remove(m)
+        arm.hide_viewport = True
+        arm.hide_render = True
+    bpy.context.view_layer.update()
+
+    if rig_name is None:
+        rig_name = re.sub(r"^(armature|arm|rig)[_.\- ]*", "", arm.name, flags=re.I) or "PegRig"
+    rig = bpy.data.pegrigs.new(rig_name)
+
+    ordered, bone_parent, main_root = _kept_bone_tree(parent_of, head, set(bind.values()))
+    label = _bone_labels(ordered, head, planar[0], bone_parent)
+    idx = {}
+    for b in ordered:                                     # 1) joint pegs, one per bone kept
+        p = bone_parent.get(b)
+        rig.pegs.new(label.get(b, b), parent_index=idx.get(p, -1))
+        idx[b] = len(rig.pegs) - 1
+    for b in ordered:
+        _set_pivot_world(rig, idx[b], head[b])
+
+    for ob in sorted(bind, key=lambda o: o.name):         # 2) one drawing peg per piece
+        b = bind[ob]
+        peg = rig.pegs.new(ob.name + _DRAW_PEG_SUFFIX, parent_index=idx[b])
+        _set_pivot_world(rig, len(rig.pegs) - 1, head[b])
+        _bind(ob, rig, peg.name)
+
+    for ob in sorted(loose, key=lambda o: o.name):        # 3) unrecognised: loose on the root
+        peg = rig.pegs.new(ob.name, parent_index=idx.get(main_root, -1))
+        _set_pivot_world(rig, len(rig.pegs) - 1, _center_world(ob))
+        _bind(ob, rig, peg.name)
+
+    rig.use_fake_user = True
+    rig.active_peg_index = idx.get(main_root, 0)
+    _grouped_layout(rig)
+    bpy.context.view_layer.update()
+    return {"rig": rig.name, "pegs": len(rig.pegs), "bound": len(bind),
+            "joints": len(ordered), "loose": [o.name for o in loose],
+            "pruned": sorted(set(parent_of) - set(ordered)),
+            "bind": {o.name: label.get(b, b)
+                     for o, b in sorted(bind.items(), key=lambda t: t[0].name)}}
+
+
+class OBJECT_OT_nuclear_rig_from_armature(Operator):
+    bl_idname = "object.nuclear_rig_from_armature"
+    bl_label = "Convert Armature to Pegs"
+    bl_description = ("Rebuild a legacy armature-rigged character as a PegRig: bones become "
+                      "joint pegs at their own pivots, each drawing follows the joint its "
+                      "vertex group names, and the armature is switched off")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and any(o.type == "ARMATURE" for o in bpy.data.objects)
+
+    def execute(self, context):
+        objs = _gp_targets(context)
+        name = context.scene.nuclear_rig_name
+        try:
+            # the untouched default means "name it after the armature"
+            rep = build_pegrig_from_armature(objs=objs,
+                                             rig_name=None if name in ("", "PegRig") else name)
+        except ValueError as ex:
+            self.report({"ERROR"}, str(ex))
+            return {"CANCELLED"}
+        self.report({"INFO"},
+                    f"Rig '{rep['rig']}': {rep['joints']} joints + {rep['bound']} drawings "
+                    f"+ {len(rep['loose'])} loose ({rep['pegs']} pegs)")
+        return {"FINISHED"}
+
+
+# --------------------------------------------------------------------------- #
 # Operator: Auto-Build Skeleton
 # --------------------------------------------------------------------------- #
 class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
@@ -333,13 +671,7 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
             return {"CANCELLED"}
         planar = _planar_axes(objs)
 
-        matched = {}                      # ob -> (role, side)
-        keymap = {}                       # (role, side) -> ob
-        for ob in objs:
-            r = _match_role(ob.name)
-            if r is not None and r not in keymap:   # first piece wins a role slot
-                matched[ob] = r
-                keymap[r] = ob
+        matched, keymap, _rejected = _assign_roles(objs, planar)
         if not matched:
             self.report({"ERROR"}, "No skeleton pieces recognised by name (torso/arm/leg/…)")
             return {"CANCELLED"}
@@ -372,10 +704,7 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
 
         def node_name(key):
             n = nodes[key]
-            if n["ob"] is not None:
-                return n["ob"].name
-            lbl = _STRUCT_JOINTS[n["role"]]["label"]
-            return f"{lbl}.{'e' if n['side'] == 'L' else 'd'}" if n["side"] else lbl
+            return _side_label(_ROLE_LABEL.get(n["role"], n["role"]), n["side"])
 
         # 1) Joint chain: one structural peg per node, parented via the resolved ontology. Drawn nodes
         #    carry the articulation pivots (hip/knee/…); no drawing binds to a structural joint.
@@ -427,27 +756,35 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
                 n_struct += 1
                 continue
             ob = n["ob"]
-            dname = ob.name + _DRAW_PEG_SUFFIX
-            rig.pegs.new(dname, parent_index=j_idx[node_name(key)])
-            dpeg_idx = len(rig.pegs) - 1
-            _bind(ob, rig, dname)
-            _set_pivot_world(rig, dpeg_idx, _center_world(ob))
+            peg = rig.pegs.new(ob.name + _DRAW_PEG_SUFFIX, parent_index=j_idx[node_name(key)])
+            _bind(ob, rig, peg.name)
+            _set_pivot_world(rig, len(rig.pegs) - 1, _center_world(ob))
 
         # 3) Face fan: pieces recognised by the head-fan ontology (eyes, brows, mouth, hair…)
         #    auto-parent onto the head joint (or its nearest drawn ancestor) instead of falling
-        #    loose. Geometric pivot against that anchor, same as everywhere else.
+        #    loose. Geometric pivot against that anchor, same as everywhere else. Sides are
+        #    resolved by position, like the limbs, so '1olho'/'2olho' become Olho.e/Olho.d.
         anchor_ob = nodes[face_anchor_key]["ob"] if face_anchor_key is not None else None
         anchor_peg_idx = j_idx[node_name(face_anchor_key)] if face_anchor_key is not None else -1
         face_matched = set()
         if anchor_ob is not None:
+            axis = planar[0]
+            xs = [_center_world(o)[axis] for o in objs]
+            mid = (min(xs) + max(xs)) * 0.5
+            by_face = {}
             for ob in objs:
-                if ob in matched or _match_face_role(ob.name) is None:
-                    continue
-                rig.pegs.new(ob.name, parent_index=anchor_peg_idx)
-                peg_idx = len(rig.pegs) - 1
-                _bind(ob, rig, ob.name)
-                _set_pivot_world(rig, peg_idx, _joint_world(ob, anchor_ob, planar))
-                face_matched.add(ob)
+                m = _match_face_role(ob.name)
+                if ob not in matched and m is not None:
+                    by_face.setdefault(m[0], []).append((ob, m[1]))
+            for role, cands in by_face.items():
+                slots, _leftover = _resolve_sides(cands, mid, lambda o: _center_world(o)[axis],
+                                                  role in _FACE_SIDED)
+                for side, ob in slots.items():
+                    peg = rig.pegs.new(_side_label(_FACE_LABEL.get(role, role), side),
+                                       parent_index=anchor_peg_idx)
+                    _bind(ob, rig, peg.name)
+                    _set_pivot_world(rig, len(rig.pegs) - 1, _joint_world(ob, anchor_ob, planar))
+                    face_matched.add(ob)
 
         # 4) Anything still unmatched: its own peg on the composite (root). A leaf, so a single
         #    peg is already its independent controller; linkable later.
@@ -455,13 +792,13 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
         for ob in objs:
             if ob in matched or ob in face_matched:
                 continue
-            rig.pegs.new(ob.name, parent_index=-1)
-            peg_idx = len(rig.pegs) - 1
-            _bind(ob, rig, ob.name)
-            _set_pivot_world(rig, peg_idx, _center_world(ob))
+            peg = rig.pegs.new(ob.name, parent_index=-1)
+            _bind(ob, rig, peg.name)
+            _set_pivot_world(rig, len(rig.pegs) - 1, _center_world(ob))
             extra += 1
 
-        rig.active_peg_index = rig.pegs.find(keymap[("torso", None)].name) if ("torso", None) in keymap else 0
+        torso = rig.pegs.find(_ROLE_LABEL["torso"]) if ("torso", None) in keymap else -1
+        rig.active_peg_index = max(torso, 0)
         _grouped_layout(rig)
         context.view_layer.update()
         n_drawn = len(matched)
@@ -561,6 +898,8 @@ class VIEW3D_PT_nuclear_rig_auto(Panel):
         col = layout.column(align=True)
         col.scale_y = 1.3
         col.operator("object.nuclear_rig_auto_skeleton", icon="OUTLINER_OB_ARMATURE")
+        if any(o.type == "ARMATURE" for o in bpy.data.objects):
+            col.operator("object.nuclear_rig_from_armature", icon="BONE_DATA")
         layout.separator()
         layout.label(text="Select fan + active parent:", icon="INFO")
         layout.operator("object.nuclear_rig_link_to_parent", icon="LINKED")
@@ -572,6 +911,7 @@ class VIEW3D_PT_nuclear_rig_auto(Panel):
 # Registration
 # --------------------------------------------------------------------------- #
 _classes = (
+    OBJECT_OT_nuclear_rig_from_armature,
     OBJECT_OT_nuclear_rig_auto_skeleton,
     OBJECT_OT_nuclear_rig_link_to_parent,
     VIEW3D_PT_nuclear_rig_auto,

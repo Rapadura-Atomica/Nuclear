@@ -65,6 +65,69 @@ figurino, então continuam em `Link Selected to Active`. Validado headless contr
 4. Refine no **Peg Graph** (arraste links). Botão **Auto Layout** reagrupa o grafo.
 5. **Peg Pose** para animar.
 
+## Personagem legado: **Convert Armature to Pegs**
+
+Quem já foi rigado com **armature** (o acervo antigo do DPE) não passa pelo matcher de nomes:
+a cadeia e os pivôs já existem e foram aprovados pelo animador, e os nomes das peças costumam
+estar fora do contrato (`cabelo1.004` é um braço). O botão **Convert Armature to Pegs**
+(aparece no painel quando há uma armature no arquivo) reconstrói o mesmo personagem como
+PegRig sem tabela nenhuma por personagem:
+
+- **o mapa peça → osso são os vertex groups da peça** — é a única declaração de intenção que
+  sobreviveu, e vale mesmo quando os pesos nunca foram pintados (é o caso comum no acervo:
+  os grupos existem só como nome);
+- **cada osso mantido vira uma peg de junta**, com pivô no *head* do osso em coordenada de
+  mundo, e o parentesco copiado da armature. Ossos por onde nada passa são podados;
+- **cada peça ganha sua peg de desenho** (sufixo `(ctrl)`) sob a junta, então o animador
+  mexe a peça sem sair da articulação;
+- **ilhas de ossos desconexas** (cabeça desenhada numa cadeia separada do corpo) são
+  religadas no osso mais próximo da ilha principal — sem isso a cabeça não seguiria o tronco;
+- a armature é desligada (modifier removido, objeto escondido) e fica no arquivo como legado.
+
+Duas ambiguidades aparecem quando a peça tem **mais de um** vertex group, distinguidas pelo
+nome: se os candidatos são **ossos espelhados** (`1pe`/`2pe`, `perna.e`/`perna.d`) a peça foi
+duplicada para os dois lados, e as peças concorrentes são casadas com as juntas pela ordem da
+esquerda para a direita; senão, vale o candidato que o **nome da própria peça** aponta
+(`1olho` entre olho e pupila) e, em último caso, o **ancestral comum** dos candidatos.
+
+⚠️ O arquivo tem que salvar com a ferramenta **Peg Pose** ativa no modo Objeto: `Ctrl+B`
+(subir na hierarquia) e `Ctrl+Shift+B` (descer) vivem no keymap dessa ferramenta, não num
+keymap global. Rig perfeito + `builtin.select_box` salva = "a hierarquia não funciona".
+
+Fora da GUI, o mesmo caminho em uma linha (`~/dpe_tools/arm2peg/arm2peg.py`, fora do repo):
+`arm2peg.py <diretório do personagem>` acha o .blend principal, converte, cria o node tree do
+Peg Graph, deixa a Peg Pose ativa e salva `<nome>_pegs.blend` ao lado — sem tocar no original.
+
+## 🏷️ Como as pegs são nomeadas (e por que não pelo nome da peça)
+
+Numa biblioteca legada o nome da peça **mente** com frequência — no acervo do DPE
+`1antebraco.002` é uma saia e `cabelo1.004` é um braço. Um grafo nomeado por peça fica
+ilegível, então:
+
+- **peg de junta = o PAPEL, em PT**: `Tronco`, `Pescoço`, `Cabeça`, `Ombro.e`, `Braço.e`,
+  `Antebraço.e`, `Mão.e`, `Quadril`, `Coxa.d`, `Canela.d`, `Pé.d` (`_ROLE_LABEL`);
+- **peça de rosto = o papel também**: `Olho.e`, `Sobrancelha.d`, `Boca`, `Cabelo`
+  (`_FACE_LABEL`);
+- **peg de desenho = o nome da peça** + `(ctrl)`, para o artista achar o que ele desenhou;
+- **acessório solto = o nome da peça**, intocado.
+
+O lado **não** sai do nome: a convenção do estúdio é prefixo numérico (`1braco`/`2braco`) e
+qual dígito é a esquerda da tela varia por personagem. `_norm` devolve lado `'?'` nesses casos
+e `_resolve_sides` decide pela posição — entre os candidatos que sobrevivem, o mais à esquerda
+fica com `.e`. A ordem relativa, não a posição absoluta: um personagem em passada tem os dois
+pés do mesmo lado do eixo.
+
+É também assim que uma peça com nome mentiroso é **rejeitada**: membros pares são laterais e
+simétricos, então os candidatos mais afastados do eixo do corpo ganham os dois lados e o
+intruso central (a saia chamada `1antebraco.002`) cai para os acessórios em vez de virar
+antebraço.
+
+Na conversão de armature vale a mesma tabela, com uma trava: o osso só é renomeado se o papel
+fechar a conta exata (um por lado). Armature legada costuma ter um osso de deform ao lado do
+osso de junta (`1braco` pendurado em `1braco.001`) e os dois lêem como braço — o desempate é
+estrutural (**quem tem filho é a junta**), e quando nem isso resolve o osso mantém o nome que o
+animador deu, que ao menos é único.
+
 ## Visualização — Peg Graph vertical anatômico
 
 O grafo se organiza numa **silhueta corporal vertical** (a convenção dos riggers: lê-se de
@@ -101,12 +164,14 @@ o sufixo de lado) e o **núcleo** resultante precisa ser **exatamente** um token
 | Antebraço | `antebraco` | antebrazo, forearm |
 | Mão | `mao` | mano, hand |
 | Quadril/pelve¹ | `quadril` | pelvis, hip, bacia, cadera |
-| Coxa | `coxa` | thigh, muslo, femur |
+| Coxa | `coxa` | perna², thigh, muslo, femur |
 | Canela | `canela` | shin, tibia, espinilla |
 | Pé | `pe` | pie, foot |
 
 ¹ **Ombro e quadril são juntas estruturais**: são criados automaticamente mesmo sem peça
 desenhada (ver acima). Desenhá-los é **opcional** — se existir a peça, ela vincula na junta.
+² `perna` é como a biblioteca do DPE chama a **coxa** (a peça abaixo dela é sempre uma
+`canela`), então vale como sinônimo de coxa, não como a perna inteira.
 Acento é ignorado (`CABEÇA` = `CABECA`, `pé` = `pe`).
 
 ### Tokens do rosto e cabelo (Tier 2 — auto-parentam em CABECA)
@@ -147,6 +212,11 @@ Precisa de um **separador** (`.`, `_`, `-` ou espaço) + a marca:
 | **Direita (D)** | `.d` · `.dir` · `.direita` · `.r` · `.right` · `.der` |
 
 ✅ `braco.e`, `coxa_d`, `mao-e`, `Pe.D`  ❌ `bracoe` (sem separador, não separa o lado)
+
+**Prefixo numérico (a convenção do acervo do DPE):** `1braco`/`2braco`, `1_sobrancelha`,
+`1pe`/`1pe.001`. É aceito, mas o dígito **não** diz qual lado — vale para 1/2 seguido de letra,
+e quem decide E/D é a posição da peça. Também vale para o rosto (`1olho` → `Olho.e`). Peças que
+são cópia com nome duplicado (`1pe` e `1pe.001`) entram normalmente nesse jogo.
 
 ### Conjunto canônico de um bípede (os 15 que viram esqueleto)
 
@@ -200,6 +270,14 @@ pe.e        pe.d
   **uma peg só** (sem `(ctrl)`), pivô por `_joint_world` contra o objeto da âncora.
 - `OBJECT_OT_nuclear_rig_link_to_parent` (`object.nuclear_rig_link_to_parent`) — lote
   parent-to-active; prende na **junta** do ativo (pai da peg `(ctrl)`).
+- **Papéis e lados:** `_assign_roles` (esqueleto) e o mesmo caminho no leque de rosto chamam
+  `_resolve_sides`, que reparte os slots E/D de um papel e devolve os candidatos rejeitados;
+  rótulos em `_ROLE_LABEL`/`_FACE_LABEL` + `_side_label`. Na armature, `_bone_labels`.
+- `OBJECT_OT_nuclear_rig_from_armature` (`object.nuclear_rig_from_armature`) — conversão de
+  personagem legado. Miolo em `build_pegrig_from_armature()`, chamável headless: bind por
+  vertex group (`_resolve_bindings`, com `_mirror_core` para lados e
+  `_lowest_common_ancestor`), poda + religação de ilhas em `_kept_bone_tree`. Idempotente —
+  limpa PegRigs e Follow Pegs antes de montar.
 - Pivô gravado no frame do peg-pai via `_set_pivot_world` (mesma matemática do Peg Graph).
 
 `scripts/startup/nuclear_peg_graph.py`:
