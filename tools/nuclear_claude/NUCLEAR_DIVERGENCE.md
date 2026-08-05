@@ -447,44 +447,66 @@ invisível.
 bruta contra 11.498 visíveis) — pular a camada a deixaria sem contorno e sem área clicável, e o
 matte responde por outra peça, então só o corte real resolve.
 
-### Corte de mask cross-object por stencil (2026-08-04)
-Pares matte→camada num `PassSimple` (ordem garantida): o matte rasteriza `ref` no stencil
-(`DRW_STATE_WRITE_STENCIL`, sem cor nem profundidade) e a camada é desenhada com
-`DRW_STATE_STENCIL_EQUAL`; um `ref` por par dispensa clear entre eles. Em Prepass (clique) e
-Outline (contorno). O atalho local continua na frente — o stencil só entra onde ele não pode ir
-(`gather_stencil_mattes` devolve false quando `layer_is_covered_by_own_mattes` já resolve).
+### Corte de mask cross-object por stencil — TENTADO E REMOVIDO (2026-08-04 → 2026-08-05)
+A ideia era rasterizar o matte no stencil e desenhar a camada mascarada com
+`DRW_STATE_STENCIL_EQUAL`, para o clique respeitar o recorte que hoje só existe no engine
+(`draw_mask`). Foi implementado em `abeb1eb392f` e **removido em seguida**: não funcionava, e
+mesmo depois de consertado ficava pior que não cortar. Fica registrado porque a causa é uma
+armadilha do framework de draw que qualquer tentativa futura vai encontrar.
 
-⚠️ **A primeira tentativa falhou e a causa vale registrar:** as camadas mascaradas *sumiam* do
-buffer (dinossauro 91,3% → 68,1%). Não era o stencil — era o **plano de profundidade**. Cada
-chamada de `draw_grease_pencil` registra um plano novo, e como a camada recortada é um draw
-separado, o escalonamento de `compute_selection_depth_planes` lhe dava uma profundidade **própria**,
-atrás da peça a que ela pertence, onde o depth test a matava. Correção: `GreasePencilDepthPlane`
-ganha `object`, e draws do mesmo objeto compartilham uma profundidade só.
+⚠️ **Por que não funcionava: `PassSimple` não carrega select id.** Os pares matte→camada viviam
+num `PassSimple`, escolhido por causa da ordem de draw garantida. Mas
+`SelectMap::select_bind(PassSimple &)` **não** liga `use_custom_ids` nem vincula `SELECT_ID_IN` —
+só a sobrecarga de `PassMain` faz isso, e `use_custom_ids` só é consumido pelo `DrawMultiBuf`
+(de `PassMain`), nunca pelo `DrawCommandBuf` (de `PassSimple`). O shader faz
+`select_id_set(drw_custom_id())` e recebia lixo, então **nenhuma camada recortada registrava
+hit**: elas não eram recortadas, eram apagadas do hit-test. Medido na Carolina (grade de 10 px):
+`antebraco.d` 13→0 cliques, `manga.d` 21→1, `1olho.005` 4→0; os cliques órfãos caíam na cascata
+de tolerância (2→5→14 px) e iam parar em peças distantes (`TRONCO` 1→17, `cabelo` 84→159).
+A prova de que era isso e não o stencil nem a profundidade: desligar o teste de stencil e
+desligar o teste de profundidade davam **exatamente** o mesmo número (78,9% nos três casos).
 
-| Arquivo | O que foi alterado |
-|---|---|
-| `overlay_grease_pencil.hh` | `MatteRef` + `gather_stencil_mattes()` + `draw_masked_layer_stencil()` + `draw_grease_pencil_clipped()`; `draw_grease_pencil()` vira template no tipo de pass e ganha `layer_filter`; planos agrupados por objeto. |
-| `overlay_prepass.hh` / `overlay_outline.hh` | `PassSimple` próprio para os pares, `ref` corrente, e submissão logo após o pass principal. |
-| `view3d_select.cc` | `selectbuffer_prefer_grease_pencil()`: com um desenho sob o cursor, os hits que não são desenho são descartados — as deform curves de um rig cut-out ficam bem em cima da arte que dobram. Elas seguem selecionáveis onde não há desenho por baixo. |
+**O conserto existe e foi validado**, para quem retomar: mattes num `PassSimple` (não precisam de
+id — são desenhados com `select_invalid_id()` justamente para não responderem) e camadas num
+`PassMain` submetido logo depois; a ordem fica garantida *entre* as duas submissões, que é tudo
+que o stencil exige. Com **bits** de stencil no lugar de valores (`state_stencil(bit, bit, 0xFF)`
+no matte, `state_stencil(0x00, bit, bit)` na camada), a ordem *dentro* de cada pass deixa de
+importar e os mattes de todos os cortes dividem um buffer sem clear entre eles — 8 cortes por
+frame, com os conjuntos de mattes deduplicados (a Carolina tem 10 camadas recortadas mas só 6
+conjuntos distintos). Assim `antebraco.e`, `ant.casaco.e`, `1olho.002` e `1olho.005` voltaram ao
+valor de referência.
 
-**Resultado medido — troca, não ganho puro.** As masks cross-object deixam de responder
-(`MASK: 0` nos quatro rigs, `detalhe.torso` incluído), mas o corte sai um pouco mais agressivo que
-o real e cobra em tolerância:
+**Mesmo assim foi removido, porque continua pior que não cortar:**
 
-| rig | com atalho só | com stencil |
-|---|---|---|
-| Atena | 96,2% | **96,2%** (igual) |
-| Lala | 83,3% | **83,3%** (igual) |
-| Dinossauro | 91,3% (MASK 3) | 89,1% (MASK **0**) |
-| Carolina | 80,2% (TOL 0) | 76,0% (TOL 15) |
+| rig | sem corte | corte quebrado (`abeb1eb`) | corte consertado |
+|---|---|---|---|
+| Carolina | **87,2%** | 78,9% | 80,8% |
+| Dinossauro | **80,0%** | — | 76,8% |
 
-Ou seja: o cross-object está resolvido, ao custo de ~2-4 pontos onde há muita mask (a Carolina tem
-44). A suspeita é que o matte rasteriza uma silhueta ligeiramente menor que a real — o shader não
-faz `discard` em modo seleção, então o quad do traço entra inteiro, e o depth plane do matte é
-computado à parte. **Não investigado ainda**; para reverter basta fazer `gather_stencil_mattes()`
-devolver false sempre.
-⚠️ Achado à parte: rigs com **deform curves** têm objetos `Curve` visíveis (8 no dinossauro) que
-também respondem ao clique. São controles, não desenho — decisão de workflow, não tratada aqui.
+A causa é a interação com a cascata de tolerância do pick: área removida pelo corte vira ponto
+sem resposta, o raio alarga até 14 px e traz uma peça **longe** — erro pior do que a peça vizinha
+que responderia sem o corte. Cortar só passa a valer junto com uma política de tolerância
+diferente (não alargar quando o corte foi quem esvaziou o ponto), e isso é outra frente.
+
+**O atalho local continua valendo** (`layer_is_covered_by_own_mattes`): ele não rasteriza nada,
+só deixa de desenhar a camada cuja área o matte do mesmo objeto já representa. É o que os
+números acima já incluem.
+
+**Método de medição** (vale reusar — a métrica anterior era cega para isto): `teste_clique_gui.py`
+em `~/dpe_tools/gp_pick_test/` dispara `object.pegrig_pick(location=)` numa grade sobre a GUI, e
+levanta a área visível de cada peça por **diferença de render** — esconde a peça, redesenha o
+viewport num `GPUOffScreen`, compara os pixels. O ground truth sai do próprio engine, então já
+traz masks, ordem de render e opacidade, sem remontar nada disso em Python. ⚠️ É preciso
+`view_layer.update()` entre esconder e redesenhar, senão o depsgraph não reavalia e os dois
+shots saem idênticos. Medidas e conclusões em `~/dpe_tools/gp_pick_test/medidas/RESULTADOS.md`.
+
+⚠️ Achado à parte, não tratado: rigs com **deform curves** têm objetos `Curve` visíveis (8 no
+dinossauro) que também respondem ao clique. São controles, não desenho — decisão de workflow.
+
+⚠️ Falha latente, não tratada: o flag **Auto-Patch** das masks (`GP_LAYER_MASK_AUTO_PATCH`) corta
+só o traço e mantém o fill (`gp_mask_bypass`), mas `layer_is_covered_by_own_mattes` não o
+distingue de uma mask comum — numa camada com Auto-Patch o atalho tiraria área que o artista vê.
+Nenhum dos quatro rigs de referência usa o flag, então não morde hoje.
 
 **Tentado e revertido:** afundar para trás de tudo os objetos usados como matte cross-object.
 Parecia resolver "o cutter rouba o clique", mas na prática o matte é o **próprio desenho** (na

@@ -9,7 +9,6 @@
 #pragma once
 
 #include <algorithm>
-#include <cstdlib>
 
 #include "BLI_array.hh"
 #include "BLI_bounds.hh"
@@ -347,217 +346,6 @@ class GreasePencil : Overlay {
     return found;
   }
 
-  /** Nuclear: one matte a masked layer is clipped against. */
-  struct MatteRef {
-    /** Null means a node of the masked layer's own object. */
-    Object *object;
-    /** Empty (with #object set) means the whole object. */
-    const char *node_name;
-  };
-
-  /**
-   * Nuclear: the mattes a layer must be clipped against when #layer_is_covered_by_own_mattes could
-   * not take its shortcut -- in practice a cross-object matte, which stands for another piece.
-   * False when there is nothing to cut, or an inverted mask (whose visible area lies *outside* the
-   * matte, which this scheme cannot express).
-   */
-  static bool gather_stencil_mattes(const ::GreasePencil &grease_pencil,
-                                    const bke::greasepencil::Layer &layer,
-                                    Vector<MatteRef> &r_mattes)
-  {
-    /* TEMPORARY (investigation only, remove before committing): A/B switch for the stencil cut. */
-    static const bool stencil_enabled = []() {
-      const char *env = std::getenv("NUCLEAR_GP_STENCIL");
-      return (env == nullptr) || !STREQ(env, "0");
-    }();
-    if (!stencil_enabled) {
-      return false;
-    }
-
-    if (!layer.use_masks() || layer_is_covered_by_own_mattes(grease_pencil, layer)) {
-      return false;
-    }
-
-    Vector<MatteRef> mattes;
-    auto collect = [&](const ListBase &masks) -> bool {
-      LISTBASE_FOREACH (const GreasePencilLayerMask *, mask, &masks) {
-        if ((mask->flag & GP_LAYER_MASK_HIDE) != 0) {
-          continue;
-        }
-        if ((mask->flag & GP_LAYER_MASK_INVERT) != 0) {
-          return false;
-        }
-        if (mask->object == nullptr) {
-          const bke::greasepencil::TreeNode *node = grease_pencil.find_node_by_name(
-              mask->layer_name);
-          if (node == nullptr || !mask_target_is_drawn(*node)) {
-            continue;
-          }
-        }
-        mattes.append({mask->object, mask->layer_name});
-      }
-      return true;
-    };
-
-    if (!collect(layer.masks)) {
-      return false;
-    }
-    for (const bke::greasepencil::LayerGroup *group = layer.as_node().parent_group();
-         group != nullptr;
-         group = group->as_node().parent_group())
-    {
-      if (!collect(group->masks)) {
-        return false;
-      }
-    }
-    if (mattes.is_empty()) {
-      return false;
-    }
-    r_mattes = std::move(mattes);
-    return true;
-  }
-
-  /**
-   * Nuclear: draw one masked layer clipped to its mattes, through the stencil buffer.
-   *
-   * The mattes are rasterized with \a ref -- no colour, no depth -- and the layer is then drawn
-   * testing for that value, so only the part the artist sees reaches the buffer. Each pair uses
-   * its own \a ref, so no clear is needed between them; that is why this has to live in a pass
-   * with guaranteed draw order (#PassSimple).
-   */
-  static void draw_masked_layer_stencil(Resources &res,
-                                        PassSimple &pass,
-                                        Manager &manager,
-                                        const Scene *scene,
-                                        Object *ob,
-                                        ResourceHandleRange res_handle,
-                                        select::ID select_id,
-                                        const int layer_index,
-                                        const Span<MatteRef> mattes,
-                                        const uint8_t ref,
-                                        const DRWState layer_state,
-                                        const int clipping_plane_count,
-                                        gpu::Shader *shader)
-  {
-    {
-      auto &sub = pass.sub("Matte");
-      sub.shader_set(shader);
-      sub.state_set(DRW_STATE_WRITE_STENCIL | DRW_STATE_STENCIL_ALWAYS, clipping_plane_count);
-      sub.state_stencil(0xFF, ref, 0xFF);
-      for (const MatteRef &matte : mattes) {
-        Object *matte_ob = (matte.object != nullptr) ? matte.object : ob;
-        ::GreasePencil &matte_gp = DRW_object_get_data_for_drawing<::GreasePencil>(*matte_ob);
-        const bool whole_object = (matte.node_name == nullptr) || (matte.node_name[0] == '\0');
-
-        ResourceHandleRange matte_handle = res_handle;
-        if (matte_ob != ob) {
-          ObjectRef matte_ref(matte_ob);
-          matte_handle = manager.unique_handle(matte_ref);
-        }
-
-        auto keep = [&](const int i) {
-          if (whole_object) {
-            return true;
-          }
-          const bke::greasepencil::Layer &l = *matte_gp.layers()[i];
-          if (STREQ(l.name().c_str(), matte.node_name)) {
-            return true;
-          }
-          for (const bke::greasepencil::LayerGroup *g = l.as_node().parent_group(); g != nullptr;
-               g = g->as_node().parent_group())
-          {
-            if (STREQ(g->name().c_str(), matte.node_name)) {
-              return true;
-            }
-          }
-          return false;
-        };
-
-        /* The matte only carves the stencil: it must not register a hit of its own. */
-        draw_grease_pencil(res,
-                           sub,
-                           scene,
-                           matte_ob,
-                           matte_handle,
-                           select::SelectMap::select_invalid_id(),
-                           false,
-                           keep);
-      }
-    }
-    {
-      auto &sub = pass.sub("MaskedLayer");
-      sub.shader_set(shader);
-      sub.state_set(layer_state | DRW_STATE_STENCIL_EQUAL, clipping_plane_count);
-      sub.state_stencil(0x00, ref, 0xFF);
-      draw_grease_pencil(res, sub, scene, ob, res_handle, select_id, true, [layer_index](int i) {
-        return i == layer_index;
-      });
-    }
-  }
-
-  /**
-   * Nuclear: draw a Grease Pencil object the way it looks on screen: plain layers in \a pass, and
-   * any layer needing a real mask cut redrawn in \a stencil_pass clipped to its mattes.
-   */
-  static void draw_grease_pencil_clipped(Resources &res,
-                                         PassMain::Sub &pass,
-                                         PassSimple &stencil_pass,
-                                         Manager &manager,
-                                         const Scene *scene,
-                                         Object *ob,
-                                         ResourceHandleRange res_handle,
-                                         select::ID select_id,
-                                         uint8_t &r_stencil_ref,
-                                         const DRWState layer_state,
-                                         const int clipping_plane_count,
-                                         gpu::Shader *stencil_shader)
-  {
-    ::GreasePencil &grease_pencil = DRW_object_get_data_for_drawing<::GreasePencil>(*ob);
-
-    Vector<int> cut_layers;
-    Vector<Vector<MatteRef>> cut_mattes;
-    for (const int i : grease_pencil.layers().index_range()) {
-      const bke::greasepencil::Layer &layer = *grease_pencil.layers()[i];
-      if (!layer.is_visible()) {
-        continue;
-      }
-      Vector<MatteRef> mattes;
-      if (gather_stencil_mattes(grease_pencil, layer, mattes)) {
-        cut_layers.append(i);
-        cut_mattes.append(std::move(mattes));
-      }
-    }
-
-    if (cut_layers.is_empty()) {
-      draw_grease_pencil(res, pass, scene, ob, res_handle, select_id, true);
-      return;
-    }
-
-    draw_grease_pencil(res, pass, scene, ob, res_handle, select_id, true, [&](const int i) {
-      return !cut_layers.contains(i);
-    });
-
-    for (const int i : cut_layers.index_range()) {
-      if (r_stencil_ref == 0) {
-        r_stencil_ref = 1;
-      }
-      draw_masked_layer_stencil(res,
-                                stencil_pass,
-                                manager,
-                                scene,
-                                ob,
-                                res_handle,
-                                select_id,
-                                cut_layers[i],
-                                cut_mattes[i],
-                                r_stencil_ref,
-                                layer_state,
-                                clipping_plane_count,
-                                stencil_shader);
-      r_stencil_ref++;
-    }
-  }
-
   /**
    * Nuclear: give each Grease Pencil object a flat depth plane that follows the *render* order.
    *
@@ -673,15 +461,13 @@ class GreasePencil : Overlay {
    * artwork the artist sees: resolving a click, and tracing the selection outline. The plain depth
    * prepass leaves it off and keeps upstream behaviour.
    */
-  template<typename PassT>
   static void draw_grease_pencil(Resources &res,
-                                 PassT &pass,
+                                 PassMain::Sub &pass,
                                  const Scene *scene,
                                  Object *ob,
                                  ResourceHandleRange res_handle,
                                  select::ID select_id = select::SelectMap::select_invalid_id(),
-                                 const bool cull_invisible_layers = false,
-                                 FunctionRef<bool(int)> layer_filter = {})
+                                 const bool cull_invisible_layers = false)
   {
     using namespace blender;
     using namespace blender::ed::greasepencil;
@@ -764,9 +550,6 @@ class GreasePencil : Overlay {
       const bool hide_masked_layer = skip_masked_layers && layer.use_masks() &&
                                      layer_is_covered_by_own_mattes(grease_pencil, layer);
 
-      /* Nuclear: caller restricted the draw (the stencil cut draws matte and layer separately). */
-      const bool filtered_out = layer_filter && !layer_filter(info.layer_index);
-
       visible_strokes.foreach_index([&](const int stroke_i) {
         const IndexRange points = points_by_curve[stroke_i];
         const int material_index = stroke_materials[stroke_i];
@@ -779,9 +562,7 @@ class GreasePencil : Overlay {
         const int num_stroke_vertices = (points.size() +
                                          int(cyclic[stroke_i] && (points.size() >= 3)));
 
-        if (hide_material || hide_onion || hide_transparent_layer || hide_masked_layer ||
-            filtered_out)
-        {
+        if (hide_material || hide_onion || hide_transparent_layer || hide_masked_layer) {
           t_offset += num_stroke_triangles;
           t_offset += num_stroke_vertices * 2;
           return;
