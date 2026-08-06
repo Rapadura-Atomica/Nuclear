@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 18,
-  "version": "1.7.5",
+  "build": 19,
+  "version": "1.7.6",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.5 (Beta)",
+  "version_string": "Nuclear 1.7.6 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "4fc289877606e6a3bf46007826ccd09f1131cdc00fbf396e90dc283625e73c67",
-  "size": 357281180,
+  "sha256": "8b7a5d8d0b8579d02e99da1da0f86009695b7525f9a25bfe7bdb544cbb8952e9",
+  "size": 357290441,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Converter Armature em Pegs (novo): personagem legado rigado com armature vira PegRig, casando por nome. Deform Curve: bind nao congela mais o desenho (guarda a curva de repouso, mede contra o desenho vivo; bind de curva animada usa o rest carimbado) e a peg dirigida copia a tangente, nao a corda. Selecao de Grease Pencil bate com o que e desenhado: planos de profundidade na ordem do render, tolerancia apertada, atalho de matte local, camadas com mask de Auto-Patch voltam a ser clicaveis; o corte por stencil foi removido (nunca funcionou). Peg selecionada (verde) agora se distingue do objeto (azul), com a forma da peg = o desenho avaliado (com masks)."
+  "notes": "Realce da peg acompanha pan/zoom e troca de celula da Cell Library; Fit Curve to Drawing endireita curva com forma keyframada (personagem tombado no repouso) e o Check acusa o desvio"
 }

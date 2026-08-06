@@ -480,9 +480,62 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-08-05.
+Atualizado em 2026-08-06.
 
-- **Nuclear 1.7.5 (Beta) — `NUCLEAR_BUILD = 18` — PUBLICADO (2026-08-05).** PATCH a partir da
+- **Nuclear 1.7.6 (Beta) — `NUCLEAR_BUILD = 19` — PUBLICADO (2026-08-06).** PATCH a partir da
+  branch `Nuclear` (HEAD `34cff92658f`), 100% Python de startup. **Duas frentes, ambas de
+  "o que a tela mostra não é o que o arquivo tem".**
+  (1) **O realce da peg acompanha a viewport e a célula exposta** (`de9a03d3045`,
+  `nuclear_peg_graph.py`): a silhueta verde é cacheada por peça e a chave era cega a duas coisas
+  que o artista faz o tempo todo. A chave de view lia a translação da matriz na última **linha**
+  (`vm[3][0..2]`) — mas `mathutils` indexa `m[linha][coluna]` e a translação mora na **coluna 3**,
+  então aqueles três termos são o `(0,0,0)` constante de uma matriz afim; zoom nem entrava na
+  chave. Só orbitar invalidava, e num viewport 2D ninguém orbita: **pan e zoom deixavam o realce
+  congelado** nos pixels anteriores. A chave passou a ser a `perspective_matrix` inteira — a mesma
+  matriz que `_project` usa, então cobre rotação+pan+zoom por construção. E **nada despejava a
+  peça cuja CÉLULA muda**: a Cell Library instancia outro drawing no MESMO keyframe do MESMO
+  frame, com a peça parada, então frame/matriz/view batiam e o cache servia a célula anterior até
+  mudar de frame ou mexer na peça; `_drop_geometry_caches()` agora despeja por
+  `is_updated_geometry` no `depsgraph_update_post`, **antes** do guard de `_SYNCING`, do skip de
+  playback e do debounce (os três engoliriam o evento), casando nome do objeto **e** do data-block.
+  ⚠️ Peça **com modifier** pula os dois caches, o que fazia o defeito parecer intermitente — quem
+  congelava era mão/boca/olho, justamente o perfil que usa Cell Library. Regressão headless de 13
+  checagens; o flood fill do matte que volta a rodar no pan custa 0,16 ms/redraw.
+  (2) **Personagem tombado no repouso: `Fit Curve to Drawing` endireita de verdade**
+  (`a36c20774f4`, `nuclear_deform_curve.py`), a partir de `~/relatorios/deform-curve-torso-torto.md`.
+  Rig com Deform Curve no torso saía pendendo em preview, thumb e take: o desenho é reto, a curva
+  inclina, e o modifier **reconstrói** o desenho sobre a curva (`strength=1`). Eram **quatro
+  defeitos empilhados, cada um escondendo o seguinte**: (a) a forma da curva é animada no
+  **DATA-block**, não no objeto — por isso o diagnóstico inicial apurou "0 F-Curves" (eram 27
+  canais com 1 key cada); (b) escrever `bp.co` sem tocar a F-Curve é **no-op silencioso** (a
+  avaliação replaya a key por cima) e o operador ainda reportava `FINISHED` — agora cada canal
+  anda pelo mesmo delta do ponto, preservando animação por cima; (c) o `_bind` devolve a curva
+  animada ao **rest carimbado** antes de bindar, o que logo após um fit **desfazia o conserto** —
+  o fit passou a restampar o rest e a bindar contra a forma que assentou; (d) `kp.co_ui` já
+  arrasta as tangentes, e somá-las de novo movia o handle **2×**, entortando a Bézier e piorando
+  a cada passe (0,08 → 0,15 → 0,28 → 0,45). Junto: **`Check Deform Curves` ganhou a métrica
+  objetiva** (avalia a peça com e sem o modifier, acusa desvio > 0,05 u) — ⚠️ medida na curva
+  **como avaliada**, não no rest, senão o defeito some (2,7e-08 numa peça visivelmente torta) —
+  e voltou a varrer o **arquivo**: ele inspecionava só a peça SELECIONADA e, como o `.blend`
+  guarda a seleção, respondia "no piece carries a Curve modifier" em rig cheio delas (a ATENA
+  reportava zero). Medido, desvio antes → depois de um fit: Quetzalcoatl `tronco` 0,476 →
+  **0,000**, tezca `tronco` 0,179 → 0,000, dinossauro `rabo` 0,374 → 0,000, `Stroke.018` 0,122 →
+  0,000, `canela.e` 0,045 → 0,000; idempotente em 4 passes; **controle**: ATENA e as 5 peças já
+  ajustadas do dinossauro seguem em 0,000. ⚠️ **Nenhuma mudança de código endireita arquivo já
+  salvo** — cada rig precisa ser refitado e salvo, e os takes remontados; o Check aponta quais.
+  ✅ **A string compilada voltou a bater:** este release **recompilou** (o que a 1.7.5 não fez),
+  então splash/Sobre/crash report dizem **1.7.6** e o `build hash` é `34cff92658f6` == HEAD ==
+  `origin/Nuclear` (pushado ANTES do build, como manda a pegadinha do `@{u}`). Compilado em
+  `build_nuclear_2d` (preset `nuclear_2d.cmake`, ninja **-j2** com duas GUIs do usuário abertas).
+  Smoke 2D ALL PASS no binário e de novo no staging; poda 1175 → 865 MB; zip de
+  **357.290.441 bytes**, sha256
+  `8b7a5d8d0b8579d02e99da1da0f86009695b7525f9a25bfe7bdb544cbb8952e9`; verify-zip (updater + 2615
+  arquivos `scipy`, sem peso morto 3D) + check-manifest OK. Publicado em duas fases. Backup da
+  1.7.5/b18: `nuclear.zip.bak-pre-1.7.6`. `ping.php`/`instalarNuclear.sh` não tocados.
+  ⚠️ O `version.json.sig` órfão (sistema "Marketplace" fora do repo, ver 1.7.5) **continua
+  desatualizado** — segue sem chave e sem dono documentado.
+
+- **Nuclear 1.7.5 (Beta) — `NUCLEAR_BUILD = 18` — PUBLICADO (2026-08-05), superado pela 1.7.6.** PATCH a partir da
   branch `Nuclear` (HEAD `7c4cc78072a`, 9 commits sobre a 1.7.4/b17, já pushados antes deste
   release). **Cinco frentes:** (1) **Converter Armature em Pegs** (feature nova,
   `nuclear_rig_auto.py`): personagem legado rigado com armature vira PegRig casando por nome;
@@ -895,18 +948,19 @@ Atualizado em 2026-08-05.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.7.5 (Beta) — `NUCLEAR_BUILD = 18` (2026-08-05, deploy
-  confirmado: sha256 do zip no servidor confere com o manifesto live e com a resposta pública).
-  Máquinas em qualquer build ≤ 17 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+- **Versão em produção:** Nuclear 1.7.6 (Beta) — `NUCLEAR_BUILD = 19` (2026-08-06, deploy
+  confirmado: sha256 do zip no servidor confere com o manifesto live e com a resposta pública, e
+  o `content-length` público bate). Máquinas em qualquer build ≤ 18 enxergam como update.
+  Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
   1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → 1.7.0/b13 (2026-07-27) →
   1.7.1/b14 (2026-07-27) → 1.7.2/b15 (2026-07-28) → 1.7.3/b16 (2026-07-28) →
-  1.7.4/b17 (2026-07-31) → **1.7.5/b18 (2026-08-05)**.
-- **nuclear.zip (b18, em produção):** 357.281.180 bytes, sha256
-  `4fc289877606e6a3bf46007826ccd09f1131cdc00fbf396e90dc283625e73c67` (2026-08-05). Auto-contido
+  1.7.4/b17 (2026-07-31) → 1.7.5/b18 (2026-08-05) → **1.7.6/b19 (2026-08-06)**.
+- **nuclear.zip (b19, em produção):** 357.290.441 bytes, sha256
+  `8b7a5d8d0b8579d02e99da1da0f86009695b7525f9a25bfe7bdb544cbb8952e9` (2026-08-06). Auto-contido
   por construção (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes de
-  cada publish. **Backups no servidor: só os 2 mais recentes** — `nuclear.zip.bak-pre-1.7.5` (zip
-  1.7.4/b17) e `nuclear.zip.bak-pre-1.7.4` (zip 1.7.3/b16). `nuclear.zip.bak-pre-1.7.3` foi podado
+  cada publish. **Backups no servidor: só os 2 mais recentes** — `nuclear.zip.bak-pre-1.7.6` (zip
+  1.7.5/b18) e `nuclear.zip.bak-pre-1.7.5` (zip 1.7.4/b17). `nuclear.zip.bak-pre-1.7.4` foi podado
   neste release para manter a política de guardar dois, que mantém rollback de duas versões.
   Apagar o `.bak` mais antigo faz parte da rotina de publish — não deixe voltar a acumular.
 - **Build dir:** `~/Documentos/GitHub/build_nuclear_2d` nesta máquina (out-of-source, preset
