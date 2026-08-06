@@ -1582,10 +1582,15 @@ def _scan_peg_signatures_timer():
 
 
 @bpy.app.handlers.persistent
-def _depsgraph_update_post(_scene, _depsgraph):
+def _depsgraph_update_post(_scene, depsgraph):
     # Must be @persistent: non-persistent app handlers are stripped on File > Open,
     # which would silently stop the Peg Graph from tracking rig edits for the rest of
     # the session (the register() guard below keeps re-adding idempotent).
+    #
+    # A re-evaluated drawing invalidates its cached silhouette no matter what else is going on, so
+    # this runs FIRST -- ahead of the sync guard, the playback skip and the debounce below, which
+    # are all about rig STRUCTURE and would otherwise swallow a cell swap.
+    _drop_geometry_caches(depsgraph)
     if _SYNCING:
         return
     # Skip during playback: the graph mirrors rig STRUCTURE, which doesn't change frame
@@ -1813,6 +1818,35 @@ def _invalidate_overlay_caches(*_args):
     _CONTROLLED_CACHE.clear()
     _HULL_CACHE.clear()
     _MATTE_MASK_CACHE.clear()
+
+
+def _drop_geometry_caches(depsgraph):
+    """Forget the cached shape of every drawing the depsgraph just re-evaluated.
+
+    Both silhouette caches are keyed by frame + world matrix + view, and a drawing can change
+    while all three stay put: Cell Library swaps a hand/mouth/eye by instancing a DIFFERENT cell
+    onto the SAME keyframe of the SAME frame (`nuclear_cell_library._expose_bank_frame`), and
+    editing strokes in Draw Mode does the same. Nothing in the key moves, so the highlight kept
+    tracing the previous cell until the artist changed frame, moved the piece or reopened the file.
+    The depsgraph already knows exactly which data-blocks changed -- evict those and let the next
+    redraw rebuild them.
+
+    Matches on the object's name AND on its data's, because a cell swap updates the GreasePencil
+    data-block, while the caches are keyed by object name.
+    """
+    names = {u.id.name for u in depsgraph.updates if u.is_updated_geometry}
+    if not names:
+        return
+    objects = bpy.data.objects
+    for cache in (_OUTLINE_LOCAL_CACHE, _HULL_CACHE):
+        stale = [name for name in cache
+                 if name in names
+                 or getattr(getattr(objects.get(name), "data", None), "name", None) in names]
+        for name in stale:
+            del cache[name]
+    # A matte is another object's artwork, so a swap in it reshapes the clip of the piece it cuts.
+    if _MATTE_MASK_CACHE:
+        _MATTE_MASK_CACHE.clear()
 
 
 def _node_is_drawn(data, name):
@@ -2137,13 +2171,10 @@ def _inside_matte(mask_info, sx, sy):
 def _matte_mask_cached(mattes, region, rv3d):
     """#_screen_matte_mask with a cache: the flood fill is the one expensive step left, and the
     mask only changes when the mattes move, the frame changes or the view does."""
-    vm = rv3d.view_matrix
     key = (tuple(o.name for o in mattes),
            bpy.context.scene.frame_current,
            tuple(round(v, 6) for o in mattes for row in o.matrix_world for v in row),
-           tuple(round(vm[r][c], 6) for r in range(3) for c in range(3)),
-           round(vm[3][0], 4), round(vm[3][1], 4), round(vm[3][2], 4),
-           region.width, region.height)
+           _view_key(region, rv3d))
     if key in _MATTE_MASK_CACHE:
         return _MATTE_MASK_CACHE[key]
     if len(_MATTE_MASK_CACHE) > 64:
@@ -2234,20 +2265,34 @@ def _controlled_drawings_cached(rig, sel_idx):
     return [objects.get(n) for n in names]
 
 
+def _view_key(region, rv3d):
+    """Cache key for "what the view projects to", as the whole `perspective_matrix`.
+
+    It has to be the SAME matrix #_project projects with: keying on `view_matrix` alone was blind
+    to zoom, and picking its translation off the last ROW (`vm[3][0..2]`) read the constant
+    (0, 0, 0) of an affine matrix -- mathutils indexes `m[row][col]` and the translation lives in
+    column 3 -- so panning did not invalidate anything either. The highlight stayed frozen at the
+    pixels it had before the artist panned or zoomed, which in a 2D viewport is every navigation
+    there is (only orbiting, which nobody does here, changed the rotation the key did see).
+    """
+    pm = rv3d.perspective_matrix
+    return (tuple(pm[r][c] for r in range(4) for c in range(4)), region.width, region.height)
+
+
 def _outline_silhouette(ob, region, rv3d, frame):
     """Screen-space silhouette segments for `ob`, cached until its frame, world matrix, the view or
     the region size changes. On idle/hover redraws (nothing moved) this returns the cached segments
     instead of re-projecting and re-flooding every frame.
 
     Objects with modifiers are NOT cached: a Deform Curve reshapes the drawing without touching
-    `matrix_world`, so a cached shape would lag behind the pose.
+    `matrix_world`, so a cached shape would lag behind the pose. A drawing whose CONTENT changes
+    under an unchanged pose (a Cell Library swap, a stroke edit) is not visible in this key either
+    -- #_drop_geometry_caches evicts those entries from the depsgraph handler.
     """
     mw = ob.matrix_world
     mw_key = (mw[0][0], mw[0][1], mw[0][2], mw[0][3], mw[1][0], mw[1][1], mw[1][2], mw[1][3],
               mw[2][0], mw[2][1], mw[2][2], mw[2][3], mw[3][0], mw[3][1], mw[3][2], mw[3][3])
-    vm = rv3d.view_matrix
-    view_key = (vm[0][0], vm[0][1], vm[0][2], vm[1][0], vm[1][1], vm[1][2], vm[2][0], vm[2][1],
-                vm[2][2], vm[3][0], vm[3][1], vm[3][2], region.width, region.height)
+    view_key = _view_key(region, rv3d)
     if not ob.modifiers:
         entry = _HULL_CACHE.get(ob.name)
         if entry is not None and entry[0] == frame and entry[1] == mw_key and entry[2] == view_key:
