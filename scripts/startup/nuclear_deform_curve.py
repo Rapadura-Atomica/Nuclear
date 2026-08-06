@@ -53,6 +53,11 @@ _PEG_SUFFIX = "_curva"
 # Stamped on the curve OBJECT by the C bind/setup: the rest control points, 9 floats per Bezier
 # point (handle_left, co, handle_right), in curve-local space.
 _REST_PROP = "nuclear_curve_rest"
+# How far the modifier may move the drawing at rest before the curve counts as misfitted. The
+# modifier REBUILDS the drawing on the curve (strength 1: the point's own position has no weight),
+# so a curve that does not follow the artwork drags the artwork onto itself. A fitted curve
+# measures ~0; the tilted torsos found in production measured 0.06 to 0.48.
+_REST_TOLERANCE = 0.05
 
 
 # --------------------------------------------------------------------------- #
@@ -129,14 +134,82 @@ def _control_points_world(curve_ob):
             for bp in _spline(curve_ob).bezier_points]
 
 
+def _shape_fcurves(curve_ob):
+    """{(data_path, array_index): fcurve} for the channels that drive the curve's SHAPE.
+
+    The shape is animated on the curve's DATA-block, not on the object -- looking at
+    ``curve_ob.animation_data`` reports "not animated" for a curve whose every control point is
+    keyed. In Blender 5.0 an Action holds its channels in layers > strips > channelbags, so
+    ``action.fcurves`` no longer exists; the legacy attribute is still honoured if present.
+    """
+    ad = getattr(getattr(curve_ob, "data", None), "animation_data", None)
+    if ad is None or ad.action is None:
+        return {}
+    fcurves = getattr(ad.action, "fcurves", None)
+    if fcurves is None:
+        fcurves = []
+        for layer in ad.action.layers:
+            for strip in layer.strips:
+                for bag in getattr(strip, "channelbags", ()):
+                    fcurves += list(bag.fcurves)
+    return {(fc.data_path, fc.array_index): fc for fc in fcurves
+            if ".bezier_points[" in fc.data_path}
+
+
 def _set_control_points_world(curve_ob, triples):
+    """Move the curve's control points, carrying any keyframes on them along.
+
+    A curve whose shape is KEYED cannot be reshaped by writing ``bp.co`` alone: the next
+    evaluation replays the F-Curve over it and the edit is gone, silently -- "Fit Curve to
+    Drawing" reported success and moved nothing (measured on the EP06 Quetzalcoatl, whose torso
+    curve carries 27 channels with one key each: the drawing is straight, the curve leans 0.62
+    across, and the modifier rebuilds the drawing on the curve, so the character stands tilted in
+    every render). Each channel is shifted by the same delta as its point, which corrects the rest
+    shape while preserving whatever animation was keyed on top of it.
+    """
     inv = curve_ob.matrix_world.inverted()
-    bezier = _spline(curve_ob).bezier_points
-    for bp, (co, hl, hr) in zip(bezier, triples):
-        bp.co = inv @ co
-        bp.handle_left = inv @ hl
-        bp.handle_right = inv @ hr
+    spline = _spline(curve_ob)
+    spline_index = list(curve_ob.data.splines).index(spline)
+    keyed = _shape_fcurves(curve_ob)
+    for i, (bp, (co, hl, hr)) in enumerate(zip(spline.bezier_points, triples)):
+        base = "splines[%d].bezier_points[%d]" % (spline_index, i)
+        for attr, target in (("co", inv @ co),
+                             ("handle_left", inv @ hl),
+                             ("handle_right", inv @ hr)):
+            old = getattr(bp, attr).copy()
+            setattr(bp, attr, target)
+            for axis in range(3):
+                fcurve = keyed.get(("%s.%s" % (base, attr), axis))
+                if fcurve is None:
+                    continue
+                delta = target[axis] - old[axis]
+                if abs(delta) < 1e-9:
+                    continue
+                for kp in fcurve.keyframe_points:
+                    # co_ui carries the tangents along; adding the delta to them as well moves
+                    # them TWICE, which bends the evaluated Bezier and compounds every time the
+                    # fit is run again (0.08 -> 0.15 -> 0.28 over three passes, measured).
+                    kp.co_ui[1] += delta
+                fcurve.update()
     curve_ob.data.update_tag()
+
+
+def _stamp_rest(curve_ob):
+    """Record the curve's current shape as its rest, mirroring the C ``curve_store_rest``.
+
+    Refitting a curve has to restamp it, or the fit undoes itself one step later: #_bind puts an
+    animated curve back on its STAMPED rest before binding, so binding right after a fit would
+    bind against the old, misfitted shape and hand back exactly the deformation the fit removed
+    (measured on the Quetzalcoatl torso: the fit brought 0.476 down to 0.311 and no further, and
+    the residue was precisely the stale rest).
+    """
+    spline = _spline(curve_ob)
+    if spline is None:
+        return
+    flat = []
+    for bp in spline.bezier_points:
+        flat += list(bp.handle_left) + list(bp.co) + list(bp.handle_right)
+    curve_ob[_REST_PROP] = flat
 
 
 def _box_corners(lo, hi):
@@ -479,16 +552,71 @@ def _at_rest(curve_ob):
         bpy.context.view_layer.update()
 
 
-def _bind(context, ob, md, unbind=False):
+def _evaluated_points(ob):
+    """World-space points of the piece as it is actually evaluated (modifiers applied)."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = ob.evaluated_get(depsgraph)
+    matrix = evaluated.matrix_world
+    out = []
+    for layer in evaluated.data.layers:
+        frame = layer.current_frame()
+        drawing = getattr(frame, "drawing", None)
+        if drawing is None:
+            continue
+        attr = drawing.attributes.get("position")
+        if attr is None:
+            continue
+        out += [matrix @ mathutils.Vector(element.vector) for element in attr.data]
+    return out
+
+
+def _rest_deviation(ob, md):
+    """(mean, max) distance the curve modifier drags the drawing AT REST, or None.
+
+    This is the measurement that catches a curve which simply does not match its drawing -- the
+    defect behind the tilted characters in the EP06 previews. None of the other checks see it: the
+    bind is healthy, the span is right, the wiring is right, and the piece still comes out bent,
+    because the modifier reconstructs the drawing on whatever shape the curve has.
+
+    Measured on the curve AS EVALUATED, which is the shape that renders — not on the stamped rest.
+    That distinction is the whole point: the tilted rigs carry a curve whose shape is KEYED away
+    from its stamped rest, so rolling back to the rest first reports 2.7e-08 on a piece that is
+    visibly bent. The number therefore reflects the current frame, which is what the artist, the
+    thumbnail and the take all see; on a genuinely posed frame it legitimately shows the pose.
+    """
+    curve_ob = md.object
+    if curve_ob is None or _spline(curve_ob) is None or not md.show_viewport:
+        return None
+    try:
+        deformed = _evaluated_points(ob)
+        md.show_viewport = False
+        bpy.context.view_layer.update()
+        plain = _evaluated_points(ob)
+    finally:
+        md.show_viewport = True
+        bpy.context.view_layer.update()
+    if not deformed or len(deformed) != len(plain):
+        return None
+    distances = [(a - b).length for a, b in zip(deformed, plain)]
+    return sum(distances) / len(distances), max(distances)
+
+
+def _bind(context, ob, md, unbind=False, use_stamped_rest=True):
     """Bind (or unbind) the piece, keeping the curve's own rig wiring intact.
 
     The C operator parents the curve to the drawing so it tracks the piece. That is right for a
     curve that has no rig wiring of its own, but a curve that already follows a peg would then be
     transformed twice (invisible at rest, wrong the moment the peg moves), so the parent is
-    dropped again — its ``parentinv`` already preserves the world matrix."""
+    dropped again — its ``parentinv`` already preserves the world matrix.
+
+    ``use_stamped_rest`` sends an animated curve back to its stamped rest before binding, which is
+    what you want when binding a curve that is merely posed at the current frame. Right after a
+    fit it is what you must NOT do: the fit just decided the rest shape, and rolling back to the
+    stamped one binds against the shape the fit replaced. On the Quetzalcoatl torso that residue
+    was the whole difference between 0.077 and 0.000."""
     curve_ob = md.object
     had_constraint = curve_ob is not None and _followpeg(curve_ob) is not None
-    if curve_ob is None or unbind:
+    if curve_ob is None or unbind or not use_stamped_rest:
         with _as_active(context, ob):
             bpy.ops.object.greasepencil_curve_bind(modifier=md.name, unbind=unbind)
     else:
@@ -636,9 +764,16 @@ def _refresh_driven_peg(context, curve_ob):
 # --------------------------------------------------------------------------- #
 # Targets
 # --------------------------------------------------------------------------- #
-def _gp_targets(context, selected_only):
-    """The pieces to work on: the selection when there is one, otherwise every visible drawing."""
-    sel = [o for o in context.selected_objects if o.type == "GREASEPENCIL"]
+def _gp_targets(context, selected_only, ignore_selection=False):
+    """The pieces to work on: the selection when there is one, otherwise every visible drawing.
+
+    ``ignore_selection`` sweeps the whole view layer even when something is selected. A report is
+    supposed to cover the file, and a .blend remembers its selection: opening a rig with one piece
+    selected made "Check Deform Curves" inspect that piece alone and answer "no piece carries a
+    Curve modifier" for a rig full of them (the ATENA reports zero this way).
+    """
+    sel = ([] if ignore_selection
+           else [o for o in context.selected_objects if o.type == "GREASEPENCIL"])
     if sel:
         return sel
     if selected_only:
@@ -647,10 +782,10 @@ def _gp_targets(context, selected_only):
             if o.type == "GREASEPENCIL" and o.visible_get()]
 
 
-def _curve_pieces(context, selected_only):
+def _curve_pieces(context, selected_only, ignore_selection=False):
     """(piece, modifier) for every target that carries a curve modifier."""
     out = []
-    for ob in _gp_targets(context, selected_only):
+    for ob in _gp_targets(context, selected_only, ignore_selection):
         for md in ob.modifiers:
             if md.type == _MOD_TYPE:
                 out.append((ob, md))
@@ -725,11 +860,14 @@ class OBJECT_OT_nuclear_curve_fit(Operator):
                     _set_control_points_world(curve_ob, _straight_points(lo, hi, count, self.coverage))
                 else:
                     _set_control_points_world(curve_ob, _refit_points(curve_ob, lo, hi, self.coverage))
+                # The shape we just laid down IS the new rest -- see #_stamp_rest.
+                _stamp_rest(curve_ob)
                 context.view_layer.update()
 
                 if self.rebind:
                     _bind(context, ob, md, unbind=True)
-                    quality = _bind(context, ob, md)
+                    # The shape laid down above IS the rest now — see #_bind.
+                    quality = _bind(context, ob, md, use_stamped_rest=False)
                     if quality is None:
                         notes.append("%s: bind produced no binding" % ob.name)
                     else:
@@ -880,7 +1018,8 @@ class OBJECT_OT_nuclear_curve_check(Operator):
         if context.scene.tool_settings.use_keyframe_insert_auto:
             lines.append("! Auto Keying is ON — edits get keyed and replayed over")
 
-        pieces = _curve_pieces(context, selected_only=False)
+        # A report covers the FILE, not whatever happened to be selected when it was saved.
+        pieces = _curve_pieces(context, selected_only=False, ignore_selection=True)
         if not pieces:
             lines.append("no piece carries a Curve modifier")
 
@@ -908,6 +1047,18 @@ class OBJECT_OT_nuclear_curve_check(Operator):
                                   % (cells_unbound, cells_total))
                 if loose:
                     issues.append("%d point(s) drawn after the bind (they do not bend)" % loose)
+
+            # The piece comes out bent although it is drawn straight: the curve does not follow
+            # the artwork, and the modifier rebuilds the artwork on the curve. Everything else
+            # here can be green while this is wrong, so it is measured, not inferred.
+            deviation = _rest_deviation(ob, md)
+            if deviation is not None and deviation[0] > _REST_TOLERANCE:
+                keyed = len(_shape_fcurves(curve_ob))
+                issues.append("curve reshapes the drawing at rest by %.2f (max %.2f) — "
+                              "Fit Curve to Drawing%s"
+                              % (deviation[0], deviation[1],
+                                 " (shape is keyed on %d channels; the fit carries the keys)"
+                                 % keyed if keyed else ""))
 
             bounds = _drawing_bounds(ob)
             if bounds is not None and _spline(curve_ob) is not None:
