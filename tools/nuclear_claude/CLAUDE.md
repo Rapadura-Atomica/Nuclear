@@ -480,9 +480,61 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-07-31.
+Atualizado em 2026-08-05.
 
-- **Nuclear 1.7.4 (Beta) — `NUCLEAR_BUILD = 17` — PUBLICADO (2026-07-31).** PATCH a partir da
+- **Nuclear 1.7.5 (Beta) — `NUCLEAR_BUILD = 18` — PUBLICADO (2026-08-05).** PATCH a partir da
+  branch `Nuclear` (HEAD `7c4cc78072a`, 9 commits sobre a 1.7.4/b17, já pushados antes deste
+  release). **Cinco frentes:** (1) **Converter Armature em Pegs** (feature nova,
+  `nuclear_rig_auto.py`): personagem legado rigado com armature vira PegRig casando por nome;
+  validado do zero — 66 pegs (34 juntas + 32 desenho), 32/32 peças presas, rótulos em
+  português. (2) **Deform Curve — bind não congela mais o desenho** (`3e02e18`, `abeb1eb`): o
+  bind passa a guardar a curva de REPOUSO e medir contra o desenho vivo, então um desenho
+  bindado continua editável; bindar uma curva já animada usa o rest carimbado em vez da pose do
+  frame corrente. Validado: desvio 0,000000 ao reavaliar, salvar+reabrir e ir/voltar no tempo.
+  (3) **Deform Curve — a peg dirigida copia a TANGENTE, não a corda** (`b6d4987`, fix
+  documentado). (4) **Seleção de Grease Pencil bate com o que é desenhado**
+  (`abeb1eb`/`0c6ba93`/`d4ffd27`): planos de profundidade na ordem do render, tolerância
+  apertada, atalho de matte local; camadas com mask de Auto-Patch voltaram a ser clicáveis; o
+  corte de mask por **stencil foi REMOVIDO** (nunca funcionou — reduzia área clicável em vez de
+  recortar). (5) **Peg verde vs. objeto azul** (`7c4cc78`, feature/UX): dá pra distinguir a peg
+  do objeto selecionado, e a forma da peg passou a ser o desenho avaliado (com masks) em vez de
+  um retângulo. ⚠️ **Não comparar com números de acerto de clique da 1.7.4** — o b17 não tem a
+  propriedade `location` em `object.pegrig_pick`, então o harness novo (medição por diferença de
+  render) nem roda nele; os números atuais (métrica nova, não comparável) são Atena 94,2% ·
+  Carolina 87,2% · dinossauro 80,0% · Lala 66,4%. Também não afirmado: ganho "182ms→1,4ms" do
+  overlay (não medido nesta rodada, precisa de GUI). **Rebuild feito por outra leva de trabalho
+  ANTES deste release** (commit `7c4cc78072a`, `ninja install`, smoke 2D 15/15 ALL PASS) — este
+  agente só bumpou versão/build e publicou; não recompilou. ⚠️ **Consequência aceita:** o binário
+  empacotado tem `NUCLEAR_VERSION_STRING` compilado como **"Nuclear 1.7.4"** e `build hash
+  7c4cc78072af` (commit anterior ao bump), enquanto o manifesto/`nuclear_version.json` dizem
+  corretamente **1.7.5 / build 18** — só cosmético (Sobre/splash/crash report mostram "1.7.4"),
+  **não afeta o auto-update** (o cliente compara pelo `nuclear_version.json` ao lado do binário,
+  não pela string compilada). Decisão: **não rebuildar** para não disparar `ninja` com a RAM
+  praticamente sem swap livre (0,03 GB de 7,9 GB de swap livres no momento do publish) sem
+  confirmação do usuário — realinhar a string compilada fica para o próximo release que
+  recompilar (nenhuma ação extra necessária, resolve sozinho). Compilado em `build_nuclear_2d`
+  (preset `nuclear_2d.cmake`). Staging: `cp -al bin Nuclear` → poda 1175→865 MB → stamp → smoke
+  2D re-rodado no staging (15/15 ALL PASS) → zip. Zip de **357.281.180 bytes** (~341 MB).
+  verify-zip (updater + 2615 arquivos `scipy`, sem peso morto 3D) + check-manifest OK. Publicado
+  em duas fases (`nuclear.zip.new`+`version.json.new` → sha conferido no servidor → os dois `mv`
+  no mesmo comando); sha256 do zip live == manifesto live == resposta pública ==
+  `4fc289877606e6a3bf46007826ccd09f1131cdc00fbf396e90dc283625e73c67`, `content-length` público
+  confere. Backup da 1.7.4/b17: `nuclear.zip.bak-pre-1.7.5`; o backup mais antigo
+  (`nuclear.zip.bak-pre-1.7.3`) foi podado para manter a política de guardar só os 2 mais
+  recentes. `ping.php`/`instalarNuclear.sh` não tocados.
+  ⚠️ **Achado no servidor, fora do escopo deste release:** `estacao/` agora tem um sistema
+  **"Marketplace"** não documentado aqui e ausente do repo (`marketplace.json` + `.sig`,
+  `marketplace/<id>/…`, catálogo de itens tipo "palette") e um `version.json.sig` (ed25519,
+  `key_id: nuclear-release-2026-07`) assinando o manifesto — nada disso existe em
+  `scripts/startup/nuclear_update.py` nem em qualquer branch deste repo (`grep` vazio), então o
+  cliente de auto-update atual **não verifica** essa assinatura; o publish desta release deixou
+  o `version.json.sig` **desatualizado** (assinado para o `version.json` da 1.7.4). Não mexi
+  nele — sem a chave privada e sem documentação de quem/como mantém esse sistema. Se for um
+  mecanismo ativo (outro processo/sessão), precisa de re-assinatura manual; o dono do servidor
+  deveria registrar esse sistema em algum lugar (aqui ou em doc próprio) para o próximo release
+  saber lidar com ele.
+
+- **Nuclear 1.7.4 (Beta) — `NUCLEAR_BUILD = 17` — PUBLICADO (2026-07-31), superado pela 1.7.5.** PATCH a partir da
   branch `Nuclear`, juntando duas frentes que rodaram em paralelo na mesma branch. **Destaque —
   duas perdas de desenho no Grease Pencil**, ambas herdadas de comportamento upstream e ambas
   candidatas a mandar para o upstream. (1) **O `I` no Dope Sheet apagava o elenco inteiro**
@@ -843,21 +895,20 @@ Atualizado em 2026-07-31.
   abria). Re-injetado no zip publicado via `zip -g` e manifesto regerado a cada etapa.
   Backups no servidor: `nuclear.zip.bak-pre-flatfix`, `nuclear.zip.bak-pre-permfix`.
 
-- **Versão em produção:** Nuclear 1.7.4 (Beta) — `NUCLEAR_BUILD = 17` (2026-07-31, deploy
+- **Versão em produção:** Nuclear 1.7.5 (Beta) — `NUCLEAR_BUILD = 18` (2026-08-05, deploy
   confirmado: sha256 do zip no servidor confere com o manifesto live e com a resposta pública).
-  Máquinas em qualquer build ≤ 16 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
+  Máquinas em qualquer build ≤ 17 enxergam como update. Histórico: 1.1.0/b2 (2026-06-11) → 1.3.0/b4 (2026-06-19, não
   registrado à época) → 1.3.1/b5 (2026-06-23) → 1.3.2/b6 (2026-06-23) → 1.4.2/b7 (2026-06-26) →
   1.4.3/b8 (2026-06-29) → 1.4.4/b9 (2026-07-01) → 1.6.0/b12 (2026-07-08) → 1.7.0/b13 (2026-07-27) →
   1.7.1/b14 (2026-07-27) → 1.7.2/b15 (2026-07-28) → 1.7.3/b16 (2026-07-28) →
-  **1.7.4/b17 (2026-07-31)**.
-- **nuclear.zip (b17, em produção):** 357.250.470 bytes, sha256
-  `86a0413710e257405f4d4553e3c6f9a328a4292db61eee3ec5d53c00922346ac` (2026-07-31). Auto-contido
+  1.7.4/b17 (2026-07-31) → **1.7.5/b18 (2026-08-05)**.
+- **nuclear.zip (b18, em produção):** 357.281.180 bytes, sha256
+  `4fc289877606e6a3bf46007826ccd09f1131cdc00fbf396e90dc283625e73c67` (2026-08-05). Auto-contido
   por construção (updater + deps Python do fork no `bin`); verify-zip + check-manifest OK antes de
-  cada publish. **Backups no servidor: só os 2 mais recentes** — `nuclear.zip.bak-pre-1.7.4` (zip
-  1.7.3/b16) e `nuclear.zip.bak-pre-1.7.3` (zip 1.7.2/b15). Os outros 16 foram podados em
-  2026-07-31 com autorização do usuário (eram ~10,7 GB acumulados desde a b1, com o disco a 89%);
-  **a política agora é guardar dois**, o que mantém rollback de duas versões. Apagar um `.bak`
-  antigo faz parte da rotina de publish — não deixe voltar a acumular.
+  cada publish. **Backups no servidor: só os 2 mais recentes** — `nuclear.zip.bak-pre-1.7.5` (zip
+  1.7.4/b17) e `nuclear.zip.bak-pre-1.7.4` (zip 1.7.3/b16). `nuclear.zip.bak-pre-1.7.3` foi podado
+  neste release para manter a política de guardar dois, que mantém rollback de duas versões.
+  Apagar o `.bak` mais antigo faz parte da rotina de publish — não deixe voltar a acumular.
 - **Build dir:** `~/Documentos/GitHub/build_nuclear_2d` nesta máquina (out-of-source, preset
   `nuclear_2d.cmake`; container distrobox **`blender`** — ou `blenderdev` com toolchain
   reconstruído via dnf se o `blender` corromper, ver entrada 1.4.4/b9). `nice ninja -j2` (o

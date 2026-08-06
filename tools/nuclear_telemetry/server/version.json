@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 17,
-  "version": "1.7.4",
+  "build": 18,
+  "version": "1.7.5",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.4 (Beta)",
+  "version_string": "Nuclear 1.7.5 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "86a0413710e257405f4d4553e3c6f9a328a4292db61eee3ec5d53c00922346ac",
-  "size": 357250470,
+  "sha256": "4fc289877606e6a3bf46007826ccd09f1131cdc00fbf396e90dc283625e73c67",
+  "size": 357281180,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "inserir keyframe passa a segurar o desenho (antes apagava a peca); Interpolate nao esvazia mais camadas sem par; deform curve: arrastar keya a curva inteira e as keys aparecem na timeline; Entremeio nao apaga pose reposta pelo artista"
+  "notes": "Converter Armature em Pegs (novo): personagem legado rigado com armature vira PegRig, casando por nome. Deform Curve: bind nao congela mais o desenho (guarda a curva de repouso, mede contra o desenho vivo; bind de curva animada usa o rest carimbado) e a peg dirigida copia a tangente, nao a corda. Selecao de Grease Pencil bate com o que e desenhado: planos de profundidade na ordem do render, tolerancia apertada, atalho de matte local, camadas com mask de Auto-Patch voltam a ser clicaveis; o corte por stencil foi removido (nunca funcionou). Peg selecionada (verde) agora se distingue do objeto (azul), com a forma da peg = o desenho avaliado (com masks)."
 }
