@@ -153,8 +153,64 @@ def _match_face_role(name):
 # --------------------------------------------------------------------------- #
 # Geometry — joint pivots from piece overlap
 # --------------------------------------------------------------------------- #
+# Union bounding boxes, cached for one operator run (see _clear_union_cache).
+_UNION_BOX_CACHE = {}
+
+
+def _clear_union_cache():
+    _UNION_BOX_CACHE.clear()
+
+
+def _union_box_local(ob):
+    """Local-space bounding box corners covering EVERY drawing the object holds.
+
+    `ob.bound_box` is the evaluated box, i.e. whichever cell the playhead is showing -- so a rig
+    built on frame 40 places its joints and pivots differently from the same rig built on frame 1.
+    Walking all keyframes of all layers makes the result depend on the artwork instead of the
+    playhead. Returns None when there is no stroke data to measure."""
+    data = getattr(ob, "data", None)
+    if ob.type != 'GREASEPENCIL' or data is None:
+        return None
+
+    lo = [float('inf')] * 3
+    hi = [float('-inf')] * 3
+    for layer in data.layers:
+        for frame in layer.frames:
+            drawing = getattr(frame, "drawing", None)
+            if drawing is None:
+                continue
+            try:
+                strokes = drawing.strokes
+            except Exception:
+                continue
+            for stroke in (strokes or []):
+                points = stroke.points
+                n = len(points)
+                if n == 0:
+                    continue
+                step = max(1, n // 256)  # this only feeds a bounding box
+                for i in range(0, n, step):
+                    pos = points[i].position
+                    for axis in range(3):
+                        v = pos[axis]
+                        if v < lo[axis]:
+                            lo[axis] = v
+                        if v > hi[axis]:
+                            hi[axis] = v
+
+    if lo[0] > hi[0]:
+        return None
+    return [(lo[0] if x else hi[0], lo[1] if y else hi[1], lo[2] if z else hi[2])
+            for x in (1, 0) for y in (1, 0) for z in (1, 0)]
+
+
 def _aabb(ob):
-    cs = [ob.matrix_world @ mathutils.Vector(c) for c in ob.bound_box]
+    key = ob.as_pointer()
+    corners = _UNION_BOX_CACHE.get(key)
+    if corners is None:
+        corners = _union_box_local(ob) or list(ob.bound_box)
+        _UNION_BOX_CACHE[key] = corners
+    cs = [ob.matrix_world @ mathutils.Vector(c) for c in corners]
     mn = mathutils.Vector((min(c[i] for c in cs) for i in range(3)))
     mx = mathutils.Vector((max(c[i] for c in cs) for i in range(3)))
     return mn, mx
@@ -215,13 +271,68 @@ def _peg_world_matrix(rig, idx):
     return m
 
 
+def _reparent_keep_transform(rig, peg_index, new_parent_index):
+    """Hang a peg under a different parent without moving it or its pivot (local copy of the
+    Peg Graph helper, so this module also works as a stand-alone add-on).
+
+    `translation` and `pivot` live in the PARENT's frame, so swapping the parent reinterprets them
+    against a different matrix and the peg jumps. With M = parent_world_new^-1 * parent_world_old
+    and the local matrix T(t+p)*R*S*T(-p): p stays put, t' = M @ (t + p) - p, R'*S' = M3 * R * S.
+
+    Limitation: a frame change that composes non-uniform scale with rotation carries shear, which
+    euler + per-axis scale cannot express -- the pivot lands exactly, the piece still shifts."""
+    if not (0 <= peg_index < len(rig.pegs)):
+        return False
+    peg = rig.pegs[peg_index]
+    if peg.parent_index == new_parent_index:
+        return False
+
+    def parent_world(index):
+        return (_peg_world_matrix(rig, index) if 0 <= index < len(rig.pegs)
+                else mathutils.Matrix.Identity(4))
+
+    world_old = parent_world(peg.parent_index)
+    world_new = parent_world(new_parent_index)
+    try:
+        change = world_new.inverted() @ world_old
+    except ValueError:
+        peg.parent_index = new_parent_index
+        return True
+
+    from mathutils import Euler, Matrix, Vector
+    pivot = Vector(peg.pivot)
+    translation = Vector(peg.translation)
+    basis = (change.to_3x3()
+             @ Euler(peg.rotation, "XYZ").to_matrix()
+             @ Matrix.Diagonal(Vector(peg.scale)))
+
+    # `decompose` separates rotation from scale properly; `to_euler` alone assumes an orthogonal
+    # matrix and returns nonsense once a non-uniform scale is in the product.
+    _loc, rotation, scale = basis.to_4x4().decompose()
+
+    peg.parent_index = new_parent_index
+    peg.translation = (change @ (translation + pivot)) - pivot
+    peg.rotation = rotation.to_euler("XYZ", Euler(peg.rotation, "XYZ"))
+    peg.scale = scale
+    return True
+
+
+def _has_placed_pivot(peg):
+    """True when this peg carries a pivot someone put there (a fresh peg starts at the origin)."""
+    return any(abs(v) > 1e-9 for v in peg.pivot)
+
+
 def _set_pivot_world(rig, peg_index, world_pt):
     """Place a peg's pivot at a world point, expressed in its parent's frame (so the peg
-    rotates in place, not orbiting the parent)."""
+    rotates in place, not orbiting the parent).
+
+    The local matrix is T(t+p)*R*S*T(-p), so the rotation centre is parent_world @ (pivot +
+    translation): the translation has to come back out, or a peg that has been dragged ends up
+    turning about a point offset from the joint by exactly that drag."""
     peg = rig.pegs[peg_index]
     parent = peg.parent_index
     pw = _peg_world_matrix(rig, parent) if 0 <= parent < len(rig.pegs) else mathutils.Matrix.Identity(4)
-    peg.pivot = pw.inverted() @ world_pt
+    peg.pivot = (pw.inverted() @ world_pt) - mathutils.Vector(peg.translation)
 
 
 # --------------------------------------------------------------------------- #
@@ -327,6 +438,7 @@ class OBJECT_OT_nuclear_rig_auto_skeleton(Operator):
         return context.mode == "OBJECT"
 
     def execute(self, context):
+        _clear_union_cache()  # measure the artwork as it stands now, not as a past run saw it
         objs = _gp_targets(context)
         if not objs:
             self.report({"ERROR"}, "No Grease Pencil pieces found")
@@ -500,6 +612,7 @@ class OBJECT_OT_nuclear_rig_link_to_parent(Operator):
                 and any(o.type == "GREASEPENCIL" and o is not act for o in context.selected_objects))
 
     def execute(self, context):
+        _clear_union_cache()  # measure the artwork as it stands now, not as a past run saw it
         active = context.active_object
         children = [o for o in context.selected_objects
                     if o.type == "GREASEPENCIL" and o is not active]
@@ -529,14 +642,18 @@ class OBJECT_OT_nuclear_rig_link_to_parent(Operator):
         for ch in children:
             ch_rig, ch_idx = _peg_index_of(ch)
             attach_idx = rig.pegs.find(attach_peg_name)      # re-fetch (array may realloc)
-            if ch_rig is rig and ch_idx >= 0:
+            existing = ch_rig is rig and ch_idx >= 0
+            if existing:
                 if not _cycle(rig, ch_idx, attach_idx):
-                    rig.pegs[ch_idx].parent_index = attach_idx
+                    _reparent_keep_transform(rig, ch_idx, attach_idx)
             else:
                 rig.pegs.new(ch.name, parent_index=attach_idx)
                 ch_idx = len(rig.pegs) - 1
                 _bind(ch, rig, ch.name)
-            _set_pivot_world(rig, ch_idx, _joint_world(ch, active, planar))
+            # Re-parenting an existing peg must not move its pivot: the rigger may have placed it
+            # on the joint by hand, and the guessed one is only a starting point for a NEW peg.
+            if not (existing and _has_placed_pivot(rig.pegs[ch_idx])):
+                _set_pivot_world(rig, ch_idx, _joint_world(ch, active, planar))
             linked += 1
 
         rig.active_peg_index = rig.pegs.find(attach_peg_name)
