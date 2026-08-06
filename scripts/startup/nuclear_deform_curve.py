@@ -308,11 +308,14 @@ def _peg_world_matrix(rig, idx):
 
 
 def _set_pivot_world(rig, peg_index, world_pt):
+    """Write the pivot that puts the peg's rotation centre on `world_pt`. The local matrix is
+    T(t+p)*R*S*T(-p), so the centre is parent_world @ (pivot + translation) and the translation
+    has to come back out (else the pivot lands off target by exactly the translation)."""
     peg = rig.pegs[peg_index]
     parent = peg.parent_index
     pw = (_peg_world_matrix(rig, parent) if 0 <= parent < len(rig.pegs)
           else mathutils.Matrix.Identity(4))
-    peg.pivot = pw.inverted() @ world_pt
+    peg.pivot = (pw.inverted() @ world_pt) - mathutils.Vector(peg.translation)
 
 
 def _followpeg(ob):

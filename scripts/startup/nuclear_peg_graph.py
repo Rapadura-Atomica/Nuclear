@@ -47,6 +47,9 @@ _SOCK_ID = "NuclearPegSocket"
 # are serialized with the datablock and copied on append/link -- travels with the rig into other
 # files, where the node tree itself does not follow.
 _LAYOUT_KEY = "nuclear_peg_graph_layout"
+# Names of pegs whose pivot the rigger positioned by hand. Placement helpers treat these as
+# settled, and #OBJECT_OT_pegrig_pivot_recentre_rig leaves them alone by default.
+_PIVOT_HAND_PLACED_KEY = "nuclear_pivot_hand_placed"
 
 # Reentrancy guard between rebuild() (rig -> graph) and update() (graph -> rig).
 _SYNCING = False
@@ -441,23 +444,186 @@ def _drawing_center_world(ob):
     return sum(corners, mathutils.Vector()) / 8.0
 
 
+def _drawing_union_center_world(ob):
+    """World-space centre of EVERY drawing the object holds, not just the one showing now.
+
+    #_drawing_center_world reads the evaluated bounding box, which on an animated Grease Pencil is
+    the cell exposed at the current frame -- so placing a pivot from it records wherever the
+    playhead happened to sit, and the same piece yields a different pivot on another frame. Walking
+    every keyframe of every layer gives a target that does not depend on the playhead at all.
+
+    Falls back to the evaluated bounding box for an object with no stroke data."""
+    data = getattr(ob, "data", None)
+    if ob.type != 'GREASEPENCIL' or data is None:
+        return _drawing_center_world(ob)
+
+    lo = [float('inf')] * 3
+    hi = [float('-inf')] * 3
+    for layer in data.layers:
+        for frame in layer.frames:
+            drawing = getattr(frame, "drawing", None)
+            if drawing is None:
+                continue
+            try:
+                strokes = drawing.strokes
+            except Exception:
+                continue
+            for stroke in (strokes or []):
+                points = stroke.points
+                n = len(points)
+                if n == 0:
+                    continue
+                # Sample long strokes: this only feeds a bounding box, and a rig bind may walk
+                # every cell of every layer of every piece.
+                step = max(1, n // 256)
+                for i in range(0, n, step):
+                    pos = points[i].position
+                    for axis in range(3):
+                        v = pos[axis]
+                        if v < lo[axis]:
+                            lo[axis] = v
+                        if v > hi[axis]:
+                            hi[axis] = v
+
+    if lo[0] > hi[0]:  # no strokes anywhere
+        return _drawing_center_world(ob)
+    centre = mathutils.Vector([(lo[a] + hi[a]) * 0.5 for a in range(3)])
+    return ob.matrix_world @ centre
+
+
 def _set_peg_pivot_to_drawing(rig, peg_name, ob):
     """Place the peg's pivot at the bound drawing's centre (in the peg's parent frame) so it
     rotates in place instead of orbiting the parent origin."""
     idx = rig.pegs.find(peg_name)
     if idx < 0:
         return
-    peg = rig.pegs[idx]
+    _set_pivot_world(rig, idx, _drawing_union_center_world(ob))
+
+
+def _set_pivot_world(rig, peg_index, world_pt):
+    """Write the pivot that puts the peg's rotation centre on `world_pt`.
+
+    The local matrix is T(t+p)*R*S*T(-p), so that centre is parent_world @ (pivot + translation):
+    the translation has to come back out, or the pivot lands off the target by exactly the
+    translation and a placed pivot stops working as an anchor."""
+    peg = rig.pegs[peg_index]
     parent = peg.parent_index
     pw = _peg_world_matrix(rig, parent) if 0 <= parent < len(rig.pegs) else mathutils.Matrix.Identity(4)
-    peg.pivot = pw.inverted() @ _drawing_center_world(ob)
+    peg.pivot = (pw.inverted() @ world_pt) - mathutils.Vector(peg.translation)
+
+
+def _action_fcurves(anim_data):
+    """F-curves of the assigned action, for both plain and slotted (layered) actions."""
+    action = getattr(anim_data, "action", None)
+    if action is None:
+        return []
+    if hasattr(action, "fcurves"):
+        return list(action.fcurves)
+    curves = []
+    slot = getattr(anim_data, "action_slot", None)
+    for layer in action.layers:
+        for strip in layer.strips:
+            if slot is not None:
+                bag = strip.channelbag(slot)
+                if bag:
+                    curves.extend(bag.fcurves)
+            else:
+                for bag in getattr(strip, "channelbags", []):
+                    curves.extend(bag.fcurves)
+    return curves
+
+
+def _peg_rest_translation(rig, peg, frame):
+    """The peg's translation at `frame`, read off its curves rather than off the playhead.
+
+    A pivot is a single value for the whole timeline, so compensating it against an *animated*
+    translation only means anything at one frame — the rest one. Evaluating the curves directly
+    keeps the answer the same wherever the playhead happens to be parked."""
+    value = mathutils.Vector(peg.translation)
+    anim = getattr(rig, "animation_data", None)
+    if anim is None:
+        return value
+    path = 'pegs["%s"].translation' % bpy.utils.escape_identifier(peg.name)
+    for fcurve in _action_fcurves(anim):
+        if fcurve.data_path == path and 0 <= fcurve.array_index < 3:
+            value[fcurve.array_index] = fcurve.evaluate(frame)
+    return value
+
+
+def _reparent_keep_transform(rig, peg_index, new_parent_index):
+    """Hang a peg under a different parent without moving it or its pivot.
+
+    `translation` and `pivot` are both expressed in the PARENT's frame, so swapping the parent
+    reinterprets them against a different matrix: the peg — and every drawing following it — jumps.
+    Rewriting the pose against the new parent keeps the rig looking identical, which is what
+    rearranging the graph should do.
+
+    With `M = parent_world_new^-1 * parent_world_old` and the local matrix T(t+p)*R*S*T(-p), asking
+    for the same world matrix gives `p' = p` (the pivot vector is invariant — only its parent frame
+    changed), `t' = M @ (t + p) - p`, and `R'*S' = M3 * R * S`.
+
+    Limitation: when the frame change composes a non-uniform scale with a rotation the product
+    carries shear, which euler + per-axis scale cannot express -- the pivot still lands exactly,
+    but the piece itself shifts. Rigs whose pegs stay at uniform scale (the usual cut-out case)
+    are exact.
+
+    Returns True when the peg was reparented."""
+    if not (0 <= peg_index < len(rig.pegs)):
+        return False
+    peg = rig.pegs[peg_index]
+    old_parent = peg.parent_index
+    if old_parent == new_parent_index:
+        return False
+    if _would_cycle(rig, peg_index, new_parent_index):
+        return False
+
+    def parent_world(index):
+        return (_peg_world_matrix(rig, index) if 0 <= index < len(rig.pegs)
+                else mathutils.Matrix.Identity(4))
+
+    world_old = parent_world(old_parent)
+    world_new = parent_world(new_parent_index)
+    try:
+        change = world_new.inverted() @ world_old
+    except ValueError:
+        peg.parent_index = new_parent_index      # degenerate parent: reparent without the fix-up
+        return True
+
+    pivot = mathutils.Vector(peg.pivot)
+    translation = mathutils.Vector(peg.translation)
+    basis = (change.to_3x3()
+             @ mathutils.Euler(peg.rotation, 'XYZ').to_matrix()
+             @ mathutils.Matrix.Diagonal(mathutils.Vector(peg.scale)))
+
+    # `decompose` separates rotation from scale properly; `to_euler` alone assumes an orthogonal
+    # matrix and returns nonsense once a non-uniform scale is in the product.
+    _loc, rotation, scale = basis.to_4x4().decompose()
+
+    peg.parent_index = new_parent_index
+    peg.translation = (change @ (translation + pivot)) - pivot
+    peg.rotation = rotation.to_euler('XYZ', mathutils.Euler(peg.rotation, 'XYZ'))
+    peg.scale = scale
+    return True
+
+
+def _mark_pivot_hand_placed(rig, peg_name):
+    """Record that this peg's pivot was positioned by the rigger, not guessed by a helper."""
+    try:
+        names = list(rig.get(_PIVOT_HAND_PLACED_KEY, []))
+    except (TypeError, ReferenceError):
+        return
+    if peg_name not in names:
+        names.append(peg_name)
+        rig[_PIVOT_HAND_PLACED_KEY] = names
 
 
 def _auto_pivot_on_bind(rig, peg_name, ob):
     """On first binding a drawing to a peg, snap the peg's pivot to that drawing — unless the user
-    has already placed a pivot (non-zero)."""
+    has already placed a pivot (non-zero, or positioned by hand at the origin)."""
     idx = rig.pegs.find(peg_name)
     if idx < 0:
+        return
+    if peg_name in set(rig.get(_PIVOT_HAND_PLACED_KEY, [])):
         return
     piv = rig.pegs[idx].pivot
     if piv[0] or piv[1] or piv[2]:
@@ -988,8 +1154,8 @@ def _apply_graph_to_rig(tree):
                 new_parent = -1
                 if src is not None and src.bl_idname == _PEG_NODE_ID:
                     new_parent = peg_index_by_name.get(src.peg_name, -1)
-                if new_parent != index and not _would_cycle(rig, index, new_parent):
-                    rig.pegs[index].parent_index = new_parent
+                if new_parent != index:
+                    _reparent_keep_transform(rig, index, new_parent)
 
             elif node.bl_idname == _DRAWING_NODE_ID:
                 ob = bpy.data.objects.get(node.object_name)
@@ -998,12 +1164,20 @@ def _apply_graph_to_rig(tree):
                 src = _input_source_node(node)
                 con = _followpeg_constraint(ob)
                 if src is not None and src.bl_idname == _PEG_NODE_ID:
+                    # Only a NEW binding may re-anchor or place a pivot. This sync runs on every
+                    # tree update -- including the one that follows an undo -- and re-anchoring an
+                    # already-bound drawing rewrites its inverse matrix as the CURRENT peg world
+                    # inverse, which cancels the pose the peg was holding and drops the piece
+                    # somewhere else. Re-snapping the pivot here would likewise drag pivots the
+                    # rigger placed by hand back onto the artwork.
+                    fresh_bind = con is None or con.rig is not rig or con.peg_name != src.peg_name
                     if con is None:
                         con = ob.constraints.new('FOLLOW_PEG')
                     con.rig = rig
                     con.peg_name = src.peg_name
-                    con.set_inverse_pending = True
-                    _auto_pivot_on_bind(rig, src.peg_name, ob)
+                    if fresh_bind:
+                        con.set_inverse_pending = True
+                        _auto_pivot_on_bind(rig, src.peg_name, ob)
                 elif src is not None and src.bl_idname == _RIG_NODE_ID:
                     # Member of the rig, but following no peg.
                     if con is None:
@@ -1141,7 +1315,8 @@ class NODE_OT_nuclear_peg_add(Operator):
         new_idx = rig.pegs.find(peg.name)
 
         if reparent_child >= 0:
-            rig.pegs[reparent_child].parent_index = new_idx  # clicked peg now hangs under the new one
+            # clicked peg now hangs under the new one, without moving on screen
+            _reparent_keep_transform(rig, reparent_child, new_idx)
         if bind_drawing is not None:
             con = _followpeg_constraint(bind_drawing) or bind_drawing.constraints.new('FOLLOW_PEG')
             con.rig = rig
@@ -1439,6 +1614,7 @@ class OBJECT_OT_pegrig_pivot_grab(Operator):
             self._rig.id_data.update_tag()
             context.area.tag_redraw()
         elif event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
+            _mark_pivot_hand_placed(self._rig, peg.name)
             self._finish(context)
             return {'FINISHED'}
         elif event.type in {'RIGHTMOUSE', 'ESC'} and event.value == 'PRESS':
@@ -1447,6 +1623,55 @@ class OBJECT_OT_pegrig_pivot_grab(Operator):
             self._finish(context)
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+
+class OBJECT_OT_pegrig_pivot_recentre_rig(Operator):
+    bl_idname = "object.pegrig_pivot_recentre_rig"
+    bl_label = "Re-centre Pivots on Target"
+    bl_description = ("Move every dragged peg's pivot back onto the point it was aimed at. "
+                      "For rigs whose pivots were placed automatically before the setters learned "
+                      "to account for the drag; pivots you positioned by hand are already correct "
+                      "and this will shift them")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    only_untouched: bpy.props.BoolProperty(
+        name="Skip Hand-Placed Pivots",
+        description="Leave alone any peg whose pivot was moved with Grab Pivot (recorded on the "
+                    "rig). Turn this off to re-centre every peg that carries a translation",
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return active_peg(context)[0] is not None
+
+    def execute(self, context):
+        rig, _peg = active_peg(context)
+        if rig is None:
+            return {'CANCELLED'}
+        hand_placed = set(rig.get(_PIVOT_HAND_PLACED_KEY, []))
+        rest_frame = context.scene.frame_start
+        moved = skipped = 0
+        for peg in rig.pegs:
+            t = _peg_rest_translation(rig, peg, rest_frame)
+            if t.length < 1e-9:
+                continue
+            if self.only_untouched and peg.name in hand_placed:
+                skipped += 1
+                continue
+            # The rotation centre is parent_world @ (pivot + translation); a setter that wrote the
+            # bare target left it off by exactly the translation, so take that back out.
+            peg.pivot = mathutils.Vector(peg.pivot) - t
+            moved += 1
+        rig.id_data.update_tag()
+        if context.area:
+            context.area.tag_redraw()
+        if moved == 0:
+            self.report({'INFO'}, "No dragged pegs to re-centre")
+        else:
+            self.report({'INFO'}, "Re-centred %d pivot(s)%s"
+                        % (moved, ", skipped %d hand-placed" % skipped if skipped else ""))
+        return {'FINISHED'}
 
 
 class VIEW3D_PT_nuclear_peg(Panel):
@@ -1485,6 +1710,10 @@ class VIEW3D_PT_nuclear_peg(Panel):
         row = box.row(align=True)
         row.operator("object.pegrig_pivot_grab", text="Grab Pivot (P)", icon='PIVOT_CURSOR')
         row.operator("object.pegrig_pivot_reset", text="", icon='LOOP_BACK')
+        rest_frame = context.scene.frame_start
+        if any(_peg_rest_translation(rig, p, rest_frame).length > 1e-9 for p in rig.pegs):
+            box.operator("object.pegrig_pivot_recentre_rig", text="Re-centre Pivots on Target",
+                         icon='CON_TRACKTO')
 
         box = layout.box()
         box.label(text="Squash & Stretch", icon='MOD_SIMPLEDEFORM')
@@ -2630,6 +2859,7 @@ classes = (
     OBJECT_OT_pegrig_select_child,
     OBJECT_OT_pegrig_pivot_reset,
     OBJECT_OT_pegrig_pivot_to_drawing,
+    OBJECT_OT_pegrig_pivot_recentre_rig,
     OBJECT_OT_pegrig_pivot_grab,
     VIEW3D_PT_nuclear_peg,
 )
