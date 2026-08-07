@@ -551,15 +551,45 @@ def _install_desktop(layout, target_exec):
         pass
 
 
+def _desktop_candidates(base):
+    """Every .desktop file that could be launching this install: the whole per-user
+    applications dir plus the install base itself. Deduped by realpath, sorted for
+    deterministic order. Only files the user owns can appear here — system-wide
+    /usr/share/applications is intentionally out of reach."""
+    seen = set()
+    out = []
+    for d in (os.path.expanduser("~/.local/share/applications"), base):
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for name in names:
+            if not name.endswith(".desktop"):
+                continue
+            path = os.path.join(d, name)
+            try:
+                rp = os.path.realpath(path)
+            except OSError:
+                continue
+            if rp in seen or not os.path.isfile(path):
+                continue
+            seen.add(rp)
+            out.append(path)
+    return out
+
+
 def _refresh_desktop(layout):
-    """Best-effort: repoint a Nuclear.desktop launcher at the `current` binary after an update.
+    """Best-effort: repoint launchers at the `current` binary after an update.
 
     Existing machines were installed with a flat layout and a launcher that names a specific
     version directory; once we move to the versioned `current` symlink, the launcher must
-    follow or it would keep opening the old build. Conservative on purpose: only rewrites an
-    Exec line that already points somewhere inside this install's base, so we never touch an
-    unrelated .desktop. If no launcher exists at all, one is created (see
-    `_install_desktop`). Never raises into the update flow.
+    follow or it would keep opening the old build. This sweeps EVERY user-level .desktop —
+    not just Nuclear.desktop — because a taskbar pin resolves whatever entry matched the
+    window (often a stale pre-rename `blender*.desktop`), and a pin that keeps launching the
+    old binary makes each update look like it "didn't stick". Conservative on purpose: only
+    rewrites an Exec/TryExec whose target already points somewhere inside this install's
+    base, so we never touch an unrelated .desktop. If no Nuclear.desktop exists at all, one
+    is created (see `_install_desktop`). Never raises into the update flow.
 
     Linux only: on Windows the `current` junction means the Start-Menu shortcut keeps
     resolving to the new build with no rewrite needed.
@@ -568,36 +598,95 @@ def _refresh_desktop(layout):
         return
     target_exec = _exe_in(layout["current"]) or os.path.join(layout["current"], "nuclear")
     base_real = os.path.realpath(layout["base"])
-    candidates = [
+    primary = [
         os.path.expanduser("~/.local/share/applications/Nuclear.desktop"),
         os.path.join(layout["base"], "Nuclear.desktop"),
     ]
-    if not any(os.path.isfile(p) for p in candidates):
+    if not any(os.path.isfile(p) for p in primary):
         _install_desktop(layout, target_exec)
-        return
-    for path in candidates:
+        # Fall through: stale non-Nuclear launchers may still exist and need repointing.
+    for path in _desktop_candidates(layout["base"]):
         try:
-            if not os.path.isfile(path):
-                continue
             with open(path, "r", encoding="utf-8") as fh:
                 lines = fh.readlines()
             changed = False
             for i, line in enumerate(lines):
-                if not line.startswith("Exec="):
-                    continue
-                cur = line[len("Exec="):].strip().split()[0] if line[len("Exec="):].strip() else ""
-                # Only touch a launcher that already points into our install base.
-                if cur and os.path.realpath(os.path.dirname(cur)).startswith(base_real):
-                    # Keep booting into the app template (and preserve the file field code) —
-                    # a bare `Exec=<binary>` would drop both on every update. Rewriting this
-                    # every update is also how machines pick up a change of template.
-                    new_line = "Exec=%s --app-template %s %%F\n" % (target_exec, _APP_TEMPLATE)
-                    if new_line != lines[i]:
-                        lines[i] = new_line
-                        changed = True
+                for key in ("Exec=", "TryExec="):
+                    if not line.startswith(key):
+                        continue
+                    rest = line[len(key):].strip()
+                    cur = rest.split()[0] if rest else ""
+                    # Only touch a launcher that already points into our install base.
+                    if cur and os.path.realpath(os.path.dirname(cur)).startswith(base_real):
+                        if key == "Exec=":
+                            # Keep booting into the app template (and preserve the file field
+                            # code) — a bare `Exec=<binary>` would drop both on every update.
+                            # Rewriting this every update is also how machines pick up a
+                            # change of template.
+                            new_line = "Exec=%s --app-template %s %%F\n" % (
+                                target_exec, _APP_TEMPLATE)
+                        else:
+                            new_line = "TryExec=%s\n" % target_exec
+                        if new_line != lines[i]:
+                            lines[i] = new_line
+                            changed = True
+                    break
             if changed:
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.writelines(lines)
+        except Exception:
+            continue
+
+
+_SHIM_MARKER = "Nuclear updater: forwarder to the current install"
+
+
+def _ground_flat_binary(layout, log_path=None):
+    """Retire a leftover base-level binary by turning it into a forwarder to `current`.
+
+    A flat install migrated in place keeps its original binary untouched as a fallback —
+    but anything still launching it (a taskbar pin, a hand-made shortcut, a script) keeps
+    opening that OLD build forever, re-offering the same update after every apply. Once a
+    versioned build is running, replace the stale `<base>/nuclear` / `<base>/blender` with
+    a tiny script that execs `<base>/current/<exe>`, so every old entry point leads to the
+    newest build. The original is preserved as `<name>.pre-versioned.bak` (never deleted).
+    Idempotent (the shim carries a marker); POSIX only; never raises.
+    """
+    if os.name == "nt":
+        return
+    try:
+        run_root = os.path.realpath(layout["install_root"])
+        versions_real = os.path.realpath(layout["versions"])
+        # Only act when the running binary lives under versions/ — grounding the very
+        # binary that is running (a flat install pre-migration) would be pointless churn.
+        if not run_root.startswith(versions_real + os.sep):
+            return
+        cur_exe = _exe_in(layout["current"])
+        if not cur_exe:
+            return
+    except Exception:
+        return
+    for name in _EXE_NAMES:
+        path = os.path.join(layout["base"], name)
+        try:
+            if not os.path.isfile(path) or os.path.islink(path):
+                continue
+            with open(path, "rb") as fh:
+                head = fh.read(4096)
+            if _SHIM_MARKER.encode("utf-8") in head:
+                continue  # already grounded
+            bak = path + ".pre-versioned.bak"
+            if os.path.exists(bak):
+                bak = path + ".pre-versioned.2.bak"
+            if os.path.exists(bak):
+                _apply_log(log_path, "flat NAO aterrado (backups esgotados): %s" % path)
+                continue
+            os.rename(path, bak)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("#!/bin/sh\n# %s\nexec \"%s\" \"$@\"\n" % (_SHIM_MARKER, cur_exe))
+            os.chmod(path, 0o755)
+            _apply_log(log_path, "flat aterrado: %s -> shim para %s (original: %s)" % (
+                path, cur_exe, bak))
         except Exception:
             continue
 
@@ -895,6 +984,7 @@ def _run_apply(manifest, layout):
         # set the legacy config aside as a .bak. Best-effort, after migration.
         _cleanup_legacy_dirs(log_path)
         _refresh_desktop(layout)
+        _ground_flat_binary(layout, log_path)
         # Keep the new build and the still-running one (locked on Windows).
         _prune_versions(layout["versions"], [dest, layout["install_root"]])
 
@@ -1246,8 +1336,10 @@ def _reconcile_desktop():
     launcher on first run, no second update needed.
 
     Cheap and quiet: `_refresh_desktop` only rewrites an Exec that already points inside this
-    install, and only writes when a line actually changes, so the steady state is two reads
-    and no write. Skipped in background mode -- a headless render has no business touching
+    install, and only writes when a line actually changes, so the steady state is reads and
+    no write. `_ground_flat_binary` closes the other half of "the update didn't stick": a
+    leftover flat binary at the base that a taskbar pin keeps launching becomes a forwarder
+    to `current`. Skipped in background mode -- a headless render has no business touching
     the desktop menu.
     """
     try:
@@ -1256,6 +1348,7 @@ def _reconcile_desktop():
         layout = _layout_now()
         if layout:
             _refresh_desktop(layout)
+            _ground_flat_binary(layout, _apply_log_path(layout))
     except Exception:
         pass
     return None
