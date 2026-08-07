@@ -205,6 +205,14 @@ void BKE_base_set_visible(Scene *scene, ViewLayer *view_layer, Base *base, bool 
 bool BKE_base_is_visible(const View3D *v3d, const Base *base);
 bool BKE_object_is_visible_in_viewport(const View3D *v3d, const Object *ob);
 /**
+ * Nuclear: whether the object is locked for editing, either by its own #OB_LOCKED flag or by an
+ * ancestor collection (#COLLECTION_LOCKED, reaching the object as #BASE_LOCKED).
+ *
+ * Locked objects are already unselectable through #BASE_SELECTABLE; this is what tools test to
+ * also refuse transforms, mode changes and drawing.
+ */
+bool BKE_object_is_locked(const Scene *scene, ViewLayer *view_layer, Object *ob);
+/**
  * Isolate the collection - hide all other collections but this one.
  * Make sure to show all the direct parents and all children of the layer collection as well.
  * When extending we simply show the collections and its direct family.

@@ -242,6 +242,11 @@ enum {
   BASE_HOLDOUT = (1 << 10),
   /* Object only contributes indirectly to render */
   BASE_INDIRECT_ONLY = (1 << 11),
+
+  /* Nuclear: object is locked for editing, either by its own lock flag or by an ancestor
+   * collection. Locked objects also lose BASE_SELECTABLE, so selection is blocked by the
+   * existing machinery; this flag is what tools test to also block editing and drawing. */
+  BASE_LOCKED = (1 << 12),
 };
 
 /* LayerCollection->flag */

@@ -66,7 +66,9 @@ static const short g_base_collection_flags = (BASE_ENABLED_AND_MAYBE_VISIBLE_IN_
                                               BASE_ENABLED_AND_VISIBLE_IN_DEFAULT_VIEWPORT |
                                               BASE_SELECTABLE | BASE_ENABLED_VIEWPORT |
                                               BASE_ENABLED_RENDER | BASE_HOLDOUT |
-                                              BASE_INDIRECT_ONLY);
+                                              BASE_INDIRECT_ONLY |
+                                              /* Nuclear: inherited collection lock. */
+                                              BASE_LOCKED);
 
 /* prototype */
 static void object_bases_iterator_next(BLI_Iterator *iter, const int flag);
@@ -1074,6 +1076,14 @@ static void layer_collection_objects_sync(ViewLayer *view_layer,
       base->flag_from_collection |= BASE_ENABLED_RENDER;
     }
 
+    /* Nuclear: the lock is inherited (`collection_restrict` accumulates ancestor flags) and is
+     * restrictive rather than permissive - unlike visibility, an object linked into both a locked
+     * and an unlocked collection stays locked. #BKE_base_eval_flags then strips BASE_SELECTABLE so
+     * the two can never disagree. */
+    if (collection_restrict & COLLECTION_LOCKED) {
+      base->flag_from_collection |= BASE_LOCKED;
+    }
+
     /* Holdout and indirect only */
     if (layer->flag & LAYER_COLLECTION_HOLDOUT) {
       base->flag_from_collection |= BASE_HOLDOUT;
@@ -1658,6 +1668,31 @@ bool BKE_object_is_visible_in_viewport(const View3D *v3d, const Object *ob)
   }
 
   return true;
+}
+
+bool BKE_object_is_locked(const Scene *scene, ViewLayer *view_layer, Object *ob)
+{
+  if (ob == nullptr) {
+    return false;
+  }
+
+  /* The object's own lock does not depend on any view layer. */
+  if (ob->lock_flag & OB_LOCKED) {
+    return true;
+  }
+
+  /* An inherited lock lives on the base. Fall back to the flag the depsgraph copied back onto the
+   * object when there is no view layer to ask (background/eval-only callers). */
+  if (scene == nullptr || view_layer == nullptr) {
+    return (ob->base_flag & BASE_LOCKED) != 0;
+  }
+
+  BKE_view_layer_synced_ensure(scene, view_layer);
+  const Base *base = BKE_view_layer_base_find(view_layer, ob);
+  if (base == nullptr) {
+    return (ob->base_flag & BASE_LOCKED) != 0;
+  }
+  return (base->flag & BASE_LOCKED) != 0;
 }
 
 /** \} */
@@ -2325,6 +2360,15 @@ void BKE_base_eval_flags(Base *base)
     base->flag &= ~BASE_ENABLED_RENDER;
   }
   if (object_restrict & OB_HIDE_SELECT) {
+    base->flag &= ~BASE_SELECTABLE;
+  }
+
+  /* Nuclear: an object carries its own lock on top of whatever it inherits, and a locked object is
+   * never selectable - the deselect below then drops it from the selection. */
+  if (base->object->lock_flag & OB_LOCKED) {
+    base->flag |= BASE_LOCKED;
+  }
+  if (base->flag & BASE_LOCKED) {
     base->flag &= ~BASE_SELECTABLE;
   }
 

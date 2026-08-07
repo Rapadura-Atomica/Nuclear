@@ -214,6 +214,8 @@ typedef enum eSpaceOutliner_ShowRestrictFlag {
   SO_RESTRICT_RENDER = (1 << 4),
   SO_RESTRICT_HOLDOUT = (1 << 5),
   SO_RESTRICT_INDIRECT_ONLY = (1 << 6),
+  /** Nuclear: the lock column. Last free bit of the `char` field. */
+  SO_RESTRICT_LOCK = (1 << 7),
 } eSpaceOutliner_Restrict;
 
 /** #SpaceOutliner.outlinevis */

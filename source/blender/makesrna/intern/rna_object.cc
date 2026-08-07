@@ -1205,9 +1205,21 @@ static void rna_Object_dimensions_set(PointerRNA *ptr, const float *value)
   BKE_object_dimensions_set(ob, value, 0);
 }
 
+/* Nuclear: locked by its own flag, or by an ancestor collection (the depsgraph copies the
+ * evaluated #BASE_LOCKED back onto the original object). Greys out the transform fields so a
+ * locked piece cannot be moved from the sidebar either. */
+static bool rna_Object_locked(const Object *ob)
+{
+  return (ob->lock_flag & OB_LOCKED) || (ob->base_flag & BASE_LOCKED);
+}
+
 static int rna_Object_location_editable(const PointerRNA *ptr, int index)
 {
   Object *ob = static_cast<Object *>(ptr->data);
+
+  if (rna_Object_locked(ob)) {
+    return 0;
+  }
 
   /* only if the axis in question is locked, not editable... */
   if ((index == 0) && (ob->protectflag & OB_LOCK_LOCX)) {
@@ -1228,6 +1240,10 @@ static int rna_Object_scale_editable(const PointerRNA *ptr, int index)
 {
   Object *ob = static_cast<Object *>(ptr->data);
 
+  if (rna_Object_locked(ob)) {
+    return 0;
+  }
+
   /* only if the axis in question is locked, not editable... */
   if ((index == 0) && (ob->protectflag & OB_LOCK_SCALEX)) {
     return 0;
@@ -1247,6 +1263,10 @@ static int rna_Object_rotation_euler_editable(const PointerRNA *ptr, int index)
 {
   Object *ob = static_cast<Object *>(ptr->data);
 
+  if (rna_Object_locked(ob)) {
+    return 0;
+  }
+
   /* only if the axis in question is locked, not editable... */
   if ((index == 0) && (ob->protectflag & OB_LOCK_ROTX)) {
     return 0;
@@ -1265,6 +1285,10 @@ static int rna_Object_rotation_euler_editable(const PointerRNA *ptr, int index)
 static int rna_Object_rotation_4d_editable(const PointerRNA *ptr, int index)
 {
   Object *ob = static_cast<Object *>(ptr->data);
+
+  if (rna_Object_locked(ob)) {
+    return 0;
+  }
 
   /* only consider locks if locking components individually... */
   if (ob->protectflag & OB_LOCK_ROT4D) {
@@ -2826,6 +2850,15 @@ static void rna_def_object_visibility(StructRNA *srna)
   RNA_def_property_boolean_sdna(prop, nullptr, "visibility_flag", OB_HIDE_RENDER);
   RNA_def_property_ui_text(prop, "Disable in Renders", "Globally disable in renders");
   RNA_def_property_ui_icon(prop, ICON_RESTRICT_RENDER_OFF, -1);
+  RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Object_hide_update");
+
+  /* Nuclear: lock. */
+  prop = RNA_def_property(srna, "is_locked", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "lock_flag", OB_LOCKED);
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_text(
+      prop, "Lock", "Protect from selection, editing and drawing in the viewport");
+  RNA_def_property_ui_icon(prop, ICON_UNLOCKED, 1);
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Object_hide_update");
 
   prop = RNA_def_property(srna, "hide_probe_volume", PROP_BOOLEAN, PROP_NONE);

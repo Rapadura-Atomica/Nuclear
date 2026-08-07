@@ -970,6 +970,8 @@ struct RestrictProperties {
   PropertyRNA *object_hide_viewport, *object_hide_select, *object_hide_render;
   PropertyRNA *base_hide_viewport;
   PropertyRNA *collection_hide_viewport, *collection_hide_select, *collection_hide_render;
+  /* Nuclear: lock column. */
+  PropertyRNA *object_is_locked, *collection_is_locked;
   PropertyRNA *layer_collection_exclude, *layer_collection_holdout,
       *layer_collection_indirect_only, *layer_collection_hide_viewport;
   PropertyRNA *modifier_show_viewport, *modifier_show_render;
@@ -987,6 +989,9 @@ struct RestrictPropertiesActive {
   bool collection_hide_viewport;
   bool collection_hide_select;
   bool collection_hide_render;
+  /* Nuclear: lock column. */
+  bool object_is_locked;
+  bool collection_is_locked;
   bool layer_collection_exclude;
   bool layer_collection_holdout;
   bool layer_collection_indirect_only;
@@ -1030,6 +1035,19 @@ static void outliner_restrict_properties_enable_collection_set(
     props_active->collection_hide_select = !RNA_property_boolean_get(
         collection_ptr, props->collection_hide_select);
     if (!props_active->collection_hide_select) {
+      props_active->object_hide_select = false;
+    }
+  }
+
+  /* Nuclear: a locked collection locks everything below it, so the child padlocks are already
+   * decided - grey them out. The lock also implies "not selectable", so the selection toggles go
+   * inactive with it. */
+  if (props_active->collection_is_locked) {
+    props_active->collection_is_locked = !RNA_property_boolean_get(collection_ptr,
+                                                                   props->collection_is_locked);
+    if (!props_active->collection_is_locked) {
+      props_active->object_is_locked = false;
+      props_active->collection_hide_select = false;
       props_active->object_hide_select = false;
     }
   }
@@ -1131,6 +1149,9 @@ static void outliner_draw_restrictbuts(uiBlock *block,
                                                                    "hide_viewport");
     props.collection_hide_select = RNA_struct_type_find_property(&RNA_Collection, "hide_select");
     props.collection_hide_render = RNA_struct_type_find_property(&RNA_Collection, "hide_render");
+    /* Nuclear: lock column. */
+    props.object_is_locked = RNA_struct_type_find_property(&RNA_Object, "is_locked");
+    props.collection_is_locked = RNA_struct_type_find_property(&RNA_Collection, "is_locked");
     props.layer_collection_exclude = RNA_struct_type_find_property(&RNA_LayerCollection,
                                                                    "exclude");
     props.layer_collection_holdout = RNA_struct_type_find_property(&RNA_LayerCollection,
@@ -1151,6 +1172,7 @@ static void outliner_draw_restrictbuts(uiBlock *block,
 
   struct {
     int enable;
+    int lock;
     int select;
     int hide;
     int viewport;
@@ -1180,6 +1202,11 @@ static void outliner_draw_restrictbuts(uiBlock *block,
   }
   if (space_outliner->show_restrict_flags & SO_RESTRICT_SELECT) {
     restrict_offsets.select = (++restrict_column_offset) * UI_UNIT_X + V2D_SCROLL_WIDTH;
+  }
+  /* Nuclear: the padlock sits just right of the exclude checkbox, ahead of the visibility
+   * toggles - it is the control this workflow reaches for most. */
+  if (space_outliner->show_restrict_flags & SO_RESTRICT_LOCK) {
+    restrict_offsets.lock = (++restrict_column_offset) * UI_UNIT_X + V2D_SCROLL_WIDTH;
   }
   if (space_outliner->outlinevis == SO_VIEW_LAYER &&
       space_outliner->show_restrict_flags & SO_RESTRICT_ENABLE)
@@ -1281,6 +1308,30 @@ static void outliner_draw_restrictbuts(uiBlock *block,
           UI_but_func_set(bt, outliner__object_set_flag_recursive_fn, ob, (char *)"hide_select");
           UI_but_flag_enable(bt, UI_BUT_DRAG_LOCK);
           if (!props_active.object_hide_select) {
+            UI_but_flag_enable(bt, UI_BUT_INACTIVE);
+          }
+        }
+
+        /* Nuclear: lock column. */
+        if (space_outliner->show_restrict_flags & SO_RESTRICT_LOCK) {
+          bt = uiDefIconButR_prop(block,
+                                  ButType::IconToggle,
+                                  0,
+                                  ICON_NONE,
+                                  int(region->v2d.cur.xmax - restrict_offsets.lock),
+                                  te->ys,
+                                  UI_UNIT_X,
+                                  UI_UNIT_Y,
+                                  &ptr,
+                                  props.object_is_locked,
+                                  -1,
+                                  0,
+                                  0,
+                                  TIP_("Lock against selection, editing and drawing\n"
+                                       " \u2022 Shift to set children"));
+          UI_but_func_set(bt, outliner__object_set_flag_recursive_fn, ob, (char *)"is_locked");
+          UI_but_flag_enable(bt, UI_BUT_DRAG_LOCK);
+          if (!props_active.object_is_locked) {
             UI_but_flag_enable(bt, UI_BUT_INACTIVE);
           }
         }
@@ -1792,6 +1843,40 @@ static void outliner_draw_restrictbuts(uiBlock *block,
             }
             UI_but_flag_enable(bt, UI_BUT_DRAG_LOCK);
             if (!props_active.collection_hide_select) {
+              UI_but_flag_enable(bt, UI_BUT_INACTIVE);
+            }
+          }
+
+          /* Nuclear: lock column. */
+          if (space_outliner->show_restrict_flags & SO_RESTRICT_LOCK) {
+            bt = uiDefIconButR_prop(block,
+                                    ButType::IconToggle,
+                                    0,
+                                    ICON_NONE,
+                                    int(region->v2d.cur.xmax - restrict_offsets.lock),
+                                    te->ys,
+                                    UI_UNIT_X,
+                                    UI_UNIT_Y,
+                                    &collection_ptr,
+                                    props.collection_is_locked,
+                                    -1,
+                                    0,
+                                    0,
+                                    TIP_("Lock against selection, editing and drawing\n"
+                                         " \u2022 Ctrl to isolate collection\n"
+                                         " \u2022 Shift to set inside collections and objects"));
+            if (layer_collection != nullptr) {
+              UI_but_func_set(bt,
+                              view_layer__collection_set_flag_recursive_fn,
+                              layer_collection,
+                              (char *)"is_locked");
+            }
+            else {
+              UI_but_func_set(
+                  bt, scenes__collection_set_flag_recursive_fn, collection, (char *)"is_locked");
+            }
+            UI_but_flag_enable(bt, UI_BUT_DRAG_LOCK);
+            if (!props_active.collection_is_locked) {
               UI_but_flag_enable(bt, UI_BUT_INACTIVE);
             }
           }

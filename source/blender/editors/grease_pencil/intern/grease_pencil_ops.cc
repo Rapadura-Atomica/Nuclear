@@ -9,6 +9,7 @@
 #include "DNA_brush_types.h"
 
 #include "BKE_context.hh"
+#include "BKE_layer.hh"
 #include "BKE_material.hh"
 #include "BKE_paint.hh"
 
@@ -41,6 +42,13 @@ bool active_grease_pencil_poll(bContext *C)
 {
   Object *object = CTX_data_active_object(C);
   if (object == nullptr || object->type != OB_GREASE_PENCIL) {
+    return false;
+  }
+  /* Nuclear: this poll is the common ancestor of every Grease Pencil mode poll (draw, edit,
+   * sculpt, weight, vertex), so refusing here is what stops drawing on a locked object that is
+   * already in paint mode - the mode itself is blocked earlier, at #object_mode_set_poll. */
+  if (BKE_object_is_locked(CTX_data_scene(C), CTX_data_view_layer(C), object)) {
+    CTX_wm_operator_poll_msg_set(C, "Cannot edit locked object");
     return false;
   }
   return true;

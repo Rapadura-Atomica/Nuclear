@@ -448,6 +448,12 @@ static bool ed_object_hidden(const Object *ob)
   return ((ob->visibility_flag & OB_HIDE_VIEWPORT) && !(ob->mode & OB_MODE_EDIT));
 }
 
+/* Nuclear: locked by its own flag or by an ancestor collection. */
+static bool ed_object_locked(const bContext *C, const Object *ob)
+{
+  return BKE_object_is_locked(CTX_data_scene(C), CTX_data_view_layer(C), const_cast<Object *>(ob));
+}
+
 bool ED_operator_object_active_only(bContext *C)
 {
   Object *ob = blender::ed::object::context_active_object(C);
@@ -474,6 +480,13 @@ bool ED_operator_object_active_editable_ex(bContext *C, const Object *ob)
 
   if (ed_object_hidden(ob)) {
     CTX_wm_operator_poll_msg_set(C, "Cannot edit hidden object");
+    return false;
+  }
+
+  /* Nuclear: a locked object (or one inside a locked collection) refuses editing, which includes
+   * entering any mode - #object_mode_set_poll routes through here. */
+  if (ed_object_locked(C, ob)) {
+    CTX_wm_operator_poll_msg_set(C, "Cannot edit locked object");
     return false;
   }
 

@@ -31,6 +31,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_sequence_types.h"
+#include "DNA_space_types.h"
 #include "DNA_windowmanager_types.h"
 #include "DNA_workspace_types.h"
 #include "DNA_world_types.h"
@@ -4397,6 +4398,22 @@ void blo_do_versions_500(FileData *fd, Library * /*lib*/, Main *bmain)
     LISTBASE_FOREACH (PegRig *, pegrig, &bmain->pegrigs) {
       for (int i = 0; i < pegrig->pegs_num; i++) {
         pegrig->pegs[i].flag &= ~PEGRIGPEG_SQUASH;
+      }
+    }
+  }
+
+  if (!MAIN_VERSION_FILE_ATLEAST(bmain, 500, 122)) {
+    /* Nuclear: the lock column is part of the default Outliner, so turn it on in files written
+     * before it existed - otherwise the padlocks would be invisible until the artist digs into
+     * the filter popover. */
+    LISTBASE_FOREACH (bScreen *, screen, &bmain->screens) {
+      LISTBASE_FOREACH (ScrArea *, area, &screen->areabase) {
+        LISTBASE_FOREACH (SpaceLink *, space, &area->spacedata) {
+          if (space->spacetype == SPACE_OUTLINER) {
+            SpaceOutliner *space_outliner = reinterpret_cast<SpaceOutliner *>(space);
+            space_outliner->show_restrict_flags |= SO_RESTRICT_LOCK;
+          }
+        }
       }
     }
   }

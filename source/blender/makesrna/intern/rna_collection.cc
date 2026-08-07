@@ -364,6 +364,12 @@ static void rna_Collection_hide_select_set(PointerRNA *ptr, bool value)
   rna_Collection_flag_set(ptr, value, COLLECTION_HIDE_SELECT);
 }
 
+/* Nuclear: locking a collection. */
+static void rna_Collection_is_locked_set(PointerRNA *ptr, bool value)
+{
+  rna_Collection_flag_set(ptr, value, COLLECTION_LOCKED);
+}
+
 static void rna_Collection_hide_viewport_set(PointerRNA *ptr, bool value)
 {
   rna_Collection_flag_set(ptr, value, COLLECTION_HIDE_VIEWPORT);
@@ -944,6 +950,16 @@ void RNA_def_collections(BlenderRNA *brna)
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
   RNA_def_property_ui_icon(prop, ICON_RESTRICT_RENDER_OFF, -1);
   RNA_def_property_ui_text(prop, "Disable in Renders", "Globally disable in renders");
+  RNA_def_property_update(prop, NC_SCENE | ND_LAYER_CONTENT, "rna_Collection_flag_update");
+
+  /* Nuclear: lock. */
+  prop = RNA_def_property(srna, "is_locked", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "flag", COLLECTION_LOCKED);
+  RNA_def_property_boolean_funcs(prop, nullptr, "rna_Collection_is_locked_set");
+  RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
+  RNA_def_property_ui_icon(prop, ICON_UNLOCKED, 1);
+  RNA_def_property_ui_text(
+      prop, "Lock", "Protect from selection, editing and drawing in the viewport");
   RNA_def_property_update(prop, NC_SCENE | ND_LAYER_CONTENT, "rna_Collection_flag_update");
 
   static const EnumPropertyItem rna_collection_lineart_usage[] = {

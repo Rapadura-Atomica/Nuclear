@@ -167,6 +167,15 @@ enum {
   COLLECTION_IS_MASTER = (1 << 5),
   /** for object_cache_instanced. */
   COLLECTION_HAS_OBJECT_CACHE_INSTANCED = (1 << 6),
+  /**
+   * Nuclear: locked for editing. Implies #COLLECTION_HIDE_SELECT and additionally blocks
+   * transforms, mode changes and drawing on the objects inside. Inherited by child
+   * collections and objects (see #BASE_LOCKED).
+   *
+   * NOTE: this is the last free bit of the `uint8_t` flag. A further lock-like flag needs
+   * a new field rather than bit 2, which is a dirty deprecated bit in old files.
+   */
+  COLLECTION_LOCKED = (1 << 7),
 };
 
 #define COLLECTION_FLAG_ALL_RUNTIME \

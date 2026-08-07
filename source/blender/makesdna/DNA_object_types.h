@@ -337,7 +337,8 @@ typedef struct Object {
   /** Flag for pinning. */
   char shapeflag;
 
-  char _pad3[1];
+  /** Nuclear: #Object.lock_flag, taken from the former `_pad3` byte. */
+  char lock_flag;
 
   /** Object constraints. */
   ListBase constraints;
@@ -691,6 +692,16 @@ enum {
   OB_HIDE_PROBE_CUBEMAP = 1 << 12,
   OB_HIDE_PROBE_PLANAR = 1 << 13,
   OB_HIDE_SURFACE_PICK = 1 << 14,
+};
+
+/** #Object.lock_flag (Nuclear) */
+enum {
+  /**
+   * Locked for editing: not selectable, not transformable, no mode changes and no drawing.
+   * A collection lock (#COLLECTION_LOCKED) reaches the object through #BASE_LOCKED without
+   * setting this flag, so the object keeps its own lock state when it leaves the collection.
+   */
+  OB_LOCKED = 1 << 0,
 };
 
 /** #Object.shapeflag */

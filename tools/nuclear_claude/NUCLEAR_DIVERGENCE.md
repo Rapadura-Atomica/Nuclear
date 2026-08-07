@@ -546,6 +546,44 @@ Não há como separar "cutter puro" de "desenho que também serve de matte" sem 
 explícita do artista; e com a ordem já alinhada ao render o caso original não morde, porque o
 matte fica atrás de quem ele corta, que é onde o artista o vê.
 
+### Cadeado por collection e por objeto no Outliner (2026-08-07)
+Pedido do autor: um sistema de "cadeamento" por collection no seletor padrão do Outliner.
+Escopo escolhido por ele: **trava tudo** (seleção + edição + desenho), **coluna própria sempre
+visível**, e **collection e objeto com herança**.
+
+**A decisão que segura o resto: o lock IMPLICA `hide_select`.** Em vez de reimplementar bloqueio
+de clique, `COLLECTION_LOCKED`/`OB_LOCKED` chegam ao `Base` como `BASE_LOCKED` e o sync **limpa
+`BASE_SELECTABLE`**. Com isso, clique no viewport, box-select, Select All, Outliner
+(`base_select` testa o flag) e canais de animação já recusam a peça travada sem nenhuma linha
+nova — e o pass de seleção do draw manager (`draw_context.cc`, `should_draw_object`) **pula**
+objetos não-selecionáveis, então o clique **atravessa** a peça travada e pega a de trás, que é o
+comportamento de cadeado do Harmony. O `Pick Peg` não precisou de mudança nenhuma por isso.
+
+⚠️ **O lock é RESTRITIVO, ao contrário da visibilidade do upstream.** `flag_from_collection`
+acumula capacidades por OR, então um objeto em duas collections fica visível se *qualquer* uma
+o permite. Para o lock isso daria "travado porém selecionável": adotou-se **travado vence**, e
+`BKE_base_eval_flags` limpa `BASE_SELECTABLE` no fim para os dois nunca discordarem.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/makesdna/DNA_collection_types.h` | `COLLECTION_LOCKED = (1 << 7)`. ⚠️ **Último bit livre** do `uint8_t flag` — o bit 2 é deprecated e sujo em arquivos antigos, então um próximo flag de collection precisa de campo novo, não desse bit. |
+| `source/blender/makesdna/DNA_object_types.h` | Campo `char lock_flag` tomado do antigo `_pad3[1]` (struct não cresce) + enum `OB_LOCKED = 1 << 0`. O lock próprio do objeto é separado do herdado, então a peça o mantém ao sair da collection. |
+| `source/blender/makesdna/DNA_layer_types.h` | `BASE_LOCKED = (1 << 12)` (runtime, derivado). |
+| `source/blender/makesdna/DNA_space_enums.h` | `SO_RESTRICT_LOCK = (1 << 7)` — último bit livre do `char show_restrict_flags`; bit 7 em campo `char` tem precedente upstream (`VPaint.flag`). |
+| `source/blender/blenkernel/intern/layer.cc` | `BASE_LOCKED` entra em `g_base_collection_flags`; `layer_collection_objects_sync` lê `COLLECTION_LOCKED` do `collection_restrict` (que já acumula ancestrais → **herança de graça**); `BKE_base_eval_flags` aplica `OB_LOCKED` e limpa `BASE_SELECTABLE` (o deselect de não-selecionáveis, logo abaixo, tira a peça da seleção). Novo `BKE_object_is_locked(scene, view_layer, ob)`. |
+| `source/blender/blenkernel/BKE_layer.hh` | Declaração de `BKE_object_is_locked`. |
+| `source/blender/makesrna/intern/rna_collection.cc` | `Collection.is_locked` + setter `rna_Collection_is_locked_set` (reusa `rna_Collection_flag_set`, que já protege a master collection) e o update `rna_Collection_flag_update`, que faz `BKE_main_collection_sync`. |
+| `source/blender/makesrna/intern/rna_object.cc` | `Object.is_locked`; e os **quatro** callbacks `editable` de transform (location/scale/rotation_euler/rotation_4d) recusam quando travado. ⚠️ Esses são `itemeditable` (por eixo): a UI cinza é real, mas `is_property_readonly` passa índice −1 e **não** os consulta — logo é gate de UI, não de script. O que impede a peça de se mover de fato é ela não poder ser selecionada. |
+| `source/blender/makesrna/intern/rna_space.cc` | `SpaceOutliner.show_restrict_column_lock`. |
+| `source/blender/editors/screen/screen_ops.cc` | `ed_object_locked()` + gate em `ED_operator_object_active_editable_ex`. **É o chokepoint que bloqueia trocar de modo** — `object_mode_set_poll` passa por aqui —, então não se entra em draw/edit/sculpt numa peça travada. |
+| `source/blender/editors/grease_pencil/intern/grease_pencil_ops.cc` | Gate em `active_grease_pencil_poll`, ancestral comum dos polls de **todos** os modos GP (paint/edit/sculpt/weight/vertex/selection). É o que impede desenhar numa peça que já estava em draw mode quando foi travada. |
+| `source/blender/editors/transform/transform_convert_pegrig.cc` | `createTransPegRigPeg` e o autokey do aftertrans recusam objeto travado. ⚠️ **Necessário porque este converter lê o objeto ATIVO, não a seleção** — travar desseleciona, mas não desativa, então sem isto o Peg Pose ainda posaria a peça travada. |
+| `source/blender/editors/space_outliner/outliner_draw.cc` | Coluna do cadeado (`ICON_UNLOCKED`→`ICON_LOCKED`, consecutivos no `UI_icons.hh`) nas linhas de collection e de objeto, clonando o padrão da coluna Selectable: offset, esmaecido por herança via `RestrictPropertiesActive` (collection travada apaga os cadeados e **também os toggles de seleção** abaixo dela, coerente com o lock implicar `hide_select`), Shift=recursivo e Ctrl=isolar pelos helpers genéricos já existentes. |
+| `source/blender/editors/space_outliner/outliner_utils.cc` | `outliner_right_columns_width` conta a coluna nova (no bloco `SO_SCENES`, que recebe o fallthrough de `SO_VIEW_LAYER`) — sem isso o `BLI_assert` do desenho quebra e a faixa de clique das colunas fica errada. |
+| `source/blender/editors/space_outliner/space_outliner.cc` | `SO_RESTRICT_LOCK` ligado por padrão em outliners novos. |
+| `source/blender/blenloader/intern/versioning_500.cc` | Subversion **121 → 122**: liga `SO_RESTRICT_LOCK` nos `SpaceOutliner` de arquivos antigos, senão os cadeados só apareceriam depois de o artista mexer no popover de filtro. |
+| `scripts/startup/bl_ui/space_outliner.py` | A coluna nova no popover "Restriction Toggles" (modos View Layer e Scenes). |
+
 ---
 
 ## 3. Branding (subconjunto de pontos quentes + dados)

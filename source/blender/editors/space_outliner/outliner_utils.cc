@@ -358,6 +358,10 @@ float outliner_right_columns_width(const SpaceOutliner *space_outliner)
       }
       ATTR_FALLTHROUGH;
     case SO_SCENES:
+      /* Nuclear: lock column. */
+      if (space_outliner->show_restrict_flags & SO_RESTRICT_LOCK) {
+        num_columns++;
+      }
       if (space_outliner->show_restrict_flags & SO_RESTRICT_SELECT) {
         num_columns++;
       }
