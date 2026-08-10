@@ -111,6 +111,7 @@ typedef enum eSpaceButtons_Context {
   BCONTEXT_STRIP = 18,
   BCONTEXT_STRIP_MODIFIER = 19,
   BCONTEXT_PAINT = 20,
+  BCONTEXT_STORYBOARD = 21,
 
   /* Keep last. */
   BCONTEXT_TOT,

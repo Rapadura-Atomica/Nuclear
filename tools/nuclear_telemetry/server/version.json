@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 19,
-  "version": "1.7.6",
+  "build": 20,
+  "version": "1.7.7",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.6 (Beta)",
+  "version_string": "Nuclear 1.7.7 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "8b7a5d8d0b8579d02e99da1da0f86009695b7525f9a25bfe7bdb544cbb8952e9",
-  "size": 357290441,
+  "sha256": "690ff6880eda95a26c35ebd2e544661e66d1b0596b476314292e91673045489d",
+  "size": 354871380,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Realce da peg acompanha pan/zoom e troca de celula da Cell Library; Fit Curve to Drawing endireita curva com forma keyframada (personagem tombado no repouso) e o Check acusa o desvio"
+  "notes": "Atualizacao que gruda: o updater varre todos os lancadores do usuario e aterra o binario antigo deixado fora do current; trava (cadeado) de colecao e objeto no Outliner; pivos do PegRig ficam onde o rigger colocou"
 }

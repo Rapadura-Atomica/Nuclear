@@ -173,6 +173,32 @@ static void buttons_main_region_init(wmWindowManager *wm, ARegion *region)
 /** \name Property Editor Layout
  * \{ */
 
+/**
+ * Is there any panel registered for this Properties tab?
+ *
+ * The Storyboard tab is hosted by an add-on, and its path resolves through the
+ * scene -- so the bit is always in `pathflag`, add-on or no add-on. Without this
+ * check, every Nuclear that ships the tab shows an empty one to people who never
+ * installed the storyboard. Registering a panel is what turns the tab on.
+ */
+static bool buttons_context_has_panels(const char *context)
+{
+  SpaceType *st = BKE_spacetype_from_id(SPACE_PROPERTIES);
+  if (st == nullptr) {
+    return false;
+  }
+  ARegionType *art = BKE_regiontype_from_id(st, RGN_TYPE_WINDOW);
+  if (art == nullptr) {
+    return false;
+  }
+  LISTBASE_FOREACH (PanelType *, pt, &art->paneltypes) {
+    if (pt->context[0] && STREQ(pt->context, context)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void ED_buttons_visible_tabs_menu(bContext *C, uiLayout *layout, void * /*arg*/)
 {
   PointerRNA ptr = RNA_pointer_create_discrete(
@@ -190,10 +216,15 @@ void ED_buttons_visible_tabs_menu(bContext *C, uiLayout *layout, void * /*arg*/)
       "show_properties_bone",        "show_properties_bone_constraints",
       "show_properties_material",    "show_properties_texture",
       "show_properties_strip",       "show_properties_strip_modifier",
-      "show_properties_paint",
+      "show_properties_paint",       "show_properties_storyboard",
   };
 
   for (blender::StringRefNull item : filter_items) {
+    /* Sem o add-on de storyboard não há aba para mostrar ou esconder: o
+     * interruptor dela só confundiria (ligado, e nada aparece). */
+    if (item == "show_properties_storyboard" && !buttons_context_has_panels("storyboard")) {
+      continue;
+    }
     layout->prop(&ptr, item, UI_ITEM_R_TOGGLE, std::nullopt, ICON_NONE);
   }
 }
@@ -222,6 +253,15 @@ blender::Vector<eSpaceButtons_Context> ED_buttons_tabs_list(const SpacePropertie
       tabs.append(tab);
     }
   };
+
+  /* O board do storyboard vem primeiro: no Nuclear ele é o que o artista olha o
+   * dia inteiro, e a aba é a coluna de planos da cena. Só aparece com o add-on
+   * de storyboard instalado — quem não o tem veria uma aba vazia, porque o path
+   * dela resolve pela cena e o bit está sempre em `pathflag`. */
+  if (buttons_context_has_panels("storyboard")) {
+    add_tab(BCONTEXT_STORYBOARD);
+    add_spacer();
+  }
 
   add_tab(BCONTEXT_TOOL);
 
@@ -308,6 +348,8 @@ static const char *buttons_main_region_context_string(const short mainb)
       return "strip_modifier";
     case BCONTEXT_PAINT:
       return "paint";
+    case BCONTEXT_STORYBOARD:
+      return "storyboard";
   }
 
   /* All the cases should be handled. */
