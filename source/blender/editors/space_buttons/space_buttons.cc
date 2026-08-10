@@ -190,7 +190,7 @@ void ED_buttons_visible_tabs_menu(bContext *C, uiLayout *layout, void * /*arg*/)
       "show_properties_bone",        "show_properties_bone_constraints",
       "show_properties_material",    "show_properties_texture",
       "show_properties_strip",       "show_properties_strip_modifier",
-      "show_properties_paint",
+      "show_properties_paint",       "show_properties_storyboard",
   };
 
   for (blender::StringRefNull item : filter_items) {
@@ -222,6 +222,12 @@ blender::Vector<eSpaceButtons_Context> ED_buttons_tabs_list(const SpacePropertie
       tabs.append(tab);
     }
   };
+
+  /* O board do storyboard vem primeiro: no Nuclear ele é o que o artista olha o
+   * dia inteiro, e a aba é a coluna de planos da cena. */
+  add_tab(BCONTEXT_STORYBOARD);
+
+  add_spacer();
 
   add_tab(BCONTEXT_TOOL);
 
@@ -308,6 +314,8 @@ static const char *buttons_main_region_context_string(const short mainb)
       return "strip_modifier";
     case BCONTEXT_PAINT:
       return "paint";
+    case BCONTEXT_STORYBOARD:
+      return "storyboard";
   }
 
   /* All the cases should be handled. */

@@ -660,6 +660,10 @@ static bool buttons_context_path(
     case BCONTEXT_SCENE:
     case BCONTEXT_RENDER:
     case BCONTEXT_OUTPUT:
+    /* O board é da CENA, e não do objeto ativo: a coluna de planos tem de estar
+     * lá mesmo quando nada está selecionado — inclusive num take ainda vazio,
+     * que é justamente quando o artista vai clicar no plano seguinte. */
+    case BCONTEXT_STORYBOARD:
       found = buttons_context_path_scene(path);
       break;
     case BCONTEXT_VIEW_LAYER:
