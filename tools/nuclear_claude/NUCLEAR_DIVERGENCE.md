@@ -333,6 +333,33 @@ versionamento — só **append de enums** e um **drawflag runtime**; rebase = re
 | `source/blender/editors/sculpt_paint/paint_cursor.cc` | `grease_pencil_brush_cursor_draw`: seta `pixel_radius = brush->size/2` p/ `GPAINT_BRUSH_TYPE_SMUDGE`/`_BLUR` (senão o anel do cursor fica raio 0 = invisível) |
 | `source/blender/editors/sculpt_paint/grease_pencil_paint.cc` | `PaintOperationExecutor` (~690): quando `brush->mtex.tex` existe, `BKE_brush_sample_tex_3d` na posição em world-space modula `opacity` → traços texturizados (textura de bico) |
 
+### Aba Storyboard no Properties (`BCONTEXT_STORYBOARD`) — 2026-08-10
+
+Hospeda a **coluna de planos** do add-on `nuclear_storyboard` (repo separado,
+`~/Documentos/GitHub/nuclear-storyboard`): os painéis registram com
+`bl_context="storyboard"` e o add-on cai sozinho na sidebar quando a aba não existe
+(`boardpanel.tab_available()` pergunta ao **enum do RNA**, não à versão do Nuclear — então
+atualizar o add-on antes do binário não deixa o artista sem board). **Mesma receita de 4
+arquivos da tab Paint acima**, sem DNA de struct e sem versionamento (só append de enum:
+`visible_tabs` já nasce com todos os bits ligados e o `versioning_450` faz o mesmo para
+arquivos antigos). Rebase = re-aplicar cada seam.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/makesdna/DNA_space_enums.h` | `BCONTEXT_STORYBOARD = 21` (append em `eSpaceButtons_Context`, antes de `BCONTEXT_TOT`) |
+| `source/blender/makesrna/intern/rna_space.cc` | item `STORYBOARD` (ícone `ICON_SEQ_SEQUENCER`) em `buttons_context_items[]` + `"show_properties_storyboard"` no `filter_items` de `rna_def_space_properties_filter` (ambos tamanho `BCONTEXT_TOT`, em lockstep) |
+| `source/blender/editors/space_buttons/space_buttons.cc` | `add_tab(BCONTEXT_STORYBOARD)` + `add_spacer()` **no topo** de `ED_buttons_tabs_list` (antes de `BCONTEXT_TOOL`: no Nuclear o board é o que o artista olha o dia inteiro) + `case BCONTEXT_STORYBOARD: return "storyboard"` (a string do `bl_context`) + `"show_properties_storyboard"` no menu de visibilidade |
+| `source/blender/editors/space_buttons/buttons_context.cc` | **duas** edições em `buttons_context_path`: `case BCONTEXT_STORYBOARD` no switch, junto de `BCONTEXT_SCENE`/`RENDER`/`OUTPUT` (o board é da CENA, não do objeto ativo — a coluna tem de aparecer com nada selecionado, inclusive num take vazio, que é justo quando o artista clica no plano seguinte), **e** `BCONTEXT_STORYBOARD` no `ELEM(...)` que decide quem NÃO recebe o view layer empurrado por cima |
+
+⚠️ **A pegadinha que custou um rebuild: aba some da lista SEM ERROR NENHUM.** Sem o segundo
+ponto no `buttons_context.cc`, `buttons_context_path` empurra o *view layer* por cima da cena
+para toda aba fora daquele `ELEM(...)`; o path termina no view layer,
+`buttons_context_path_scene` devolve false, o bit nunca entra em `pathflag` e
+`ED_buttons_tabs_list` descarta a aba calada — o enum do RNA simplesmente volta sem
+`STORYBOARD`. **Headless não pega**: o item do enum existe e `show_properties_storyboard` é
+True; a filtragem acontece ao **desenhar a região**, então só abrindo a GUI se vê. Uma aba
+nova que resolva pela cena precisa entrar nos DOIS lugares.
+
 ### PERDA DE CONFIG: duas instâncias brigando pelo `userpref.blend` (2026-07-27)
 Relato do usuário: "estou perdendo addons adicionados e atalhos configurados". Causa: as
 preferências vivem inteiras em memória e são escritas inteiras, sem merge — a última instância
