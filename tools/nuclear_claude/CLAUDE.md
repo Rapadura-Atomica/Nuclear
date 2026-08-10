@@ -480,9 +480,63 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-08-06.
+Atualizado em 2026-08-10.
 
-- **Nuclear 1.7.6 (Beta) — `NUCLEAR_BUILD = 19` — PUBLICADO (2026-08-06).** PATCH a partir da
+- **Nuclear 1.7.7 (Beta) — `NUCLEAR_BUILD = 20` — PUBLICADO (2026-08-10).** PATCH a partir da
+  branch `Nuclear` (HEAD `b702f68c0686`, pushado ANTES do build). **Três frentes, sendo a
+  primeira o motivo da release.**
+  (1) **A atualização passa a "grudar" na máquina do artista** (`a14a43a56ff`,
+  `nuclear_update.py`). Sintoma relatado de uma máquina fora da LAN: baixava os 357 MB,
+  aplicava, reiniciava no build novo — e a abertura seguinte voltava ao binário velho, então
+  baixava tudo de novo. Seis downloads completos num único dia, todo dia. O apply sempre
+  funcionou; quem estava errado era o **atalho**: o pin do KDE apontava para um binário fora do
+  `current` (o flat deixado como fallback pela migração, ou um `.desktop` órfão de antes do
+  rename), e o `_reconcile_desktop` da b16 só sabia consertar o `Nuclear.desktop`. Agora
+  `_refresh_desktop` varre **todos** os `.desktop` (`~/.local/share/applications` + base) e
+  reescreve `Exec=`/`TryExec=` que apontem para dentro da base por fora do `current`; e
+  `_ground_flat_binary` aposenta o binário flat (`<base>/nuclear|blender` →
+  `*.pre-versioned.bak`) deixando no lugar um shim `#!/bin/sh` para `<base>/current/nuclear` —
+  idempotente, marcado por `_SHIM_MARKER`, nunca apaga nada. Roda no `register()` (startup) e no
+  `_run_apply`. ⚠️ Vale a lacuna estrutural de sempre: **quem aplica uma release é o updater da
+  ANTERIOR**, então este conserto só age depois que a máquina receber a b20 uma vez — o que ela
+  já faz sozinha, todo dia, por causa do próprio loop.
+  (2) **Trava (cadeado) de coleção e objeto no Outliner** (`005da2d6d44`), o equivalente ao lock
+  do Harmony: enquanto se anima um personagem, o resto da cena para de responder ao cursor. A
+  trava **implica** "disable selection" em vez de reimplementá-la — `COLLECTION_LOCKED`/
+  `OB_LOCKED` chegam à Base como `BASE_LOCKED` e o layer sync limpa `BASE_SELECTABLE`, então
+  picking, box select, Select All, Outliner e canais de animação recusam a peça travada pela
+  maquinaria que já existe, e o clique **atravessa** a peça travada até a de trás (o Pick Peg
+  não precisou de mudança nenhuma). Ao contrário da visibilidade do upstream, que acumula
+  permissivamente, a trava é **restritiva**: objeto linkado numa coleção travada e noutra livre
+  continua travado. O que a seleção não cobre foi barrado explicitamente — troca de modo
+  (`ED_operator_object_active_editable_ex`), desenho em GP (`active_grease_pencil_poll`, que
+  pega a peça já em paint mode quando foi travada) e o converter de transform do PegRig, que lê
+  o objeto **ativo** e não a seleção (travar deseleciona, mas não desativa).
+  (3) **Pivôs do PegRig ficam onde o rigger colocou** (`4b6412f5793`), quatro causas medidas em
+  `carolina_pegs_atualizada.blend` (84 pegs, 41 com desenho): o setter gravava o alvo cru, mas o
+  centro de rotação é `parent_world @ (pivot + translation)`, então o pivô nascia deslocado de
+  exatamente `|t|` (14 de 14 pegs arrastados); `Pivot to Drawing` mirava a **bbox avaliada**, ou
+  seja, a célula que estivesse no playhead (alvo variando até 4,82 u entre frames em 34 de 41
+  peças), e passou a usar a união de todas as células (dependência de frame: 1 de 41); o graph
+  sync re-ancorava a cada tree update — inclusive o do **undo** —, e reescrever a inverse matrix
+  de um desenho bindado cancela a pose que a peg segurava (peça posada em (0.4, 0, 0.3) caía
+  para a origem); e o auto-rig herdava a mesma dependência de frame na detecção de junta.
+  **Build e verificação:** compilado numa `git worktree` isolada (`nuclear-rel-177` +
+  `build_nuclear_rel177`, preset `nuclear_2d`, `-j2`/`-j3`) porque outra sessão editava o source
+  do repo principal ao vivo — o primeiro build foi **descartado** por ter incorporado código não
+  commitado (aba Storyboard, `36b3ba53bfa`, que fica para a b21). Carimbo do binário
+  `b702f68c0686` == HEAD == `origin/Nuclear`, splash/Sobre em **Nuclear 1.7.7**; smoke 2D
+  ALL PASS; poda 1169 → 859 MB; zip de **354.871.380 bytes**, sha256
+  `690ff6880eda95a26c35ebd2e544661e66d1b0596b476314292e91673045489d`; verify-zip (updater +
+  2615 arquivos `scipy`, sem peso morto 3D) e check-manifest OK; regra nº5 conferida à mão
+  (`Nuclear/nuclear` **e** `Nuclear/blender`). Publicado em duas fases (`.new` → sha256 conferido
+  no servidor → os dois `mv` no mesmo `ssh`). Backup da 1.7.6: `nuclear.zip.bak-pre-1.7.7`; o
+  `bak-pre-1.7.5` foi removido pela política de dois. `ping.php`/`instalarNuclear.sh` não
+  tocados. ⚠️ O `version.json.sig` órfão continua desatualizado, sem chave e sem dono.
+  ⚠️ A `scipy` **não vem** do `ninja install` — foi copiada do `bin/` do build anterior antes de
+  empacotar, como manda a regra nº4.
+
+- **Nuclear 1.7.6 (Beta) — `NUCLEAR_BUILD = 19` — PUBLICADO (2026-08-06), superado pela 1.7.7.** PATCH a partir da
   branch `Nuclear` (HEAD `34cff92658f`), 100% Python de startup. **Duas frentes, ambas de
   "o que a tela mostra não é o que o arquivo tem".**
   (1) **O realce da peg acompanha a viewport e a célula exposta** (`de9a03d3045`,
