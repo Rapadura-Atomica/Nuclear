@@ -348,7 +348,7 @@ arquivos antigos). Rebase = re-aplicar cada seam.
 |---|---|
 | `source/blender/makesdna/DNA_space_enums.h` | `BCONTEXT_STORYBOARD = 21` (append em `eSpaceButtons_Context`, antes de `BCONTEXT_TOT`) |
 | `source/blender/makesrna/intern/rna_space.cc` | item `STORYBOARD` (ícone `ICON_SEQ_SEQUENCER`) em `buttons_context_items[]` + `"show_properties_storyboard"` no `filter_items` de `rna_def_space_properties_filter` (ambos tamanho `BCONTEXT_TOT`, em lockstep) |
-| `source/blender/editors/space_buttons/space_buttons.cc` | `add_tab(BCONTEXT_STORYBOARD)` + `add_spacer()` **no topo** de `ED_buttons_tabs_list` (antes de `BCONTEXT_TOOL`: no Nuclear o board é o que o artista olha o dia inteiro) + `case BCONTEXT_STORYBOARD: return "storyboard"` (a string do `bl_context`) + `"show_properties_storyboard"` no menu de visibilidade |
+| `source/blender/editors/space_buttons/space_buttons.cc` | `add_tab(BCONTEXT_STORYBOARD)` + `add_spacer()` **no topo** de `ED_buttons_tabs_list` (antes de `BCONTEXT_TOOL`: no Nuclear o board é o que o artista olha o dia inteiro), **os dois sob `buttons_context_has_panels("storyboard")`** (helper novo no mesmo arquivo) + `case BCONTEXT_STORYBOARD: return "storyboard"` (a string do `bl_context`) + `"show_properties_storyboard"` no menu de visibilidade, pulado pelo mesmo helper |
 | `source/blender/editors/space_buttons/buttons_context.cc` | **duas** edições em `buttons_context_path`: `case BCONTEXT_STORYBOARD` no switch, junto de `BCONTEXT_SCENE`/`RENDER`/`OUTPUT` (o board é da CENA, não do objeto ativo — a coluna tem de aparecer com nada selecionado, inclusive num take vazio, que é justo quando o artista clica no plano seguinte), **e** `BCONTEXT_STORYBOARD` no `ELEM(...)` que decide quem NÃO recebe o view layer empurrado por cima |
 
 ⚠️ **A pegadinha que custou um rebuild: aba some da lista SEM ERROR NENHUM.** Sem o segundo
@@ -359,6 +359,18 @@ para toda aba fora daquele `ELEM(...)`; o path termina no view layer,
 `STORYBOARD`. **Headless não pega**: o item do enum existe e `show_properties_storyboard` é
 True; a filtragem acontece ao **desenhar a região**, então só abrindo a GUI se vê. Uma aba
 nova que resolva pela cena precisa entrar nos DOIS lugares.
+
+⚠️ **E por resolver pela cena, o bit está SEMPRE em `pathflag`** — com ou sem o add-on
+instalado. Sem trava, todo Nuclear que levasse a aba mostraria uma aba **vazia** a quem
+nunca ouviu falar de storyboard. Daí o `buttons_context_has_panels()`: varre
+`paneltypes` do `ARegionType` do Properties (via `BKE_spacetype_from_id` +
+`BKE_regiontype_from_id`) e a aba só entra na lista quando existe painel registrado com
+aquele `bl_context`. Registrar o painel é o que liga a aba; desabilitar o add-on a apaga
+sozinha. **Nenhuma aba nativa passa por esse gate** — todas têm painéis embutidos.
+Regressão coberta por `tests/gui_tab_gate.py` no repo do add-on (precisa de JANELA).
+⚠️ Para perguntar "esta aba existe?" pelo Python, **escreva** em `space.context` e veja se
+levanta `TypeError`: ler `space.bl_rna.properties["context"].enum_items` devolve a lista
+ESTÁTICA (o `bl_rna` é da classe, não daquele espaço) e diz que a aba existe sempre.
 
 ### PERDA DE CONFIG: duas instâncias brigando pelo `userpref.blend` (2026-07-27)
 Relato do usuário: "estou perdendo addons adicionados e atalhos configurados". Causa: as
