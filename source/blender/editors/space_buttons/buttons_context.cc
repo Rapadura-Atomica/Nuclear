@@ -646,7 +646,11 @@ static bool buttons_context_path(
               BCONTEXT_VIEW_LAYER,
               BCONTEXT_WORLD,
               BCONTEXT_STRIP,
-              BCONTEXT_STRIP_MODIFIER))
+              BCONTEXT_STRIP_MODIFIER,
+              /* O board para na CENA, como as abas acima: com o view layer
+               * empurrado por cima, o path terminaria nele e a aba sumiria da
+               * lista sem erro nenhum. */
+              BCONTEXT_STORYBOARD))
     {
       path->ptr[path->len] = RNA_pointer_create_discrete(nullptr, &RNA_ViewLayer, view_layer);
       path->len++;
