@@ -45,6 +45,19 @@ struct ObjectRuntime {
   float3 parent_display_origin;
 
   /**
+   * Nuclear: resolved opacity of the peg this object follows, or 1.0 when it follows none.
+   *
+   * Written by the Follow Peg constraint on evaluation and multiplied with #Object::opacity by
+   * the draw engine. It is deliberately NOT folded into `opacity` itself: the evaluated copy is
+   * not refreshed when only parameters change, so a multiply lands on the previous evaluation's
+   * product and compounds -- a piece darkened on every nudge of the peg and, since the factor is
+   * never above 1, never recovered. An assignment into a field of its own is idempotent no
+   * matter how often evaluation runs, and keeps `opacity` holding what the artist authored (or
+   * what the artist's own animation put there), which is what makes both animate correctly.
+   */
+  float peg_opacity = 1.0f;
+
+  /**
    * Selection id of this object. It might differ between an evaluated and its original object,
    * when the object is being instanced.
    */

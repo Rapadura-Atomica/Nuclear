@@ -1232,13 +1232,17 @@ static void followpeg_evaluate(bConstraint *con, bConstraintOb *cob, ListBase * 
   copy_m4_m4(orig_cob_matrix, cob->matrix);
   mul_m4_series(cob->matrix, parmat, data->invmat, orig_cob_matrix);
 
-  /* Nuclear: the piece also inherits the peg's resolved opacity. Folding it in here -- on the
-   * evaluated copy, whose `opacity` still holds the value the artist authored -- means the draw
-   * engine reads one float off the object instead of walking constraints and peg chains per
-   * layer, and it rides copy-on-eval, so animating either the peg or the piece just works. */
-  if (cob->ob != nullptr) {
-    cob->ob->opacity = std::clamp(cob->ob->opacity, 0.0f, 1.0f) *
-                       data->rig->pegs[index].world_opacity;
+  /* Nuclear: hand the peg's resolved opacity to the draw engine, which multiplies it with the
+   * object's own (see ObjectRuntime::peg_opacity). Stashing it here means the engine reads a
+   * float off the object instead of walking constraints and peg chains per layer.
+   *
+   * ASSIGN, never multiply into `Object::opacity`: the evaluated copy is not refreshed when only
+   * parameters change, so a multiply compounds over the previous evaluation's product. That is
+   * not a corner case -- every drag of a peg's opacity slider re-evaluated and darkened the piece
+   * again (1.0, then 0.8, then 0.8*0.5, ...), and because the factor never exceeds 1 the piece
+   * decayed toward black and did not come back when the peg returned to 1.0. */
+  if (cob->ob != nullptr && cob->ob->runtime != nullptr) {
+    cob->ob->runtime->peg_opacity = std::clamp(data->rig->pegs[index].world_opacity, 0.0f, 1.0f);
   }
 }
 

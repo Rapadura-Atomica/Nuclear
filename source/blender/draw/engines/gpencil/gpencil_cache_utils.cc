@@ -222,11 +222,14 @@ static float grease_pencil_layer_final_opacity_get(const Instance *inst,
   const bool is_fade = (inst->fade_layer_opacity > -1.0f) && (is_obact) &&
                        !grease_pencil.is_layer_active(&layer);
 
-  /* Nuclear: the object's own opacity multiplies every layer of the piece. On the evaluated
-   * object this already carries the peg chain folded in by the Follow Peg constraint, so fading
-   * the Master Peg fades the whole character. It is applied for render too -- unlike the fade
-   * overlays below, this is authored intent, not a viewport aid. */
-  const float object_opacity = std::clamp(ob->opacity, 0.0f, 1.0f);
+  /* Nuclear: the object's own opacity multiplies every layer of the piece, and so does the
+   * resolved opacity of the peg it follows (1.0 when it follows none), which the Follow Peg
+   * constraint left on the runtime. Fading the Master Peg therefore fades the whole character.
+   * Applied for render too -- unlike the fade overlays below, this is authored intent, not a
+   * viewport aid. */
+  const float peg_opacity = (ob->runtime != nullptr) ? ob->runtime->peg_opacity : 1.0f;
+  const float object_opacity = std::clamp(ob->opacity, 0.0f, 1.0f) *
+                               std::clamp(peg_opacity, 0.0f, 1.0f);
 
   /* Defines layer opacity. For active object depends of layer opacity factor, and
    * for no active object, depends if the fade grease pencil objects option is enabled. */

@@ -372,6 +372,18 @@ static void rna_grease_pencil_update(Main * /*bmain*/, Scene * /*scene*/, Pointe
   }
 }
 
+/**
+ * Nuclear: the opacity the piece is actually drawn with -- its own, times the resolved opacity of
+ * the peg it follows. Only meaningful on an evaluated object: the peg half is written by the
+ * Follow Peg constraint during evaluation, and is 1.0 on the original.
+ */
+static float rna_Object_opacity_resolved_get(PointerRNA *ptr)
+{
+  const Object *ob = static_cast<Object *>(ptr->data);
+  const float peg_opacity = (ob->runtime != nullptr) ? ob->runtime->peg_opacity : 1.0f;
+  return std::clamp(ob->opacity, 0.0f, 1.0f) * std::clamp(peg_opacity, 0.0f, 1.0f);
+}
+
 static void rna_Object_matrix_world_get(PointerRNA *ptr, float *values)
 {
   Object *ob = static_cast<Object *>(ptr->data);
@@ -3508,6 +3520,14 @@ static void rna_def_object(BlenderRNA *brna)
                            "layer's own opacity. A piece following a peg also inherits the peg's "
                            "opacity");
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Object_internal_update_draw");
+
+  prop = RNA_def_property(srna, "opacity_resolved", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_funcs(prop, "rna_Object_opacity_resolved_get", nullptr, nullptr);
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  RNA_def_property_ui_text(prop,
+                           "Resolved Opacity",
+                           "The opacity this object is drawn with: its own multiplied by the "
+                           "resolved opacity of the peg it follows (read-only)");
 
   /* physics */
   prop = RNA_def_property(srna, "field", PROP_POINTER, PROP_NONE);
