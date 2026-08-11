@@ -4418,6 +4418,34 @@ void blo_do_versions_500(FileData *fd, Library * /*lib*/, Main *bmain)
     }
   }
 
+  if (!MAIN_VERSION_FILE_ATLEAST(bmain, 500, 123)) {
+    /* Nuclear: object and peg opacity took over previously unused bytes, so every file written
+     * before this carries zero (or junk) there. Without this migration the whole cast would load
+     * fully transparent -- this is the load-bearing half of the feature, not a nicety. */
+    LISTBASE_FOREACH (Object *, ob, &bmain->objects) {
+      ob->opacity = 1.0f;
+    }
+    LISTBASE_FOREACH (PegRig *, pegrig, &bmain->pegrigs) {
+      for (int i = 0; i < pegrig->pegs_num; i++) {
+        pegrig->pegs[i].opacity = 1.0f;
+        pegrig->pegs[i].world_opacity = 1.0f;
+      }
+    }
+
+    /* The opacity column is part of the default Outliner, so turn it on in older files -- same
+     * reasoning as the lock column in (500, 122). */
+    LISTBASE_FOREACH (bScreen *, screen, &bmain->screens) {
+      LISTBASE_FOREACH (ScrArea *, area, &screen->areabase) {
+        LISTBASE_FOREACH (SpaceLink *, space, &area->spacedata) {
+          if (space->spacetype == SPACE_OUTLINER) {
+            SpaceOutliner *space_outliner = reinterpret_cast<SpaceOutliner *>(space);
+            space_outliner->show_restrict_flags2 |= SO_RESTRICT2_OPACITY;
+          }
+        }
+      }
+    }
+  }
+
   /**
    * Always bump subversion in BKE_blender_version.h when adding versioning
    * code here, and wrap it inside a MAIN_VERSION_FILE_ATLEAST check.

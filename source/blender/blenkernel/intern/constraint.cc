@@ -1231,6 +1231,15 @@ static void followpeg_evaluate(bConstraint *con, bConstraintOb *cob, ListBase * 
   float orig_cob_matrix[4][4];
   copy_m4_m4(orig_cob_matrix, cob->matrix);
   mul_m4_series(cob->matrix, parmat, data->invmat, orig_cob_matrix);
+
+  /* Nuclear: the piece also inherits the peg's resolved opacity. Folding it in here -- on the
+   * evaluated copy, whose `opacity` still holds the value the artist authored -- means the draw
+   * engine reads one float off the object instead of walking constraints and peg chains per
+   * layer, and it rides copy-on-eval, so animating either the peg or the piece just works. */
+  if (cob->ob != nullptr) {
+    cob->ob->opacity = std::clamp(cob->ob->opacity, 0.0f, 1.0f) *
+                       data->rig->pegs[index].world_opacity;
+  }
 }
 
 static bConstraintTypeInfo CTI_FOLLOWPEG = {

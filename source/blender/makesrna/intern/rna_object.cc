@@ -3498,6 +3498,17 @@ static void rna_def_object(BlenderRNA *brna)
       prop, "Color", "Object color and alpha, used when the Object Color mode is enabled");
   RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Object_internal_update_draw");
 
+  /* Nuclear: whole-object opacity (see #Object.opacity). */
+  prop = RNA_def_property(srna, "opacity", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "opacity");
+  RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_ui_text(prop,
+                           "Opacity",
+                           "Opacity of the whole object, multiplied on top of each Grease Pencil "
+                           "layer's own opacity. A piece following a peg also inherits the peg's "
+                           "opacity");
+  RNA_def_property_update(prop, NC_OBJECT | ND_DRAW, "rna_Object_internal_update_draw");
+
   /* physics */
   prop = RNA_def_property(srna, "field", PROP_POINTER, PROP_NONE);
   RNA_def_property_pointer_sdna(prop, nullptr, "pd");

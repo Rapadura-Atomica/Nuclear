@@ -22,7 +22,8 @@ struct AnimData;
  *
  * Parenting is by index into the owning #PegRig::pegs array (#parent_index == -1 for a root
  * peg). The on-disk transform is the UI representation (#translation / #rotation / #scale around
- * #pivot); the resolved #world_mat is runtime only and rebuilt by #BKE_pegrig_solve_world_matrices.
+ * #pivot); the resolved #world_mat is runtime only and rebuilt by
+ * #BKE_pegrig_solve_world_matrices.
  */
 typedef struct PegRigPeg {
   /** Unique within the rig; used for RNA lookup (`pegs["arm"]`) and constraint references. */
@@ -60,15 +61,32 @@ typedef struct PegRigPeg {
   /** Rest vertical span (squash_tip.z - squash_anchor.z) captured when squash is enabled;
    * scale factor s = (current squash_tip.z - anchor.z) / rest_len. */
   float squash_rest_len;
-  /** Orthogonal compensation amount [0..1]: 0 = pure axis scale, 1 = preserve area in the plane. */
+  /** Orthogonal compensation amount [0..1]: 0 = pure axis scale, 1 = preserve area in the plane.
+   */
   float squash_volume;
+
+  /* --- Opacity (Nuclear) --- */
+  /**
+   * Authored opacity of this peg [0..1]. Animatable. Fading a peg fades everything under it, so
+   * the Master Peg is the "whole character" control the cut-out workflow wants.
+   * NOTE: pre-subversion-(500, 123) files carry zero here and are migrated to 1.0 in
+   * `versioning_500.cc`.
+   */
+  float opacity;
+  /**
+   * Resolved opacity: this peg's #opacity multiplied by every ancestor's, runtime only.
+   * Rebuilt from the parent chain by #BKE_pegrig_solve_world_matrices, exactly like #world_mat;
+   * not meaningful when read from disk.
+   */
+  float world_opacity;
 } PegRigPeg;
 
 /** #PegRigPeg::flag */
 typedef enum PegRigPeg_Flag {
   PEGRIGPEG_SELECT = 1 << 0,
   PEGRIGPEG_EXPAND = 1 << 1,
-  /** Squash & Stretch active on this peg (the two squash gizmos appear and deform its followers). */
+  /** Squash & Stretch active on this peg (the two squash gizmos appear and deform its followers).
+   */
   PEGRIGPEG_SQUASH = 1 << 2,
 } PegRigPeg_Flag;
 

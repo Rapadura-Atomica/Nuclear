@@ -219,6 +219,17 @@ typedef enum eSpaceOutliner_ShowRestrictFlag {
   SO_RESTRICT_LOCK = (1 << 7),
 } eSpaceOutliner_Restrict;
 
+/**
+ * #SpaceOutliner.show_restrict_flags2 (Nuclear)
+ *
+ * A second word of column flags: #show_restrict_flags is a `char` and the lock column took its
+ * last bit, so any further column needs storage of its own rather than a bit in there.
+ */
+typedef enum eSpaceOutliner_ShowRestrictFlag2 {
+  /** The opacity column. */
+  SO_RESTRICT2_OPACITY = (1 << 0),
+} eSpaceOutliner_Restrict2;
+
 /** #SpaceOutliner.outlinevis */
 typedef enum eSpaceOutliner_Mode {
   SO_SCENES = 0,

@@ -20,6 +20,7 @@
   { \
     /* Type is not very meaningful as a default, normally changed. */ \
     .type = OB_EMPTY, \
+    .opacity = 1.0f, \
     .color = {1, 1, 1, 1}, \
  \
     .constinv = _DNA_DEFAULT_UNIT_M4, \

@@ -222,6 +222,13 @@ typedef struct SpaceOutliner {
   int filter;
   char filter_state;
   char show_restrict_flags;
+  /**
+   * Nuclear: #eSpaceOutliner_ShowRestrictFlag2. A second flag word, because
+   * #show_restrict_flags is a `char` whose last bit went to the lock column.
+   */
+  char show_restrict_flags2;
+  /* Nuclear: keeps the block a multiple of 8 so `runtime` stays pointer-aligned. */
+  char _pad_nuclear[7];
   short filter_id_type;
 
   SpaceOutliner_Runtime *runtime;

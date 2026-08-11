@@ -156,10 +156,14 @@ int BKE_pegrig_peg_add(PegRig *rig, const char *name, const int parent_index)
    * axis) so enabling squash never starts from a zero-length axis. The vertical axis is Z (the
    * cut-out drawing plane is XZ; Y is depth). The anchor stays at the origin from the zeroed
    * allocation. Volume (the horizontal X stretch that preserves area) defaults OFF so a fresh
-   * squash is purely vertical and never drifts the rig sideways; raise Squash Volume for stretch. */
+   * squash is purely vertical and never drifts the rig sideways; raise Squash Volume for stretch.
+   */
   peg->squash_tip[2] = 1.0f;
   peg->squash_rest_len = 1.0f;
   peg->squash_volume = 0.0f;
+  /* Opaque by default: a fresh peg must not fade what follows it. */
+  peg->opacity = 1.0f;
+  peg->world_opacity = 1.0f;
   unit_m4(peg->world_mat);
   peg->parent_index = (parent_index >= 0 && parent_index < new_index) ? parent_index : -1;
 
@@ -286,16 +290,14 @@ static void pegrig_peg_local_matrix(const PegRigPeg *peg, float r_mat[4][4])
   /* Rotate and scale around the pivot, then translate (matches LayerGroup::local_transform). The
    * rotation centre is pivot+translation, so a dragged drawing keeps spinning about itself. */
   float4x4 mat = math::from_loc_rot_scale<float4x4, math::EulerXYZ>(
-                     float3(peg->translation) + pivot,
-                     float3(peg->rotation),
-                     float3(peg->scale)) *
+                     float3(peg->translation) + pivot, float3(peg->rotation), float3(peg->scale)) *
                  math::from_location<float4x4>(-pivot);
 
   /* Squash & Stretch (see SquashFeature.md): fold a volume-preserving non-uniform scale on top of
-   * the pose. Inert unless the flag is set and the rest length is positive, so a peg without squash
-   * yields a byte-identical matrix. The squash is `local * S` (S in the peg's OWN posed space, with
-   * anchor/tip in local coordinates) so it travels with the peg: moving/posing the rig carries the
-   * squash along, while during a squash itself the planted anchor stays put. */
+   * the pose. Inert unless the flag is set and the rest length is positive, so a peg without
+   * squash yields a byte-identical matrix. The squash is `local * S` (S in the peg's OWN posed
+   * space, with anchor/tip in local coordinates) so it travels with the peg: moving/posing the rig
+   * carries the squash along, while during a squash itself the planted anchor stays put. */
   if ((peg->flag & PEGRIGPEG_SQUASH) && peg->squash_rest_len > 1e-6f) {
     const float3 anchor(peg->squash_anchor);
     /* Deform about the peg's PIVOT - the same fixed point rotation and scale use - so squashing
@@ -309,10 +311,10 @@ static void pegrig_peg_local_matrix(const PegRigPeg *peg, float r_mat[4][4])
       /* volume=0 -> pure vertical scale (k=1); volume=1 -> area-preserving (k=1/s). */
       const float k = 1.0f + peg->squash_volume * (1.0f / s - 1.0f);
       float4x4 squash = float4x4::identity();
-      squash[0][0] = k;                     /* scale X (area compensation, off unless volume>0) */
-      squash[2][2] = s;                     /* scale Z (vertical squash/stretch) */
-      squash[3][0] = pivot.x * (1.0f - k);  /* keep the PIVOT fixed in X */
-      squash[3][2] = pivot.z * (1.0f - s);  /* keep the PIVOT fixed in Z */
+      squash[0][0] = k;                    /* scale X (area compensation, off unless volume>0) */
+      squash[2][2] = s;                    /* scale Z (vertical squash/stretch) */
+      squash[3][0] = pivot.x * (1.0f - k); /* keep the PIVOT fixed in X */
+      squash[3][2] = pivot.z * (1.0f - s); /* keep the PIVOT fixed in Z */
       mat = mat * squash;
     }
   }
@@ -333,13 +335,21 @@ static void pegrig_solve_peg(PegRig *rig, const int index, blender::MutableSpan<
   const bool parent_valid = parent >= 0 && parent < rig->pegs_num && parent != index &&
                             /* state==1 means we looped back to an ancestor: treat as root. */
                             state[parent] != 1;
+  /* Nuclear: opacity rides the same parent chain as the transform, as a product instead of a
+   * matrix multiply -- fading a peg fades everything under it, so the Master Peg dims the whole
+   * character. Clamped because an out-of-range authored value (a driver, a wild keyframe) must not
+   * let a child come back brighter than its parent. */
+  const float local_opacity = std::clamp(peg->opacity, 0.0f, 1.0f);
+
   if (parent_valid) {
     state[index] = 1;
     pegrig_solve_peg(rig, parent, state);
     mul_m4_m4m4(peg->world_mat, rig->pegs[parent].world_mat, local);
+    peg->world_opacity = rig->pegs[parent].world_opacity * local_opacity;
   }
   else {
     copy_m4_m4(peg->world_mat, local);
+    peg->world_opacity = local_opacity;
   }
   state[index] = 2;
 }
@@ -365,8 +375,10 @@ bool BKE_pegrig_peg_world_matrix_get(const PegRig *rig, const int peg_index, flo
   return true;
 }
 
-static void pegrig_compute_world_recursive(
-    const PegRig *rig, const int index, const int depth, float r_mat[4][4])
+static void pegrig_compute_world_recursive(const PegRig *rig,
+                                           const int index,
+                                           const int depth,
+                                           float r_mat[4][4])
 {
   float local[4][4];
   pegrig_peg_local_matrix(&rig->pegs[index], local);

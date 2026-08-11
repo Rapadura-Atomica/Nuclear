@@ -4319,6 +4319,13 @@ static void rna_def_space_outliner(BlenderRNA *brna)
   RNA_def_property_ui_icon(prop, ICON_LOCKED, 0);
   RNA_def_property_update(prop, NC_SPACE | ND_SPACE_OUTLINER, nullptr);
 
+  /* Nuclear: the opacity column lives in a second flag word (see #show_restrict_flags2). */
+  prop = RNA_def_property(srna, "show_restrict_column_opacity", PROP_BOOLEAN, PROP_NONE);
+  RNA_def_property_boolean_sdna(prop, nullptr, "show_restrict_flags2", SO_RESTRICT2_OPACITY);
+  RNA_def_property_ui_text(prop, "Opacity", "Opacity of the object and everything under its peg");
+  RNA_def_property_ui_icon(prop, ICON_IMAGE_ALPHA, 0);
+  RNA_def_property_update(prop, NC_SPACE | ND_SPACE_OUTLINER, nullptr);
+
   /* Filters. */
   prop = RNA_def_property(srna, "use_filter_object", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_negative_sdna(prop, nullptr, "filter", SO_FILTER_NO_OBJECT);

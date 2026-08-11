@@ -255,6 +255,10 @@ class OBJECT_PT_display(ObjectButtonsPanel, Panel):
             # Only useful with object having faces/materials...
             col.prop(obj, "color")
 
+        # Nuclear: whole-object opacity. Unlike "color" above (which only shows in the Object
+        # Color shading mode), this one always applies -- viewport and render alike.
+        col.prop(obj, "opacity")
+
         if has_bounds:
             col = layout.column(align=False, heading="Bounds")
             col.use_property_decorate = False

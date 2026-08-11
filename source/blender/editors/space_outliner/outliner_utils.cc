@@ -362,6 +362,10 @@ float outliner_right_columns_width(const SpaceOutliner *space_outliner)
       if (space_outliner->show_restrict_flags & SO_RESTRICT_LOCK) {
         num_columns++;
       }
+      /* Nuclear: opacity column. */
+      if (space_outliner->show_restrict_flags2 & SO_RESTRICT2_OPACITY) {
+        num_columns++;
+      }
       if (space_outliner->show_restrict_flags & SO_RESTRICT_SELECT) {
         num_columns++;
       }

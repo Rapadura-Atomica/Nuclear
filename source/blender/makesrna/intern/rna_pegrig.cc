@@ -118,7 +118,9 @@ static void rna_def_pegrig_peg(BlenderRNA *brna)
   prop = RNA_def_property(srna, "use_squash", PROP_BOOLEAN, PROP_NONE);
   RNA_def_property_boolean_sdna(prop, nullptr, "flag", PEGRIGPEG_SQUASH);
   RNA_def_property_ui_text(
-      prop, "Use Squash", "Deform followers of this peg with a volume-preserving squash & stretch");
+      prop,
+      "Use Squash",
+      "Deform followers of this peg with a volume-preserving squash & stretch");
   RNA_def_property_update(prop, 0, "rna_PegRig_update");
 
   prop = RNA_def_property(srna, "squash_anchor", PROP_FLOAT, PROP_TRANSLATION);
@@ -145,16 +147,35 @@ static void rna_def_pegrig_peg(BlenderRNA *brna)
   prop = RNA_def_property(srna, "squash_rest_len", PROP_FLOAT, PROP_DISTANCE);
   RNA_def_property_float_sdna(prop, nullptr, "squash_rest_len");
   RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
-  RNA_def_property_ui_text(
-      prop, "Squash Rest Length", "Anchor-to-tip distance at rest; the squash factor is relative to it");
+  RNA_def_property_ui_text(prop,
+                           "Squash Rest Length",
+                           "Anchor-to-tip distance at rest; the squash factor is relative to it");
   RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  /* Nuclear: opacity, inherited down the peg chain (see #PegRigPeg.opacity). */
+  prop = RNA_def_property(srna, "opacity", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "opacity");
+  RNA_def_property_range(prop, 0.0f, 1.0f);
+  RNA_def_property_ui_text(
+      prop,
+      "Opacity",
+      "Opacity of this peg; every piece and peg under it is faded by the same amount");
+  RNA_def_property_update(prop, 0, "rna_PegRig_update");
+
+  prop = RNA_def_property(srna, "opacity_resolved", PROP_FLOAT, PROP_FACTOR);
+  RNA_def_property_float_sdna(prop, nullptr, "world_opacity");
+  RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
+  RNA_def_property_ui_text(
+      prop, "Resolved Opacity", "This peg's opacity multiplied by every ancestor's (read-only)");
 
   prop = RNA_def_property(srna, "matrix_world", PROP_FLOAT, PROP_MATRIX);
   RNA_def_property_float_sdna(prop, nullptr, "world_mat");
   RNA_def_property_multi_array(prop, 2, rna_matrix_dimsize_4x4);
   RNA_def_property_clear_flag(prop, PROP_EDITABLE | PROP_ANIMATABLE);
   RNA_def_property_ui_text(
-      prop, "World Matrix", "Resolved world matrix of the peg from the last evaluation (read-only)");
+      prop,
+      "World Matrix",
+      "Resolved world matrix of the peg from the last evaluation (read-only)");
 }
 
 static void rna_def_pegrig_pegs(BlenderRNA *brna, PropertyRNA *cprop)

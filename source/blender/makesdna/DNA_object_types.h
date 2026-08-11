@@ -321,8 +321,16 @@ typedef struct Object {
   short index;
   /** Current deformation group, NOTE: index starts at 1. */
   unsigned short actdef DNA_DEPRECATED;
-  /** Current face map, NOTE: index starts at 1. */
-  char _pad2[4];
+  /**
+   * Nuclear: opacity of the whole object [0..1], taken from the former `_pad2` bytes (the struct
+   * does not grow). Animatable, applies to render as well as the viewport, and is multiplied on
+   * top of each Grease Pencil layer's own opacity. A piece following a peg also inherits the
+   * peg's resolved opacity -- the Follow Peg constraint folds it in on evaluation, so this field
+   * holds the *effective* value on the evaluated object and the authored one on the original.
+   * NOTE: files written before subversion (500, 123) carry zero (or junk) here and are migrated
+   * to 1.0 in `versioning_500.cc`; without that every object would load fully transparent.
+   */
+  float opacity;
   /** Object color (in most cases the material color is used for drawing). */
   float color[4];
 

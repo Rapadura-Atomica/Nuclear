@@ -972,6 +972,8 @@ struct RestrictProperties {
   PropertyRNA *collection_hide_viewport, *collection_hide_select, *collection_hide_render;
   /* Nuclear: lock column. */
   PropertyRNA *object_is_locked, *collection_is_locked;
+  /* Nuclear: opacity column. */
+  PropertyRNA *object_opacity;
   PropertyRNA *layer_collection_exclude, *layer_collection_holdout,
       *layer_collection_indirect_only, *layer_collection_hide_viewport;
   PropertyRNA *modifier_show_viewport, *modifier_show_render;
@@ -1130,6 +1132,24 @@ static bool outliner_restrict_properties_collection_set(Scene *scene,
   return true;
 }
 
+/**
+ * Nuclear: icon standing in for an opacity value in the Outliner column.
+ *
+ * The three icons are consecutive in `UI_icons.hh` and read as a scale -- solid, part-way,
+ * see-through -- so a glance down the column tells the artist which pieces are faded without
+ * reading numbers.
+ */
+static int outliner_opacity_icon_get(const float opacity)
+{
+  if (opacity >= 1.0f) {
+    return ICON_IMAGE_RGB;
+  }
+  if (opacity <= 0.0f) {
+    return ICON_IMAGE_ALPHA;
+  }
+  return ICON_IMAGE_RGB_ALPHA;
+}
+
 static void outliner_draw_restrictbuts(uiBlock *block,
                                        Scene *scene,
                                        ViewLayer *view_layer,
@@ -1141,6 +1161,7 @@ static void outliner_draw_restrictbuts(uiBlock *block,
   /* Get RNA properties (once for speed). */
   static RestrictProperties props = {false};
   if (!props.initialized) {
+    props.object_opacity = RNA_struct_type_find_property(&RNA_Object, "opacity");
     props.object_hide_viewport = RNA_struct_type_find_property(&RNA_Object, "hide_viewport");
     props.object_hide_select = RNA_struct_type_find_property(&RNA_Object, "hide_select");
     props.object_hide_render = RNA_struct_type_find_property(&RNA_Object, "hide_render");
@@ -1172,6 +1193,7 @@ static void outliner_draw_restrictbuts(uiBlock *block,
 
   struct {
     int enable;
+    int opacity;
     int lock;
     int select;
     int hide;
@@ -1207,6 +1229,10 @@ static void outliner_draw_restrictbuts(uiBlock *block,
    * toggles - it is the control this workflow reaches for most. */
   if (space_outliner->show_restrict_flags & SO_RESTRICT_LOCK) {
     restrict_offsets.lock = (++restrict_column_offset) * UI_UNIT_X + V2D_SCROLL_WIDTH;
+  }
+  /* Nuclear: opacity sits next to the padlock, the other "state of this piece" control. */
+  if (space_outliner->show_restrict_flags2 & SO_RESTRICT2_OPACITY) {
+    restrict_offsets.opacity = (++restrict_column_offset) * UI_UNIT_X + V2D_SCROLL_WIDTH;
   }
   if (space_outliner->outlinevis == SO_VIEW_LAYER &&
       space_outliner->show_restrict_flags & SO_RESTRICT_ENABLE)
@@ -1334,6 +1360,28 @@ static void outliner_draw_restrictbuts(uiBlock *block,
           if (!props_active.object_is_locked) {
             UI_but_flag_enable(bt, UI_BUT_INACTIVE);
           }
+        }
+
+        /* Nuclear: opacity column. A slider rather than a toggle, because the value is
+         * continuous -- the icon reads the state at a glance and dragging edits it. */
+        if (space_outliner->show_restrict_flags2 & SO_RESTRICT2_OPACITY) {
+          bt = uiDefIconButR_prop(block,
+                                  ButType::NumSlider,
+                                  0,
+                                  outliner_opacity_icon_get(ob->opacity),
+                                  int(region->v2d.cur.xmax - restrict_offsets.opacity),
+                                  te->ys,
+                                  UI_UNIT_X,
+                                  UI_UNIT_Y,
+                                  &ptr,
+                                  props.object_opacity,
+                                  -1,
+                                  0,
+                                  0,
+                                  TIP_("Opacity of the whole piece; a piece following a peg is "
+                                       "also faded by the peg\n"
+                                       " • Drag sideways to set"));
+          UI_but_drawflag_enable(bt, UI_BUT_ICON_REVERSE);
         }
 
         if (space_outliner->show_restrict_flags & SO_RESTRICT_VIEWPORT) {
