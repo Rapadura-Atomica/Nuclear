@@ -44,6 +44,19 @@ revisão se as APIs do core que eles consomem mudarem.
 - `source/blender/modifiers/MOD_grease_pencil_contour.hh` — `contour_sample_cage()` compartilhada (modifier + operadores)
 - `source/blender/modifiers/intern/MOD_grease_pencil_contour.cc` — modifier Contour (MVC, cage mesh ou Bézier, bind)
 
+### Add-on Storyboard & Animatic (empacotado desde a 1.7.8/b21)
+
+- `scripts/addons_core/nuclear_storyboard/` — **cópia** do add-on; o repositório-fonte é
+  `~/Documentos/GitHub/nuclear-storyboard` (sem remote até aqui). Sincronizar SEMPRE por
+  `python3 make_release.py --para-o-nuclear <repo do Nuclear>` de lá, que usa a mesma
+  lista de arquivos do zip (sem testes, sem `__pycache__`) e apaga o destino antes de
+  copiar — arquivo que saiu do add-on continuaria aqui e viajaria no release.
+  ⚠️ **A cópia empacotada GANHA do symlink de desenvolvimento** em
+  `~/.config/Nuclear/5.0/scripts/addons/`: depois desta mudança, um Nuclear buildado
+  carrega o add-on de dentro dele, não do repositório. Editar o repo e não ver efeito no
+  binário é o esperado — falta o sync. **Não cria ponto quente na §2**, mas veja o
+  `blendfile.cc` abaixo (nasce habilitado) e a aba do Properties na §2.
+
 ### Add-ons / scripts de startup
 - `scripts/startup/nuclear_curve_gizmo.py` — gizmos de deform de curva no viewport
 - `scripts/startup/nuclear_peg_graph.py` — node editor da hierarquia de pegs (+ `compute_grouped_layout` / operador `node.nuclear_peg_auto_layout` "Auto Layout": agrupa o grafo em frames por região do corpo — Braço D/E, Cabeça, Perna D/E, Tronco, Soltos — empacotados horizontalmente, derivados da hierarquia)
@@ -359,6 +372,8 @@ para toda aba fora daquele `ELEM(...)`; o path termina no view layer,
 `STORYBOARD`. **Headless não pega**: o item do enum existe e `show_properties_storyboard` é
 True; a filtragem acontece ao **desenhar a região**, então só abrindo a GUI se vê. Uma aba
 nova que resolva pela cena precisa entrar nos DOIS lugares.
+
+| `source/blender/blenkernel/intern/blendfile.cc` | `"nuclear_storyboard"` na lista de add-ons de `BKE_blendfile_userdef_from_defaults()` — o storyboard nasce LIGADO numa instalação nova, senão o artista instala o Nuclear e não acha o board (e, com o gate abaixo, nem a aba). ⚠️ **Só vale para quem não tem `userpref.blend`**: quem ATUALIZA de uma versão anterior mantém as prefs dele e precisa ligar o add-on uma vez em `Preferences ▸ Add-ons`. |
 
 ⚠️ **E por resolver pela cena, o bit está SEMPRE em `pathflag`** — com ou sem o add-on
 instalado. Sem trava, todo Nuclear que levasse a aba mostraria uma aba **vazia** a quem

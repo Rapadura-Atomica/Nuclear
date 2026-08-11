@@ -1522,6 +1522,11 @@ UserDef *BKE_blendfile_userdef_from_defaults()
         "cycles",
         "pose_library",
         "bl_pkg",
+        /* Nuclear: o storyboard é o que o artista abre primeiro, e a aba do
+         * Properties só existe onde ele está registrado -- instalar o Nuclear e
+         * não achar o board seria o mesmo que não o ter empacotado. Quem não
+         * quiser, desliga em Preferences (e a aba some junto). */
+        "nuclear_storyboard",
     };
     for (int i = 0; i < ARRAY_SIZE(addons); i++) {
       bAddon *addon = BKE_addon_new();
