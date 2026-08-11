@@ -640,6 +640,35 @@ o permite. Para o lock isso daria "travado porém selecionável": adotou-se **tr
 
 ---
 
+### Sequência de imagens com três dígitos, não quatro (2026-08-10)
+Pedido do autor: o Render Playblast (e o render de sequência em geral) numerava os arquivos com
+quatro dígitos (`0000`, `0001`) e o estúdio quer três (`000`, `001`).
+
+Isso **já era configurável** sem código — `ensure_digits()` (`BLI_path_frame`) só acrescenta os
+`#` automáticos quando o nome do arquivo não tem nenhum, então um output path terminado em `###`
+sempre mandou na largura. A divergência é só sobre o **default**, para o artista não ter que
+digitar `#` em cada take.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/blenkernel/intern/image_format.cc` | `do_makepicstring` passa `NUCLEAR_IMAGE_SEQUENCE_DIGITS` (3) a `BLI_path_frame` em vez do literal `4` do upstream. Uma linha + a define no topo do arquivo. |
+
+Alcance: `do_makepicstring` é o funil de **todo** nome de sequência de imagem — render final
+(`pipeline.cc`), Render Playblast/OpenGL (`render_opengl.cc`, três chamadas) e o
+`scene.render.frame_path()` da API Python (`rna_scene_api.cc`), que é por onde isto se testa
+headless. ⚠️ **Não** cobre: o nome do arquivo de **vídeo** do ffmpeg, que embute o range
+(`movie_write.cc`, `BLI_path_frame_range(..., 4)` — continua `0001-0250`), nem os exportadores
+que numeram por conta própria (OBJ, dynamic paint, USD/volume). Foram deixados como estão: são
+outro artefato, não a sequência que o artista entrega.
+
+Comportamento preservado: `#` explícito no output path continua vencendo e definindo a própria
+largura, e frame que passa da folga sai inteiro (frame 1000 com padding 3 → `1000`), porque o
+`%.*d` do `BLI_path_frame` trata os dígitos como mínimo, não como máximo. ⚠️ Consequência aceita
+pelo autor: renders antigos com quatro dígitos e novos com três convivem desalinhados na mesma
+pasta, e quem quiser o padrão antigo escreve `####` no caminho.
+
+---
+
 ## 3. Branding (subconjunto de pontos quentes + dados)
 
 Pontos onde a identidade "Blender" aparece. Itens marcados [feito] já foram alterados;

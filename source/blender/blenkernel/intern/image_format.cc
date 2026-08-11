@@ -26,6 +26,9 @@
 
 namespace path_templates = blender::bke::path_templates;
 
+/* Nuclear: automatic frame padding for rendered image sequences (upstream uses 4). */
+#define NUCLEAR_IMAGE_SEQUENCE_DIGITS 3
+
 /* Init/Copy/Free */
 
 void BKE_image_format_init(ImageFormatData *imf)
@@ -663,7 +666,11 @@ static blender::Vector<path_templates::Error> do_makepicstring(
   BLI_path_abs(filepath, relbase);
 
   if (use_frames) {
-    BLI_path_frame(filepath, FILE_MAX, frame, 4);
+    /* Nuclear: image sequences are padded to three digits (`000`, `001`, …) instead of upstream's
+     * four, matching the studio's naming convention. This only sets the *automatic* padding: an
+     * explicit run of `#` in the output path still wins and defines its own width, and a frame
+     * that outgrows the padding is written in full (`1000`), never truncated. */
+    BLI_path_frame(filepath, FILE_MAX, frame, NUCLEAR_IMAGE_SEQUENCE_DIGITS);
   }
 
   if (suffix) {
