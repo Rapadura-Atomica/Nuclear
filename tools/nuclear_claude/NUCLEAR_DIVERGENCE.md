@@ -224,6 +224,45 @@ cada rebase. Quando possível, migrar a lógica para arquivo novo + uma "costura
 | `source/blender/makesrna/intern/makesrna.cc` | registro de `rna_pegrig` |
 | `source/blender/makesrna/intern/rna_main.cc` | `pegrigs` na Main |
 
+### Opacidade de objeto e de peg (herdada pela cadeia do rig)
+Opacidade animável no objeto e na peg, multiplicada por cima da opacidade própria de cada
+layer de GP. Fadear uma peg fadeia tudo sob ela, então o Master Peg é o controle de
+"personagem inteiro" que o fluxo cut-out espera. Implementado 2026-08-11; selftest headless
+em `tools/nuclear_rig/selftest_opacity.py` (32 checagens).
+
+⚠️ **A armadilha, se este bloco for re-aplicado num rebase:** a contribuição da peg **não**
+pode ser dobrada dentro de `Object::opacity`. A cópia avaliada não é refrescada quando só
+parâmetros mudam, então a multiplicação cai sobre o produto da avaliação anterior e acumula —
+cada mexida no slider escurecia a peça de novo (1.0 → 0.8 → 0.8×0.5 → …) e, como o fator
+nunca passa de 1, ela só decaía para o preto e não voltava nem com a peg em 1.0. Daí o campo
+runtime separado, que a constraint **atribui** em vez de multiplicar.
+
+| Arquivo | O que foi adicionado |
+|---|---|
+| `source/blender/makesdna/DNA_object_types.h` | `Object::opacity` nos bytes do antigo `_pad2` (o struct não cresce) |
+| `source/blender/makesdna/DNA_object_defaults.h` | `.opacity = 1.0f` |
+| `source/blender/blenkernel/BKE_object_types.hh` | `ObjectRuntime::peg_opacity` (runtime, default 1.0) — a metade que vem da peg, **atribuída**, nunca multiplicada dentro de `opacity` |
+| `source/blender/blenkernel/intern/constraint.cc` | `followpeg_evaluate` grava `peg_opacity` na cópia avaliada |
+| `source/blender/blenkernel/intern/pegrig.cc` | `pegrig_solve_peg` resolve `world_opacity` pela cadeia de pais (produto, clampado) |
+| `source/blender/makesdna/DNA_pegrig_types.h` | `PegRigPeg::opacity` (autorada) + `world_opacity` (runtime) |
+| `source/blender/draw/engines/gpencil/gpencil_cache_utils.cc` | `grease_pencil_layer_final_opacity_get` multiplica layer × objeto × peg; vale para render, não só viewport |
+| `source/blender/blenloader/intern/versioning_500.cc` | migração (500, 123) — sem ela o elenco inteiro abre invisível |
+| `source/blender/blenkernel/BKE_blender_version.h` | `BLENDER_FILE_SUBVERSION` 122 → 123 |
+| `source/blender/makesrna/intern/rna_object.cc` | RNA `opacity` + `opacity_resolved` (getter runtime, read-only) |
+| `source/blender/makesrna/intern/rna_pegrig.cc` | RNA `opacity` + `opacity_resolved` da peg |
+| `source/blender/makesdna/DNA_space_types.h` | `SpaceOutliner::show_restrict_flags2` — segundo word de flags, porque `show_restrict_flags` é `char` e o último bit foi para a coluna de lock |
+| `source/blender/makesdna/DNA_space_enums.h` | `eSpaceOutliner_ShowRestrictFlag2` / `SO_RESTRICT2_OPACITY` |
+| `source/blender/editors/space_outliner/outliner_draw.cc` | coluna de opacidade (NumSlider + ícone de estado) |
+| `source/blender/editors/space_outliner/outliner_utils.cc` | a coluna conta na largura das colunas da direita |
+| `source/blender/editors/space_outliner/space_outliner.cc` | coluna ligada por padrão em Outliner novo |
+| `source/blender/makesrna/intern/rna_space.cc` | RNA `show_restrict_column_opacity` |
+| `scripts/startup/bl_ui/properties_object.py` | `opacity` no painel Object ▸ Display |
+| `scripts/startup/bl_ui/space_outliner.py` | toggle da coluna no popover de filtro |
+
+**Conhecido, não corrigido:** ao abrir arquivo salvo, `world_opacity` volta do disco e só
+re-resolve quando algo tagga o rig — o campo é runtime mas mora no DNA. Conserto pendente de
+decisão (ou o campo para de persistir, ou o load força um solve).
+
 ### Registro do modifier "Cutter" (`eModifierType_GreasePencilMask`)
 Costuras de 1 linha para plugar o modifier novo (mesmo padrão que o "Curve" usou — antes não
 documentado). No rebase, re-aplicar cada uma:
