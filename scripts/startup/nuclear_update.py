@@ -615,16 +615,18 @@ def _refresh_desktop(layout):
                     if not line.startswith(key):
                         continue
                     rest = line[len(key):].strip()
-                    cur = rest.split()[0] if rest else ""
+                    cur = _exec_binary(rest)
                     # Only touch a launcher that already points into our install base.
-                    if cur and os.path.realpath(os.path.dirname(cur)).startswith(base_real):
+                    if _exec_points_into(cur, base_real):
                         if key == "Exec=":
                             # Keep booting into the app template (and preserve the file field
                             # code) — a bare `Exec=<binary>` would drop both on every update.
                             # Rewriting this every update is also how machines pick up a
-                            # change of template.
-                            new_line = "Exec=%s --app-template %s %%F\n" % (
-                                target_exec, _APP_TEMPLATE)
+                            # change of template. The `env VAR=…` prefix is carried over too,
+                            # or an update would silently re-enable telemetry on a launcher
+                            # installed with the opt-out.
+                            new_line = "Exec=%s%s --app-template %s %%F\n" % (
+                                rest[:rest.index(cur)], target_exec, _APP_TEMPLATE)
                         else:
                             new_line = "TryExec=%s\n" % target_exec
                         if new_line != lines[i]:
@@ -636,6 +638,37 @@ def _refresh_desktop(layout):
                     fh.writelines(lines)
         except Exception:
             continue
+
+
+def _exec_binary(rest):
+    """The binary token of a `.desktop` Exec/TryExec value, or "" when there is none.
+
+    Skips an `env` wrapper and any `VAR=value` assignments in front of it — the wizard
+    writes `Exec=env NUCLEAR_TELEMETRY_OFF=1 <binary> …` for a telemetry opt-out, and
+    naively taking the first token would read `env` as the binary.
+    """
+    tokens = rest.split()
+    i = 0
+    if i < len(tokens) and tokens[i] == "env":
+        i += 1
+    while i < len(tokens) and "=" in tokens[i] and not tokens[i].startswith("/"):
+        i += 1
+    return tokens[i] if i < len(tokens) else ""
+
+
+def _exec_points_into(cur, base_real):
+    """Whether an Exec/TryExec binary lives inside this install's base.
+
+    Requires an ABSOLUTE path: a bare command (`Exec=dolphin %u`) or a relative one has an
+    empty/relative dirname, and `os.path.realpath` resolves that against the CURRENT WORKING
+    DIRECTORY — which is inside the install base while Nuclear runs, so every unrelated
+    launcher using a bare command matched and got hijacked. The match is also anchored on a
+    path boundary so a sibling directory sharing our prefix (`<base>-old`) never counts.
+    """
+    if not cur or not os.path.isabs(cur):
+        return False
+    d = os.path.realpath(os.path.dirname(cur))
+    return d == base_real or d.startswith(base_real + os.sep)
 
 
 _SHIM_MARKER = "Nuclear updater: forwarder to the current install"
