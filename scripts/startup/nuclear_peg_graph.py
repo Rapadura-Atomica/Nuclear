@@ -387,6 +387,27 @@ def active_peg(context):
     return rig, rig.pegs[idx]
 
 
+def _peg_resolved_opacity(context, rig, peg):
+    """This peg's opacity with every ancestor's folded in, or None when it cannot be read.
+
+    `world_opacity` is RUNTIME: `BKE_pegrig_solve_world_matrices` runs on the depsgraph's
+    evaluated copy, so the original rig carries whatever was last left in memory there. Read it
+    off the evaluated rig or not at all. A rig no object follows is never built into the
+    depsgraph, and then `evaluated_get` hands back the original -- another reason the caller
+    must treat this as a hint, not a source of truth.
+    """
+    depsgraph = context.evaluated_depsgraph_get()
+    if depsgraph is None:
+        return None
+    rig_eval = rig.evaluated_get(depsgraph)
+    if rig_eval is None:
+        return None
+    index = rig_eval.pegs.find(peg.name)
+    if index < 0:
+        return None
+    return rig_eval.pegs[index].opacity_resolved
+
+
 def _peg_local_matrix(peg):
     """Replicate BKE_pegrig peg local matrix: T(t+p) * R * S * T(-p). The rotation centre is
     pivot+translation, so a dragged drawing keeps spinning about itself."""
@@ -1700,6 +1721,17 @@ class VIEW3D_PT_nuclear_peg(Panel):
         col.prop(peg, "translation")
         col.prop(peg, "rotation")
         col.prop(peg, "scale")
+        col.prop(peg, "opacity", slider=True)
+
+        # What the pieces actually get is this peg's opacity times every ancestor's, and only the
+        # authored value is editable. Without the resolved readout a rigger reads 1.0 on a hand
+        # whose Master Peg sits at 0.2, sees a faded character, and has nowhere to look. Shown
+        # only when an ancestor is fading this peg, so the ordinary case stays uncluttered.
+        resolved = _peg_resolved_opacity(context, rig, peg)
+        if resolved is not None and resolved < peg.opacity - 1e-4:
+            row = layout.row()
+            row.enabled = False
+            row.label(text="Resolved: %.2f (faded by a parent peg)" % resolved, icon='INFO')
 
         box = layout.box()
         box.label(text="Pivot", icon='PIVOT_BOUNDBOX')
