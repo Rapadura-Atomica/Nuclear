@@ -94,6 +94,23 @@ revisão se as APIs do core que eles consomem mudarem.
 - `scripts/startup/nuclear_theme.py` — aplica o tema Nuclear (navy + "pill"/roundness) **globalmente** via `@persistent load_post` handler + apply no register, para que TODOS os templates (Nuclear, 2D Animation, Storyboarding) compartilhem a identidade — antes o tema morava só no `Nuclear/__init__.py` (Seam 6) e era revertido ao trocar de template, deixando 2D Animation/Storyboarding cinza. Só dado de tema (inclui `roundness` por widget), zero C. O bloco Seam 6 foi removido do `__init__.py` (dono único agora é este arquivo). **Não cria ponto quente na §2.**
 - `scripts/startup/nuclear_paint_toolkit.py` — kit de pintura GP na **tab Paint** (`bl_context="paint"`, ver §2): painéis Brushes (categorias + preview + toggle Smudge), Color (picker + swatches recentes via Palette), Size (px), Stabilizer, Symmetry (espelho ao vivo por dados). Timer captura cor pintada + default px; `load_post` default VertexColor. **Cria pontos quentes na §2** (a tab e o picker precisam de C).
 
+- `scripts/modules/nuclear_xsheet.py` — **a timeline Xsheet (ex-Seam 7), agora compartilhada**
+  (trazida do fork privado em 2026-08-11). Guarda o estado, a geometria, o `draw_handler` GPU,
+  os cinco operadores `NUCLEAR_OT_xsheet_*` e o keymap do Dopesheet. API pública:
+  `register()`/`unregister()` (idempotentes — os templates registram/desregistram a cada troca),
+  `reset_state()` (para o `load_handler`) e `apply_timeline_layout(hide_footer=False)` (põe o
+  Dope Sheet em `GPENCIL` e esconde a lista de canais nativa, que duplicaria a coluna de
+  camadas). `hide_footer` só é `True` no Nuclear, que tem transport próprio no header; nos
+  outros templates o footer nativo fica, senão eles perderiam os controles de playback.
+  Autocontido (só `bpy`/`gpu`/`blf`). **Não cria ponto quente na §2.**
+  Teste headless: `tools/nuclear_xsheet_selection_test.py` (28 checagens de seleção/bloco).
+- `scripts/startup/bl_app_templates_system/2D_Animation/__init__.py` e
+  `.../Storyboarding/__init__.py` — arquivos **do upstream**, com uma seam mínima cada:
+  `import nuclear_xsheet`, `register()`/`unregister()` do módulo e `reset_state()` +
+  `apply_timeline_layout()` no `load_handler`. Só a timeline: nenhum override de
+  header/menu/toolbar do Nuclear é puxado, então +KF/-KF e o resto do transport não aparecem.
+  Conflito de rebase é improvável (o upstream mexe pouco nesses dois) e trivial.
+
 ### Application Template Nuclear (a "costura" de UI — P0/P1/P2)
 - `scripts/startup/bl_app_templates_system/Nuclear/__init__.py` — seam central. Contém:
   - **Seam 1 (tradução):** `_TRANSLATIONS` (branding Blender→Nuclear, locale en_US) +
@@ -136,7 +153,12 @@ revisão se as APIs do core que eles consomem mudarem.
     unload no `unregister`).
   - **Canvas (Fase A):** `_update_startup_canvas` trava VIEW_3D na câmera e esconde
     floor/eixos/grid/cursor/gizmos (overlays GP ficam).
-  - **Seam 7 (Xsheet Toon Boom):** mapeia X pelo **view2d nativo** (`region.view2d` via
+  - **Seam 7 (Xsheet Toon Boom): MOVIDA para `scripts/modules/nuclear_xsheet.py`** (2026-08-11)
+    para que 2D Animation e Storyboarding tenham a MESMA timeline — o template só chama
+    `nuclear_xsheet.register()/unregister()` e `apply_timeline_layout(hide_footer=True)`. O que
+    continua exclusivo do Nuclear é o **transport no header** (+ KF / - KF, play, campos de
+    frame) em `_draw_nuclear_transport`. Descrição da timeline, mantida como referência:
+    mapeia X pelo **view2d nativo** (`region.view2d` via
     `_xsheet_fx`/`_xsheet_layout`) → células/agulha alinham com a régua e o indicador de frame
     nativos (que é desenhado por cima e não dá p/ cobrir); ganha scroll/zoom nativos. Canais
     nativos escondidos (`show_region_channels=False`) p/ não duplicar a coluna de camadas.
@@ -302,6 +324,7 @@ documentado). No rebase, re-aplicar cada uma:
 |---|---|
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | tool `builtin.peg_pose` ("Peg Pose") + keymap |
 | `scripts/startup/bl_operators/wm.py` | menu `WM_MT_splash_about`: Version/Date/Hash/Branch literais + linha "Nuclear, a derivative of Blender" (branding do About) |
+| `scripts/startup/bl_app_templates_system/2D_Animation/__init__.py` e `.../Storyboarding/__init__.py` | **timeline Xsheet nos outros templates (2026-08-11):** `import nuclear_xsheet`, `nuclear_xsheet.register()/unregister()` e, no `load_handler`, `reset_state()` + `apply_timeline_layout()`. ~10 linhas por arquivo, sem tocar nada do upstream. Só a timeline: o transport do Nuclear (+KF/-KF, play, campos de frame) é override de header do template Nuclear e **não** vem junto |
 | `scripts/startup/bl_ui/space_topbar.py` | `TOPBAR_MT_file_new.draw_ex`: 3 seams pequenas — (a) reordena `paths` com `Nuclear` sempre primeiro; (b) **remove o item "General"** (o `wm.read_homefile` com `app_template=""`) do menu/splash/Ctrl+N; (c) ícone `OUTLINER_OB_GREASEPENCIL` p/ o template `Nuclear`. Deixa só os 3 templates 2D (Nuclear, Storyboarding, 2D Animation) no `File > New`. **Acoplamento de runtime:** depende dos nomes de template `Nuclear`/`2D_Animation` e da estrutura do `draw_ex`; degrada sem quebrar se o upstream refatorar. Reversível via git. |
 
 ### Tela inicial: projetos recentes como grade de thumbnails (estilo Krita)

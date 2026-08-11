@@ -14,6 +14,13 @@
 > Mostra nº do desenho (com zoom), linhas a cada 5 frames, fantasma no drag. Onion skin
 > toggle no header do viewport.
 >
+>
+> **Desde 2026-08-11 o Xsheet mora em `scripts/modules/nuclear_xsheet.py`**, não mais
+> dentro do `Nuclear/__init__.py` — os templates **2D Animation** e **Storyboarding**
+> chamam o mesmo módulo e ganham a MESMA timeline. Só a timeline: o transport (+KF/-KF,
+> play, campos de frame) continua sendo override de header do template Nuclear, e nos
+> outros dois o footer nativo de playback fica no lugar. Trazido do fork privado
+> Nuclear-Ditivado, que já rodava a versão com seleção de células em bloco.
 > **Próximos passos (em ordem):**
 > 1. **T5.1** — seleção de células (refletir/editar `frame.select`) + nome custom do desenho.
 > 2. **TODO antigos** (ver fim do arquivo): tools custom **Seleção/Câmera** (Fase B; Onion já
