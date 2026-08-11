@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 20,
-  "version": "1.7.7",
+  "build": 21,
+  "version": "1.7.8",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.7 (Beta)",
+  "version_string": "Nuclear 1.7.8 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "690ff6880eda95a26c35ebd2e544661e66d1b0596b476314292e91673045489d",
-  "size": 354871380,
+  "sha256": "ba33cbf5c88eb2198e81cff4696894754a721aee9384ee5822d20eba29f251a2",
+  "size": 355372074,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Atualizacao que gruda: o updater varre todos os lancadores do usuario e aterra o binario antigo deixado fora do current; trava (cadeado) de colecao e objeto no Outliner; pivos do PegRig ficam onde o rigger colocou"
+  "notes": "Aba Storyboard no Properties: a coluna de planos do storyboard fica numa aba propria, e o add-on Storyboard & Animatic passa a vir dentro do Nuclear"
 }

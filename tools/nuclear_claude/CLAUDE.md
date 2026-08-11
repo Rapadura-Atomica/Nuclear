@@ -480,7 +480,37 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-08-10.
+Atualizado em 2026-08-11.
+
+- **Nuclear 1.7.8 (Beta) — `NUCLEAR_BUILD = 21` — PUBLICADO (2026-08-11).** MINOR a partir da
+  branch `Nuclear` (HEAD `4b5b83d220fa`, já em `origin/Nuclear` antes do build; o binário
+  carimba esse mesmo hash). sha256 `ba33cbf5c88eb2198e81cff4696894754a721aee9384ee5822d20eba29f251a2`,
+  **355.372.074 bytes**; backup da b20 = `nuclear.zip.bak-pre-1.7.8` (o `bak-pre-1.7.6` saiu
+  pela política de dois). **Uma entrega, em duas metades que só valem juntas.**
+  (1) **A aba `Storyboard` no Properties** (`36b3ba53bfa`, `160c296539a`, `63fc45ad5b4`): a
+  coluna de planos do storyboard deixa de disputar os 280px da sidebar com episódio, cena,
+  biblioteca e entrega, e passa a ocupar a área inteira de um editor — o artista encosta uma
+  coluna estreita na lateral e lê a cena de cima para baixo, um plano por linha. Custou ~25
+  linhas em 4 arquivos (`BCONTEXT_STORYBOARD` no `DNA_space_enums.h`, item no
+  `buttons_context_items` + `filter_items` do `rna_space.cc`, `add_tab` + context string no
+  `space_buttons.cc`, `case` do path no `buttons_context.cc`), o mesmo caminho da aba Paint —
+  muito mais barato que um SpaceType novo, e sem versionamento (`visible_tabs` nasce `uint(-1)`).
+  ⚠️ A armadilha que custou um rebuild: `buttons_context_path` empurra o **view layer** por cima
+  da cena para toda aba fora do `ELEM(mainb, BCONTEXT_SCENE, RENDER, OUTPUT, VIEW_LAYER, WORLD,
+  STRIP, STRIP_MODIFIER)` — aba ancorada na cena que não entre nessa lista tem o path terminando
+  no view layer e `ED_buttons_tabs_list` a derruba **sem erro nenhum**. São DUAS edições no
+  `buttons_context.cc`, o `case` e o `ELEM`. Só a GUI pega: em headless o item do enum existe e
+  `show_properties_storyboard` é True, porque a filtragem acontece ao desenhar a região.
+  (2) **O add-on Storyboard & Animatic passa a viajar dentro do Nuclear** (`c02b748fd26`), em
+  `scripts/addons_core/nuclear_storyboard` (v0.15.0, 77 arquivos no zip). Sem isso a metade (1)
+  não serve para ninguém: a aba existiria vazia em toda estação onde o add-on não tivesse sido
+  instalado à mão. `make_release.py --para-o-nuclear <repo>` sincroniza as duas cópias pela mesma
+  lista de arquivos do zip. ⚠️ A cópia empacotada **ganha do symlink de desenvolvimento** —
+  num Nuclear buildado, editar o repo do add-on e não ver efeito nenhum é o resultado esperado.
+  O add-on peneira sozinho (`boardpanel.tab_available()` pergunta ao enum do RNA, não à versão
+  do Nuclear): em build sem a aba, a grade volta para a sidebar em vez de sumir.
+  ⚠️ Compilada na worktree isolada `nuclear-rel-177` (build dir `build_nuclear_rel177`) porque
+  havia sessão paralela viva na máquina — mesma receita da 1.7.7.
 
 - **Nuclear 1.7.7 (Beta) — `NUCLEAR_BUILD = 20` — PUBLICADO (2026-08-10).** PATCH a partir da
   branch `Nuclear` (HEAD `b702f68c0686`, pushado ANTES do build). **Três frentes, sendo a
