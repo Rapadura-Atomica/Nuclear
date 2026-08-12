@@ -327,6 +327,13 @@ ao lado do binário). `sha256`/`size` precisam casar **exatamente** com o zip se
    ccache quente um rebuild limpo leva **~1min** (frio ~30min; medido 2026-07-07:
    28min03s → 35,8s). Pode haver build concorrente em outro processo, então **confirme
    antes de disparar**. Rodar externamente continua sendo opção.
+   ⚠️⚠️ **Um build dir parado há semanas pode gerar binário DEFEITUOSO sem erro nenhum.** Foi o
+   que derrubou a 1.8.0: o `build_nuclear_2d` linkou 856 objetos de builds de julho que o ninja
+   deu por atuais, e a release saiu com o clique de seleção morto — mesmo fonte, mesma
+   `CMakeCache` (0 diferenças), compilado noutro dir, passa. Compilação e link **não acusam
+   nada**. Antes de empacotar de um dir que estava dormindo, ou faça build do zero, ou trate o
+   resultado como suspeito até o gate da GUI (`tools/nuclear_rig/selftest_selection.py`) passar
+   **no binário do zip**.
 2.5. **Smoke gate 2D** (obrigatório antes de empacotar; o `nuclear_release.sh` roda
    sozinho): `<builddir>/bin/nuclear -b --factory-startup --python
    tools/smoke_nuclear2d.py` — RC≠0 aborta a release (3D voltou ou capacidade 2D sumiu).
