@@ -671,6 +671,160 @@ def _exec_points_into(cur, base_real):
     return d == base_real or d.startswith(base_real + os.sep)
 
 
+# The MIME types `Nuclear.desktop` claims. Kept in sync with the `MimeType=` line written by
+# the installers and by `_DESKTOP_FALLBACK`.
+_MIME_TYPES = ("application/x-nuclear", "application/x-blender")
+
+
+def _applications_dirs():
+    """Every directory a `.desktop` name in mimeapps.list can resolve against, in XDG order."""
+    dirs = [os.path.expanduser("~/.local/share/applications")]
+    data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+    for d in data_dirs.split(":"):
+        if d:
+            dirs.append(os.path.join(d, "applications"))
+    return dirs
+
+
+def _desktop_exists(name):
+    """The path of a `.desktop` by name, searched in XDG order, or "" when it is gone."""
+    for d in _applications_dirs():
+        path = os.path.join(d, name)
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def _desktop_is_usable(name):
+    """Whether a `.desktop` name still resolves to an entry that can actually launch.
+
+    Two ways an association goes stale: the entry file was deleted, or it survives but its
+    `Exec` names a binary that no longer exists (an uninstalled build, a version directory
+    replaced by an update). Both leave the file manager with a default that opens nothing.
+
+    A False here only ever *adds* a claim — pruning keys off `_desktop_exists`, which cannot
+    produce a false positive — so an Exec shape this misreads costs nothing.
+    """
+    path = _desktop_exists(name)
+    if not path:
+        return False
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.startswith("Exec="):
+                    continue
+                # The spec allows a quoted argument, and a quoted absolute path is common
+                # enough that reading the quote as part of the path would call a perfectly
+                # good launcher dead.
+                binary = _exec_binary(line[len("Exec="):].strip()).strip('"').strip("'")
+                if not binary:
+                    return False
+                if os.path.isabs(binary):
+                    return os.path.exists(binary)
+                return shutil.which(binary) is not None
+    except OSError:
+        return False
+    return False  # An entry with no Exec at all cannot launch anything.
+
+
+def _mimeapps_path():
+    cfg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    return os.path.join(cfg, "mimeapps.list")
+
+
+def _claim_file_associations():
+    """Repair `mimeapps.list` so double-clicking a scene still opens Nuclear.
+
+    Writing a `.desktop` that declares `MimeType=` only *offers* the app: the file manager
+    picks whatever `[Default Applications]` names, and everything else is demoted to the
+    "Other applications" drawer. Two things routinely leave a machine with a default that
+    points at nothing — a hand-picked entry from the desktop's own "Open with → other
+    application" dialog (KDE writes a throwaway `<name>-N.desktop` for it), and an install
+    whose binary later moved. The scene file then opens nothing at all, and Nuclear looks
+    like it lost its file association even though its launcher is perfectly fine.
+
+    Deliberately conservative, because this runs unattended on every startup and the file it
+    edits belongs to every app on the machine, not to us. A *working* default is never
+    touched, so choosing another app for `.blend` stays chosen. The two judgements are held
+    to different standards on purpose: a key is only PRUNED when its `.desktop` is physically
+    gone (no way to be wrong about that), while the weaker "its Exec looks dead" test is
+    confined to deciding whether Nuclear may claim a default — where a misread costs a claim,
+    never someone else's association. Returns True when the file was rewritten. Never raises.
+    """
+    try:
+        if not _desktop_is_usable("Nuclear.desktop"):
+            return False  # Nothing worth pointing at yet; `_install_desktop` runs first.
+        path = _mimeapps_path()
+        lines = []
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+
+        present, usable = {}, {}
+
+        def resolves(name):
+            if name not in present:
+                present[name] = bool(_desktop_exists(name))
+            return present[name]
+
+        def launches(name):
+            if name not in usable:
+                usable[name] = _desktop_is_usable(name)
+            return usable[name]
+
+        out = []
+        section = ""
+        defaults_seen = set()
+        changed = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                section = stripped
+                out.append(line)
+                continue
+            if "=" not in stripped or stripped.startswith("#"):
+                out.append(line)
+                continue
+            mime, _, value = stripped.partition("=")
+            entries = [e for e in value.split(";") if e]
+            kept = [e for e in entries if resolves(e)]
+            if section == "[Default Applications]" and mime in _MIME_TYPES:
+                defaults_seen.add(mime)
+                if not any(launches(e) for e in kept):
+                    kept = ["Nuclear.desktop"]
+            if kept == entries:
+                out.append(line)
+                continue
+            changed = True
+            if not kept:
+                continue  # Drop the key entirely rather than leave an empty association.
+            out.append("%s=%s;\n" % (mime, ";".join(kept)))
+
+        for mime in _MIME_TYPES:
+            if mime in defaults_seen:
+                continue
+            changed = True
+            idx = next((i for i, l in enumerate(out)
+                        if l.strip() == "[Default Applications]"), -1)
+            if idx < 0:
+                if out and not out[-1].endswith("\n"):
+                    out.append("\n")
+                out.append("[Default Applications]\n")
+                idx = len(out) - 1
+            out.insert(idx + 1, "%s=Nuclear.desktop;\n" % mime)
+
+        if not changed:
+            return False
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".nuclear-tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.writelines(out)
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        return False
+
+
 _SHIM_MARKER = "Nuclear updater: forwarder to the current install"
 
 
@@ -1018,6 +1172,10 @@ def _run_apply(manifest, layout):
         _cleanup_legacy_dirs(log_path)
         _refresh_desktop(layout)
         _ground_flat_binary(layout, log_path)
+        # An update retires the previous version directory, so any file-type default naming a
+        # launcher that pointed inside it just went dead. Reclaim it here too, not only at
+        # startup, so a double-clicked scene keeps working before the next restart.
+        _claim_file_associations()
         # Keep the new build and the still-running one (locked on Windows).
         _prune_versions(layout["versions"], [dest, layout["install_root"]])
 
@@ -1374,6 +1532,10 @@ def _reconcile_desktop():
     leftover flat binary at the base that a taskbar pin keeps launching becomes a forwarder
     to `current`. Skipped in background mode -- a headless render has no business touching
     the desktop menu.
+
+    `_claim_file_associations` closes the third half of the same complaint: the menu entry can
+    be perfectly placed and still leave double-clicked scenes opening nothing, because the
+    file-type default lives in `mimeapps.list`, not in the launcher.
     """
     try:
         if bpy.app.background:
@@ -1382,6 +1544,7 @@ def _reconcile_desktop():
         if layout:
             _refresh_desktop(layout)
             _ground_flat_binary(layout, _apply_log_path(layout))
+        _claim_file_associations()
     except Exception:
         pass
     return None
