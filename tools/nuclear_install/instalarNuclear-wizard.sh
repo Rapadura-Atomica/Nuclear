@@ -482,6 +482,41 @@ EOF
 </mime-info>
 EOF
     update-mime-database "$HOME/.local/share/mime" >/dev/null 2>&1 || true
+
+    claim_mime_defaults
+}
+
+# Torna o Nuclear o app PADRAO dos tipos que o .desktop reivindica.
+#
+# Declarar 'MimeType=' apenas OFERECE o app: quem decide o duplo-clique e a secao
+# [Default Applications] do mimeapps.list, e todo o resto vai parar na gaveta
+# "Outros aplicativos". Numa maquina que ja tenha Blender instalado, ou que tenha
+# uma entrada descartavel criada pelo dialogo "Abrir com" do proprio desktop
+# (o KDE grava um '<nome>-N.desktop' escondido), o padrao continua sendo o outro
+# app - as vezes um que nem existe mais, e ai o arquivo nao abre em nada.
+# Instalar e um ato explicito do usuario, entao aqui reivindicamos sem perguntar;
+# o updater embutido e conservador e so conserta padrao ausente ou quebrado.
+claim_mime_defaults() {
+    if command -v xdg-mime >/dev/null 2>&1; then
+        xdg-mime default Nuclear.desktop application/x-nuclear application/x-blender \
+            >/dev/null 2>&1 && return 0
+    fi
+    # Fallback sem xdg-utils: grava as duas linhas na mao, preservando o resto.
+    local list="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+    mkdir -p "$(dirname "$list")"
+    [ -f "$list" ] || printf '[Default Applications]\n' > "$list"
+    local tmp; tmp="$(mktemp)" || return 0
+    grep -v -E '^application/x-(nuclear|blender)=' "$list" > "$tmp" 2>/dev/null || true
+    if ! grep -q '^\[Default Applications\]' "$tmp"; then
+        printf '\n[Default Applications]\n' >> "$tmp"
+    fi
+    awk '/^\[Default Applications\]/ {
+             print
+             print "application/x-nuclear=Nuclear.desktop;"
+             print "application/x-blender=Nuclear.desktop;"
+             next
+         } { print }' "$tmp" > "$list"
+    rm -f "$tmp"
 }
 
 # Addons externos (opcional; mesma logica do instalador legado).

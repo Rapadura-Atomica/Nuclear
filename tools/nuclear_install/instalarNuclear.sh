@@ -151,6 +151,37 @@ cat > "$MIME_PKG_DIR/nuclear.xml" <<'EOF'
 EOF
 update-mime-database "$HOME/.local/share/mime" >/dev/null 2>&1 || true
 
+# Torna o Nuclear o app PADRAO desses tipos, e nao apenas mais uma opcao.
+#
+# Declarar 'MimeType=' acima apenas OFERECE o app: quem decide o duplo-clique e a
+# secao [Default Applications] do mimeapps.list, e todo o resto vai parar na gaveta
+# "Outros aplicativos". Numa maquina que ja tenha Blender instalado, ou que tenha uma
+# entrada descartavel criada pelo dialogo "Abrir com" do proprio desktop (o KDE grava
+# um '<nome>-N.desktop' escondido), o padrao continua sendo o outro app - as vezes um
+# que nem existe mais, e ai o arquivo nao abre em nada. Instalar e um ato explicito do
+# usuario, entao reivindicamos sem perguntar; o updater embutido e conservador e so
+# conserta padrao ausente ou quebrado.
+if command -v xdg-mime >/dev/null 2>&1; then
+    xdg-mime default Nuclear.desktop application/x-nuclear application/x-blender \
+        >/dev/null 2>&1 || true
+else
+    # Fallback sem xdg-utils: grava as duas linhas na mao, preservando o resto.
+    MIMEAPPS="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+    mkdir -p "$(dirname "$MIMEAPPS")"
+    [ -f "$MIMEAPPS" ] || printf '[Default Applications]\n' > "$MIMEAPPS"
+    MIMEAPPS_TMP="$(mktemp)"
+    grep -v -E '^application/x-(nuclear|blender)=' "$MIMEAPPS" > "$MIMEAPPS_TMP" 2>/dev/null || true
+    grep -q '^\[Default Applications\]' "$MIMEAPPS_TMP" || \
+        printf '\n[Default Applications]\n' >> "$MIMEAPPS_TMP"
+    awk '/^\[Default Applications\]/ {
+             print
+             print "application/x-nuclear=Nuclear.desktop;"
+             print "application/x-blender=Nuclear.desktop;"
+             next
+         } { print }' "$MIMEAPPS_TMP" > "$MIMEAPPS"
+    rm -f "$MIMEAPPS_TMP"
+fi
+
 # --- 5. addons externos ------------------------------------------------------
 
 # Rebrand: a pasta de config passou de 'blender' para 'Nuclear'. Migra os settings
