@@ -482,7 +482,40 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-08-12.
 
-- **Nuclear 1.8.0 (Beta) — `NUCLEAR_BUILD = 22` — PUBLICADO (2026-08-12).** MINOR a partir da
+- **Nuclear 1.8.1 (Beta) — `NUCLEAR_BUILD = 23` — PUBLICADO (2026-08-12).** PATCH a partir da
+  branch `Nuclear` (HEAD `ab2c0839ccad`, pushado antes do build). sha256
+  `aa70890466d316463dd51e2776713dabc253096b423f6a764fccc849df652444`, **355.731.401 bytes**;
+  backup da b22 = `nuclear.zip.bak-pre-1.8.1`. Conteúdo idêntico ao da 1.8.0 — o que muda é o
+  binário.
+  ⚠️⚠️ **A 1.8.0 foi publicada com o clique de seleção MORTO.** Clicar num objeto na viewport não
+  selecionava nada; a caixa de seleção também não. Valia para **todo** tipo de objeto (mesh,
+  Grease Pencil, empty), não só para desenho — só a seleção por API/menu (`Select All`)
+  sobrevivia, que é justamente a que os testes headless exercitam. Num app de animação 2D isso é
+  bloqueante: o artista não consegue pegar a peça que quer animar.
+  ✅ **A causa NÃO era o código.** O commit publicado (`1297c0ac991e`), recompilado num build dir
+  diferente, passa em todos os casos de seleção. O que estava errado era o **build dir**
+  `build_nuclear_2d`, de onde a release saiu: ele carregava 856 objetos de builds anteriores a
+  agosto que o ninja considerou atuais, e o binário linkado saiu quebrado. Configuração idêntica
+  (`diff` dos dois `CMakeCache.txt` = 0 linhas), mesmo compilador, mesmo fonte — binários
+  diferentes. A 1.8.1 é o mesmo commit + bump, compilado no build dir são
+  (`build_nuclear_rel177`) e **verificado no binário extraído do zip**, não no do build dir.
+  ⚠️ **Lição que vale para toda release daqui em diante:** um build dir antigo pode produzir
+  binário defeituoso sem erro nenhum de compilação ou de link. Não confie no build incremental de
+  um dir parado há semanas — e, principalmente, **teste o binário que vai ser publicado**, não o
+  que está no build dir.
+  ✅ **Gate novo: `tools/nuclear_rig/selftest_selection.py`** — clique, box select e select-all
+  contra mesh, GP (desenho e stroke) e empty. Roda **na GUI de propósito**: o buffer de seleção da
+  GPU não existe em `--background`, então nenhum teste headless jamais pegaria essa classe de
+  regressão. Rodar antes de empacotar, e de novo no binário do zip.
+  ⚠️ O caminho até aqui custou 4 builds porque o bisect por commit **inocentou os dois commits de
+  C++** (`5039df5` e `7acd089` passam) — quando o bisect inocenta todo mundo e o binário publicado
+  falha, o suspeito passa a ser o AMBIENTE de build, não a árvore. O atalho que resolveu foi
+  cruzar binário e scripts entre as versões (`BLENDER_SYSTEM_SCRIPTS`): binário 1.8.0 + scripts
+  1.7.8 falha, binário 1.7.8 + scripts 1.8.0 passa — em dois minutos isso separa código de
+  binário.
+
+- **Nuclear 1.8.0 (Beta) — `NUCLEAR_BUILD = 22` — PUBLICADO (2026-08-12), SUPERSEDIDA pela 1.8.1
+  no mesmo dia (binário com a seleção quebrada, ver acima).** MINOR a partir da
   branch `Nuclear` (HEAD `1297c0ac991e`, pushado ANTES do build; o binário carimba esse mesmo
   hash). sha256 `7a0f0cf737ca0eb7bd7b05eff043adedda5f5b5a608a7e00addaea3481859f5f`,
   **357.920.858 bytes**; backup da b21 = `nuclear.zip.bak-pre-1.8.0` (o `bak-pre-1.7.7` saiu pela

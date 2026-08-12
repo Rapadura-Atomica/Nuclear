@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 22,
-  "version": "1.8.0",
+  "build": 23,
+  "version": "1.8.1",
   "stage": "Beta",
-  "version_string": "Nuclear 1.8.0 (Beta)",
+  "version_string": "Nuclear 1.8.1 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "7a0f0cf737ca0eb7bd7b05eff043adedda5f5b5a608a7e00addaea3481859f5f",
-  "size": 357920858,
+  "sha256": "aa70890466d316463dd51e2776713dabc253096b423f6a764fccc849df652444",
+  "size": 355731401,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Opacidade por objeto e por peg: fadear o Master Peg fadeia o personagem inteiro, com coluna de opacidade no Outliner e controle no painel do peg. O Xsheet (timeline Toon Boom) passa a valer nos tres templates, agora com selecao de celulas — mover, duplicar e apagar em bloco. Duplo clique em .nuc/.blend volta a abrir no Nuclear, e a atualizacao nao mexe mais no atalho de outro programa."
+  "notes": "Conserta a selecao na viewport: clicar numa peca ou usar a caixa de selecao voltou a funcionar, em qualquer tipo de objeto. A 1.8.0 saiu com um binario defeituoso que derrubava isso; o conteudo dela (opacidade por objeto e por peg, Xsheet nos tres templates, duplo clique em .nuc/.blend) continua todo aqui."
 }
