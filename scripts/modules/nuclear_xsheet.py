@@ -143,6 +143,62 @@ def _xsheet_hit(context, event):
     return ('frame', f, row)
 
 
+def _xsheet_undo_push(message):
+    """Record one undo step for a data change made outside an UNDO-flagged operator.
+
+    `NUCLEAR_OT_xsheet_click` cannot carry `bl_options={'UNDO'}`: it is also the scrub gesture,
+    and a step pushed per click would bury the animator's real edits under a wall of playhead
+    moves. But two of its branches DO change data — a layer's visibility and its lock — and
+    those were landing outside the undo stack entirely, so Ctrl+Z skipped straight past them
+    to whatever came before. Pushing explicitly keeps scrubbing free and those two undoable.
+    """
+    try:
+        bpy.ops.ed.undo_push(message=message)
+    except Exception:
+        pass
+
+
+def _xsheet_key_poll(context):
+    """Poll for the keyboard shortcuts (F6 / F7): an active GP object is all they need.
+
+    Deliberately looser than `_xsheet_poll`, which demands the pointer be inside our Xsheet.
+    These are bound in the 3D View as well, and the whole point of moving exposure off
+    Ctrl+click and onto a function key is that the artist can key a drawing without taking the
+    pen away from the canvas — requiring the dope sheet would make them dead keys exactly
+    where they are most useful.
+    """
+    ob = context.active_object
+    return ob is not None and ob.type == 'GREASEPENCIL' and ob.data is not None
+
+
+def _xsheet_key_target(context, event):
+    """The (layer, frame) a keyboard shortcut acts on, as (layer, frame) or (None, frame).
+
+    Follows the cursor when the cursor is somewhere meaningful and falls back to the playhead
+    when it is not, so one key does the obvious thing in both places the artist works from:
+
+    - over a cell in the Xsheet  -> that cell (what Ctrl+click used to do)
+    - over the name column       -> that row's layer, at the current frame
+    - anywhere else (viewport)   -> the active layer, at the current frame
+    """
+    ob = context.active_object
+    if ob is None or ob.type != 'GREASEPENCIL':
+        return None, 0
+    layers = list(ob.data.layers)
+    layer = getattr(ob.data.layers, "active", None)
+    f = context.scene.frame_current
+    if event is not None and _xsheet_poll(context):
+        hit = _xsheet_hit(context, event)
+        if hit:
+            # ('frame', f, row) carries the row second; every other hit is ('kind', row).
+            row = hit[2] if hit[0] == 'frame' else hit[1]
+            if row is not None and 0 <= row < len(layers):
+                layer = layers[row]
+            if hit[0] == 'frame':
+                f = hit[1]
+    return layer, f
+
+
 def _xsheet_draw_error_log():
     """Where a draw failure is recorded, so it survives a session launched from the desktop."""
     import os
@@ -563,8 +619,10 @@ def _disable_xsheet():
         _xsheet_handle = None
 
 
-# Keymap that routes LEFTMOUSE in the Dope Sheet to the Xsheet operator (poll-gated, so it
-# only fires inside our GP Xsheet; otherwise the event falls through to native).
+# Keymap entries the Xsheet installs, as (keymap, item) so unregister can take them back out.
+# Mouse gestures route LEFTMOUSE in the Dope Sheet to the Xsheet operators; the F6/F7 exposure
+# keys are additionally bound in the 3D View so they work while drawing. Everything is
+# poll-gated, so outside our GP Xsheet the event falls through to native.
 _xsheet_keymaps = []
 
 
@@ -581,9 +639,19 @@ def _register_xsheet_keymap():
     # event.shift branch was unreachable and Shift+click fell through to the native dope sheet.
     kmi1b = km.keymap_items.new("nuclear.xsheet_click", 'LEFTMOUSE', 'PRESS', shift=True)
     _xsheet_keymaps.append((km, kmi1b))
-    # T4 — Ctrl+LEFTMOUSE toggles a cell's exposure (create/delete drawing).
-    kmi2 = km.keymap_items.new("nuclear.xsheet_toggle", 'LEFTMOUSE', 'PRESS', ctrl=True)
-    _xsheet_keymaps.append((km, kmi2))
+    # T6 — exposure moved off Ctrl+click and onto the function keys the rest of the industry
+    # uses: F6 creates a drawing, F7 deletes one. `nuclear.xsheet_toggle` stays registered (it
+    # is still reachable from search, and still the single operator that flips a cell either
+    # way), but nothing binds Ctrl+click to it any more, so that gesture falls through to the
+    # native dope sheet as it would in any other editor.
+    kmi_add = km.keymap_items.new("nuclear.xsheet_key_add", 'F6', 'PRESS')
+    _xsheet_keymaps.append((km, kmi_add))
+    kmi_del = km.keymap_items.new("nuclear.xsheet_key_remove", 'F7', 'PRESS')
+    _xsheet_keymaps.append((km, kmi_del))
+    # T6 — Ctrl+D duplicates the selection into a move, matching the native
+    # `action.duplicate_move` this shortcut means everywhere else in Blender.
+    kmi_dup = km.keymap_items.new("nuclear.xsheet_duplicate_move", 'D', 'PRESS', ctrl=True)
+    _xsheet_keymaps.append((km, kmi_dup))
     # T4.1 — Alt+drag = move exposure; Shift+Alt+drag = duplicate exposure.
     kmi3 = km.keymap_items.new("nuclear.xsheet_drag", 'LEFTMOUSE', 'PRESS', alt=True)
     kmi3.properties.duplicate = False
@@ -602,6 +670,21 @@ def _register_xsheet_keymap():
     for key in ('X', 'DEL'):
         kmi6 = km.keymap_items.new("nuclear.xsheet_delete_selected", key, 'PRESS')
         _xsheet_keymaps.append((km, kmi6))
+
+    # T6 — F6/F7 again, this time over the viewport. Keying a drawing is something the artist
+    # does WHILE drawing, and the Dopesheet keymap above only fires with the pointer inside the
+    # timeline; without this pair the keys would be dead on the canvas, which is most of the
+    # screen. `_xsheet_key_poll` gates them on an active GP object, so in any other context the
+    # event falls straight through to whatever Blender does with it.
+    #
+    # 'Grease Pencil' is deliberately NOT the keymap used: it only covers the GP modes, and the
+    # artist also keys from Object Mode. '3D View' is the one that spans every mode inside the
+    # viewport. An addon keymap outranks the default one, so these win over any stock F6/F7.
+    km3d = kc.keymaps.new(name='3D View', space_type='VIEW_3D')
+    kmi_add3d = km3d.keymap_items.new("nuclear.xsheet_key_add", 'F6', 'PRESS')
+    _xsheet_keymaps.append((km3d, kmi_add3d))
+    kmi_del3d = km3d.keymap_items.new("nuclear.xsheet_key_remove", 'F7', 'PRESS')
+    _xsheet_keymaps.append((km3d, kmi_del3d))
 
 
 def _unregister_xsheet_keymap():
@@ -639,8 +722,10 @@ class NUCLEAR_OT_xsheet_click(bpy.types.Operator):
         kind = hit[0]
         if kind == 'vis':
             layers[hit[1]].hide = not layers[hit[1]].hide
+            _xsheet_undo_push("Xsheet: visibilidade da camada")
         elif kind == 'lock':
             layers[hit[1]].lock = not layers[hit[1]].lock
+            _xsheet_undo_push("Xsheet: trava da camada")
         elif kind == 'layer':
             try:
                 ob.data.layers.active = layers[hit[1]]
@@ -739,9 +824,14 @@ class NUCLEAR_OT_xsheet_click(bpy.types.Operator):
 
 
 class NUCLEAR_OT_xsheet_toggle(bpy.types.Operator):
-    # T4 — Ctrl+click a cell to toggle its exposure (drawing): create a blank keyframe if the
-    # cell is empty, delete it if a keyframe is there. Works per clicked layer+frame via the
-    # data API (mode-independent), with undo.
+    # T4 — flip a cell's exposure (drawing): create a blank keyframe if the cell is empty,
+    # delete it if a keyframe is there. Works per clicked layer+frame via the data API
+    # (mode-independent), with undo.
+    #
+    # T6 — no longer bound to Ctrl+click: exposure now lives on F6 (add) and F7 (delete), which
+    # are unambiguous when fired from the viewport where the artist cannot see the cell. Kept
+    # registered because it is still the one operator that flips a cell either way, and it is
+    # still reachable from search and rebindable by anyone who wants the old gesture back.
     bl_idname = "nuclear.xsheet_toggle"
     bl_label = "Toggle Exposure"
     bl_options = {'REGISTER', 'UNDO'}
@@ -781,6 +871,106 @@ class NUCLEAR_OT_xsheet_toggle(bpy.types.Operator):
         except Exception:
             pass
         context.scene.frame_current = f
+        ob.data.update_tag()
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class NUCLEAR_OT_xsheet_key_add(bpy.types.Operator):
+    """Expose a blank drawing on the target cell (F6).
+
+    The keyboard half of what Ctrl+click used to toggle, split in two so each key does one
+    thing: F6 only ever creates, F7 only ever deletes. A toggle is ambiguous the moment the
+    artist is not looking at the cell — which is the case whenever the shortcut is fired from
+    the viewport — and "I pressed add and it deleted" is not a mistake worth allowing.
+    """
+    bl_idname = "nuclear.xsheet_key_add"
+    bl_label = "Add Drawing"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _xsheet_key_poll(context)
+
+    def invoke(self, context, event):
+        return self._run(context, event)
+
+    def execute(self, context):
+        # Reachable from search/menu, where there is no event: falls back to the playhead.
+        return self._run(context, None)
+
+    def _run(self, context, event):
+        ob = context.active_object
+        layer, f = _xsheet_key_target(context, event)
+        if layer is None:
+            self.report({'WARNING'}, "Nenhuma camada ativa")
+            return {'CANCELLED'}
+        if layer.lock:
+            self.report({'WARNING'}, "Camada travada: %s" % layer.name)
+            return {'CANCELLED'}
+        if any(fr.frame_number == f for fr in layer.frames):
+            # Not a failure: the artist asked for a drawing here and there already is one.
+            # Saying so beats both a silent no-op and clobbering the drawing that exists.
+            self.report({'INFO'}, "Já há desenho em %d (%s)" % (f, layer.name))
+            return {'CANCELLED'}
+        try:
+            layer.frames.new(f)
+        except Exception as exc:
+            self.report({'WARNING'}, "Exposição: {:s}".format(str(exc)))
+            return {'CANCELLED'}
+        try:
+            ob.data.layers.active = layer
+        except Exception:
+            pass
+        context.scene.frame_current = f
+        ob.data.update_tag()
+        if context.area:
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class NUCLEAR_OT_xsheet_key_remove(bpy.types.Operator):
+    """Delete the drawing on the target cell, or the whole selection (F7).
+
+    Acts on the selection when there is one, for the same reason Ctrl+click did: what is
+    highlighted is what the artist means. With nothing selected it falls back to the same
+    target F6 uses, so the two keys are exact opposites of each other.
+    """
+    bl_idname = "nuclear.xsheet_key_remove"
+    bl_label = "Remove Drawing"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _xsheet_key_poll(context)
+
+    def invoke(self, context, event):
+        return self._run(context, event)
+
+    def execute(self, context):
+        return self._run(context, None)
+
+    def _run(self, context, event):
+        ob = context.active_object
+        if _xsheet_live_selection(ob):
+            return _xsheet_delete_selection(self, context)
+        layer, f = _xsheet_key_target(context, event)
+        if layer is None:
+            self.report({'WARNING'}, "Nenhuma camada ativa")
+            return {'CANCELLED'}
+        if layer.lock:
+            self.report({'WARNING'}, "Camada travada: %s" % layer.name)
+            return {'CANCELLED'}
+        if not any(fr.frame_number == f for fr in layer.frames):
+            self.report({'INFO'}, "Nada a excluir em %d (%s)" % (f, layer.name))
+            return {'CANCELLED'}
+        try:
+            layer.frames.remove(f)
+        except Exception as exc:
+            self.report({'WARNING'}, "Exposição: {:s}".format(str(exc)))
+            return {'CANCELLED'}
+        _xsheet_selected.discard((layer.name, f))
         ob.data.update_tag()
         if context.area:
             context.area.tag_redraw()
@@ -878,6 +1068,109 @@ class NUCLEAR_OT_xsheet_drag(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
 
+class NUCLEAR_OT_xsheet_duplicate_move(bpy.types.Operator):
+    """Duplicate the selected cells and move the copies with the mouse (Ctrl+D).
+
+    The keyboard route to what Shift+Alt+drag does with the mouse, and it follows the same
+    convention as the native `action.duplicate_move` it shares a shortcut with: the copies are
+    made and immediately handed to a move, so a click places them and Esc throws them away.
+
+    It reuses `_xsheet_drag`, so the ghost-cell preview the draw handler already knows how to
+    render comes for free. The confirm event differs from the drag operator's, though: nothing
+    is being held down here, so it is the mouse PRESS that commits, not the release.
+    """
+    bl_idname = "nuclear.xsheet_duplicate_move"
+    bl_label = "Duplicate Cells"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        # Mouse-driven placement needs the Xsheet under the cursor to map movement to frames,
+        # so unlike F6/F7 this one stays inside the timeline.
+        return _xsheet_poll(context)
+
+    def invoke(self, context, event):
+        global _xsheet_drag
+        ob = context.active_object
+        live = _xsheet_live_selection(ob)
+        anchor = None
+        hit = _xsheet_hit(context, event)
+        if hit and hit[0] == 'frame':
+            anchor = hit[1]
+        if not live:
+            # Nothing highlighted: fall back to the cell under the cursor, so Ctrl+D still does
+            # something sensible when the artist has not selected anything first.
+            layer, f = _xsheet_key_target(context, event)
+            if layer is None or not any(fr.frame_number == f for fr in layer.frames):
+                self.report({'WARNING'}, "Nada selecionado")
+                return {'CANCELLED'}
+            _xsheet_selected.clear()
+            _xsheet_selected.add((layer.name, f))
+            live = {layer.name: [f]}
+            anchor = f
+        cells = [(lname, fn) for lname, frames in live.items() for fn in frames]
+        locked = sorted({lname for lname, _ in cells
+                         if ob.data.layers.get(lname) is not None
+                         and ob.data.layers[lname].lock})
+        if locked:
+            self.report({'WARNING'}, "Camadas travadas: %s" % ", ".join(locked))
+            return {'CANCELLED'}
+        if anchor is None:
+            # Cursor off the cell grid — anchor on the block itself so the delta still reads
+            # as "how far from where it started".
+            anchor = min(fn for _, fn in cells)
+        row = next((i for i, lyr in enumerate(ob.data.layers)
+                    if lyr.name == cells[0][0]), 0)
+        _xsheet_drag = {"row": row, "from": anchor, "to": anchor, "dup": True, "cells": cells}
+        if context.area:
+            context.area.tag_redraw()
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        global _xsheet_drag
+        if _xsheet_drag is None:
+            return {'CANCELLED'}
+        if event.type == 'MOUSEMOVE':
+            hit = _xsheet_hit(context, event)
+            if hit and hit[0] == 'frame':
+                _xsheet_drag["to"] = hit[1]
+                if context.area:
+                    context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if ((event.type == 'LEFTMOUSE' and event.value == 'PRESS')
+                or (event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS')):
+            ob = context.active_object
+            d = _xsheet_drag
+            _xsheet_drag = None
+            delta = d["to"] - d["from"]
+            if not delta:
+                # A copy on top of its own source would be refused anyway; say why rather than
+                # leave the artist wondering whether the key registered.
+                self.report({'INFO'}, "Mova o bloco antes de confirmar")
+                if context.area:
+                    context.area.tag_redraw()
+                return {'CANCELLED'}
+            moved, err = _xsheet_shift_cells(ob, d["cells"], delta, True)
+            if err:
+                self.report({'WARNING'}, "Exposição: {:s}".format(err))
+            if moved:
+                # Leave the copies selected, not the originals: they are what the next gesture
+                # is about, exactly as after a Shift+Alt+drag.
+                _xsheet_selected.clear()
+                _xsheet_selected.update(moved)
+                context.scene.frame_current = d["to"]
+            if context.area:
+                context.area.tag_redraw()
+            return {'FINISHED'} if moved else {'CANCELLED'}
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
+            _xsheet_drag = None
+            if context.area:
+                context.area.tag_redraw()
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+
 class NUCLEAR_OT_xsheet_box_select(bpy.types.Operator):
     # T5.2 — B then click-drag a rectangle to select every keyframe cell inside it, across
     # layers (Blender's own box-select convention, so the muscle memory carries over). Hold
@@ -927,8 +1220,9 @@ class NUCLEAR_OT_xsheet_box_select(bpy.types.Operator):
 
 
 class NUCLEAR_OT_xsheet_delete_selected(bpy.types.Operator):
-    # T5.2 — X / Delete removes every selected cell at once (the block delete an Xsheet needs;
-    # Ctrl+click still handles the single-cell create/delete).
+    # T5.2 — X / Delete removes every selected cell at once (the block delete an Xsheet needs).
+    # F7 reaches the same code when there is a selection, so the two keys agree; the single-cell
+    # create/delete lives on F6/F7 with nothing selected.
     bl_idname = "nuclear.xsheet_delete_selected"
     bl_label = "Delete Selected Cells"
     bl_options = {'REGISTER', 'UNDO'}
@@ -948,7 +1242,10 @@ class NUCLEAR_OT_xsheet_delete_selected(bpy.types.Operator):
 _CLASSES = (
     NUCLEAR_OT_xsheet_click,
     NUCLEAR_OT_xsheet_toggle,
+    NUCLEAR_OT_xsheet_key_add,
+    NUCLEAR_OT_xsheet_key_remove,
     NUCLEAR_OT_xsheet_drag,
+    NUCLEAR_OT_xsheet_duplicate_move,
     NUCLEAR_OT_xsheet_box_select,
     NUCLEAR_OT_xsheet_delete_selected,
 )
