@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 21,
-  "version": "1.7.8",
+  "build": 22,
+  "version": "1.8.0",
   "stage": "Beta",
-  "version_string": "Nuclear 1.7.8 (Beta)",
+  "version_string": "Nuclear 1.8.0 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "ba33cbf5c88eb2198e81cff4696894754a721aee9384ee5822d20eba29f251a2",
-  "size": 355372074,
+  "sha256": "7a0f0cf737ca0eb7bd7b05eff043adedda5f5b5a608a7e00addaea3481859f5f",
+  "size": 357920858,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Aba Storyboard no Properties: a coluna de planos do storyboard fica numa aba propria, e o add-on Storyboard & Animatic passa a vir dentro do Nuclear"
+  "notes": "Opacidade por objeto e por peg: fadear o Master Peg fadeia o personagem inteiro, com coluna de opacidade no Outliner e controle no painel do peg. O Xsheet (timeline Toon Boom) passa a valer nos tres templates, agora com selecao de celulas — mover, duplicar e apagar em bloco. Duplo clique em .nuc/.blend volta a abrir no Nuclear, e a atualizacao nao mexe mais no atalho de outro programa."
 }

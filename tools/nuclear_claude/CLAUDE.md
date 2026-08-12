@@ -482,8 +482,66 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-08-12.
 
-- **PENDENTE (na working tree, NÃO commitado, NÃO publicado) — o Nuclear reivindica o
-  duplo-clique, e não só se oferece (2026-08-12).** Sintoma relatado: "o atalho do Nuclear está
+- **Nuclear 1.8.0 (Beta) — `NUCLEAR_BUILD = 22` — PUBLICADO (2026-08-12).** MINOR a partir da
+  branch `Nuclear` (HEAD `1297c0ac991e`, pushado ANTES do build; o binário carimba esse mesmo
+  hash). sha256 `7a0f0cf737ca0eb7bd7b05eff043adedda5f5b5a608a7e00addaea3481859f5f`,
+  **357.920.858 bytes**; backup da b21 = `nuclear.zip.bak-pre-1.8.0` (o `bak-pre-1.7.7` saiu pela
+  política de dois). **Três frentes.**
+  (1) **Opacidade por objeto e por peg, herdada pela cadeia** (`5039df57423`, `7acd0899a3d`,
+  `d96b892d61b`): fadear o Master Peg fadeia tudo que está pendurado nele, que é o controle de
+  "personagem inteiro" que o fluxo cut-out espera. `Object.opacity` ocupa os bytes de `_pad2` (o
+  struct não cresce) e vale no **render**, não só no viewport; a coluna de opacidade no Outliner é
+  um NumSlider vizinho do cadeado; o painel Active Peg ganhou o slider e um leitor do valor
+  resolvido, que só aparece quando um ancestral está fadeando o peg ativo — sem ele o rigger lê
+  1.00 numa mão cujo Master está em 0.2 e não tem onde olhar. Versionamento em (500, 123): sem a
+  migração, arquivo anterior abriria com o elenco inteiro invisível.
+  ⚠️ A armadilha que custou o segundo commit: a Follow Peg dobrava a opacidade do peg **dentro**
+  de `ob->opacity` com `*=`, e a cópia avaliada não é refrescada quando só parâmetros mudam — o
+  multiply caía no produto da avaliação anterior e **compunha**. Cada toque escurecia mais (0.5,
+  0.5×0.8, …), nunca clareava de volta, e no 0 ficava preso, porque zero é absorvente. Ler o valor
+  do objeto original também não serve (a opacidade animada do próprio objeto é escrita na cópia
+  avaliada). A saída foi campo próprio `ObjectRuntime::peg_opacity`, que a constraint **ATRIBUI**
+  em vez de multiplicar — atribuição é idempotente por quantas vezes a avaliação rodar.
+  ⚠️ **Limitação conhecida, publicada assim:** ao abrir um arquivo salvo a herança fica velha até
+  algo taggar o rig (`world_opacity` é runtime mas mora no DNA e volta do disco). O
+  `tools/nuclear_rig/selftest_opacity.py` reprova essa única checagem **de propósito** — ela se
+  chama `BUG:`. As outras 31 passam neste binário; falha ali é o esperado, não regressão.
+  ⚠️ Ao conferir a feature no binário, pergunte ao `bl_rna.properties`: `hasattr(bpy.types.Object,
+  "opacity")` devolve **False** mesmo com a propriedade registrada — falso negativo que quase
+  reprovou uma build boa.
+  (2) **O Xsheet (timeline Toon Boom) passa a valer nos três app templates** (`32d77b6f756`):
+  vivia inline no template `Nuclear` como Seam 7, então trocar para `2D_Animation` ou
+  `Storyboarding` devolvia o artista ao dope sheet nativo. Virou `scripts/modules/nuclear_xsheet.py`
+  (auto-contido: bpy, gpu, blf), trazido do fork Nuclear-Ditivado, que já tinha refatorado e somado
+  **seleção de células** — box select, mover/duplicar bloco, apagar seleção (camada travada é
+  recusada com aviso, não pulada em silêncio). Só a timeline viaja: a fileira de transporte (+KF/
+  -KF, play, campos de frame) continua sendo override de header do template `Nuclear`, para que os
+  outros dois mantenham header e footer nativos em vez de perder o transporte.
+  `tools/nuclear_xsheet_selection_test.py`: 28/28 neste binário.
+  (3) **O Nuclear reivindica o duplo-clique, e não só se oferece** (`b5c521b9151`, `fb4850aa5f3`,
+  detalhado no item abaixo): instaladores reivindicam sem perguntar, updater só conserta padrão
+  ausente ou morto. Junto vai o conserto do updater que **sequestrava launcher alheio**
+  (`b390e71ca49`): `Exec=dolphin %u` tem dirname vazio, e o `realpath` resolvia isso contra o
+  diretório de trabalho corrente — que fica dentro da base enquanto o Nuclear roda —, então todo
+  `.desktop` de terceiro com comando nu era reescrito para apontar ao Nuclear. Agora exige caminho
+  absoluto e compara ancorado em fronteira de path (`<base>-old` não conta mais). No mesmo commit,
+  a reescrita parou de descartar o prefixo `env NUCLEAR_TELEMETRY_OFF=1` — um update religava a
+  telemetria em silêncio numa máquina que tinha optado por sair.
+  ⚠️ **O publish desta release saiu em UMA fase, por engano** (`scp` do zip e do manifesto direto
+  por cima, em vez de `.new` + `mv` duplo): houve uma janela de ~30s com zip novo e manifesto
+  velho, e o backup da b21 **não** foi criado na hora — foi restaurado depois a partir da cópia
+  local de `build_nuclear_rel177`, com sha256 conferido contra o que estava publicado. Sem estrago
+  permanente, mas é exatamente o risco que as duas fases existem para eliminar.
+  ✅ Compilada no repo principal com o build dir `build_nuclear_2d` (sem sessão paralela viva
+  nesta máquina, conferido antes de começar); smoke gate 2D ALL PASS.
+  ⚠️ **Ficou de FORA da b22:** `e7fdc17289a` (Xsheet: exposição em F6/F7, duplicação em Ctrl+D,
+  Ctrl+click desligado) foi pushado às 16:01 de 2026-08-12, **depois** do bump `1297c0ac991e` e
+  com o build já rodando. Quem atualizar para a 1.8.0 continua com o Ctrl+click da célula; os
+  atalhos novos saem na próxima release. É a versão da corrida "pushe antes de buildar": o commit
+  de outra pessoa pode entrar na janela do build, e o que vale é o hash carimbado no binário.
+
+- **Entregue NA 1.8.0 (era o item pendente de 2026-08-12) — o Nuclear reivindica o
+  duplo-clique, e não só se oferece.** Sintoma relatado: "o atalho do Nuclear está
   em outros aplicativos". O `.desktop` estava impecável — `Categories=Graphics;2DGraphics;`,
   `desktop-file-validate` limpo, e o `kbuildsycoca6 --menutest` confirma o item em **Gráficos**.
   Quem estava errado era o **`mimeapps.list`**: escrever `MimeType=` apenas OFERECE o app; quem
@@ -510,7 +568,6 @@ Atualizado em 2026-08-12.
   preservada, arquivo criado do zero, idempotência, poda de órfã, Exec entre aspas, entrada
   zumbi, no-op sem Nuclear utilizável, seção faltante) + fallback shell dos dois instaladores
   exercitado nos dois ramos.
-  ⚠️ **Falta commit + release** para chegar às máquinas em produção.
 
 - **Nuclear 1.7.8 (Beta) — `NUCLEAR_BUILD = 21` — PUBLICADO (2026-08-11).** MINOR a partir da
   branch `Nuclear` (HEAD `4b5b83d220fa`, já em `origin/Nuclear` antes do build; o binário
