@@ -51,9 +51,9 @@
  * `tools/nuclear_release.py` reads these defines to stamp the shipped
  * `nuclear_version.json` and the server manifest, so edit them here and nowhere else. */
 #define NUCLEAR_VERSION_MAJOR 1
-#define NUCLEAR_VERSION_MINOR 7
-#define NUCLEAR_VERSION_PATCH 8
-#define NUCLEAR_BUILD 21
+#define NUCLEAR_VERSION_MINOR 8
+#define NUCLEAR_VERSION_PATCH 0
+#define NUCLEAR_BUILD 22
 /* Release stage suffix shown to users, e.g. "Beta"/"RC"/"Stable". */
 #define NUCLEAR_VERSION_STAGE "Beta"
 
