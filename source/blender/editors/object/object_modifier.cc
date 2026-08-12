@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <limits>
 
+#include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_array_utils.hh"
 #include "DNA_constraint_types.h"
@@ -80,6 +81,7 @@
 #include "BKE_mesh_runtime.hh"
 #include "BKE_modifier.hh"
 #include "BKE_multires.hh"
+#include "BKE_nla.hh"
 #include "BKE_object.hh"
 #include "BKE_object_deform.h"
 #include "BKE_object_types.hh"
@@ -112,7 +114,9 @@
 #include "ED_object_vgroup.hh"
 #include "ED_screen.hh"
 
+#include "ANIM_action.hh"
 #include "ANIM_bone_collections.hh"
+#include "ANIM_fcurve.hh"
 
 #include "GEO_merge_layers.hh"
 
@@ -4076,6 +4080,84 @@ static bool greasepencil_curve_reset_poll(bContext *C)
          BKE_modifiers_findby_type(ob, eModifierType_GreasePencilCurve) != nullptr;
 }
 
+/* Which of a control point's three vectors a reset touched: handle_left, the knot, handle_right.
+ * Matches the layout of both `BezTriple::vec` and the stored rest pose. */
+static const char *curve_reset_vec_rna_name(const int vec_index)
+{
+  switch (vec_index) {
+    case 0:
+      return "handle_left";
+    case 2:
+      return "handle_right";
+    default:
+      return "co";
+  }
+}
+
+/* Send the channels of the reset control points back to the rest value at the current frame, and
+ * return how many were keyed.
+ *
+ * Writing `bezt` alone is a silent no-op on a curve whose shape is keyed: the next evaluation
+ * replays the F-Curve over it and the deformed shape comes straight back - on the next frame
+ * change, and again after save/reload. Measured on 1.8.1/b23, a curve posed 0.596 away from rest:
+ * 0.000 right after "Reset All", 0.596 again after stepping one frame, 0.596 again after reopening
+ * the file. The artist sees the reset work and then undo itself. The shape is keyed on the curve's
+ * DATA-block (the gizmo keys the whole curve through `keyframe_whole_curve` whenever Auto Keying
+ * is on), which is also why `curve_ob->adt` looks unanimated while 27 channels are driving a
+ * three-point curve.
+ *
+ * Unlike "Fit Curve to Drawing", which redefines the REST shape and therefore shifts every key by
+ * the same delta, a reset is a POSE operation: it touches the current frame only and leaves the
+ * animation on the other frames alone. On a channel with no key at this frame that means adding
+ * one - without it the reset would evaluate straight back to the interpolated pose. */
+static int curve_reset_key_channels(const Scene *scene,
+                                    Object *curve_ob,
+                                    const float *rest,
+                                    const blender::Span<int2> reset_channels)
+{
+  using namespace blender::animrig;
+
+  Curve *cu = static_cast<Curve *>(curve_ob->data);
+  AnimData *adt = BKE_animdata_from_id(&cu->id);
+  if (adt == nullptr || adt->action == nullptr || reset_channels.is_empty()) {
+    return 0;
+  }
+
+  const float frame = BKE_nla_tweakedit_remap(
+      adt, BKE_scene_frame_get(scene), NLATIME_CONVERT_UNMAP);
+  const KeyframeSettings settings = get_keyframe_settings(true);
+
+  int keyed = 0;
+  for (const int2 &channel : reset_channels) {
+    const int point_index = channel[0];
+    const int vec_index = channel[1];
+    /* The reset walks the first spline (`nurbs->first`), so the path is always `splines[0]`. */
+    char rna_path[64];
+    SNPRINTF(rna_path,
+             "splines[0].bezier_points[%d].%s",
+             point_index,
+             curve_reset_vec_rna_name(vec_index));
+    const float *value = rest + point_index * 9 + vec_index * 3;
+    for (int axis = 0; axis < 3; axis++) {
+      FCurve *fcu = fcurve_find_in_action_slot(adt->action, adt->slot_handle, {rna_path, axis});
+      if (fcu == nullptr) {
+        continue;
+      }
+      if (insert_vert_fcurve(fcu, {frame, value[axis]}, settings, INSERTKEY_NOFLAGS) ==
+          SingleKeyingResult::SUCCESS)
+      {
+        keyed++;
+      }
+    }
+  }
+
+  if (keyed > 0) {
+    DEG_id_tag_update(&adt->action->id, ID_RECALC_ANIMATION);
+    DEG_id_tag_update(&cu->id, ID_RECALC_ANIMATION);
+  }
+  return keyed;
+}
+
 static wmOperatorStatus greasepencil_curve_reset_exec(bContext *C, wmOperator *op)
 {
   const int mode = RNA_enum_get(op->ptr, "mode");
@@ -4107,30 +4189,33 @@ static wmOperatorStatus greasepencil_curve_reset_exec(bContext *C, wmOperator *o
 
   const int n = std::min(nu->pntsu, rest_points);
   int reset_num = 0;
+  /* (point, vector) of everything sent back to rest, so the keyed channels can follow exactly the
+   * same set - a "Selected" reset must not key the points it left posed. */
+  blender::Vector<int2> reset_channels;
   for (int i = 0; i < n; i++) {
     BezTriple &b = nu->bezt[i];
     const float *r = rest + i * 9;
-    if (mode == CURVE_RESET_ALL) {
+    const bool whole_point = (mode == CURVE_RESET_ALL) || (b.f2 & SELECT);
+    if (whole_point) {
+      /* Knot selected (or resetting everything): the whole point, anchor and both handles. */
       copy_v3_v3(b.vec[0], r + 0);
       copy_v3_v3(b.vec[1], r + 3);
       copy_v3_v3(b.vec[2], r + 6);
-      reset_num++;
-    }
-    else if (b.f2 & SELECT) {
-      /* Knot selected: reset the whole point (anchor + both handles). */
-      copy_v3_v3(b.vec[0], r + 0);
-      copy_v3_v3(b.vec[1], r + 3);
-      copy_v3_v3(b.vec[2], r + 6);
+      reset_channels.append({i, 0});
+      reset_channels.append({i, 1});
+      reset_channels.append({i, 2});
       reset_num++;
     }
     else {
       /* Otherwise reset only the individually selected handle(s). */
       if (b.f1 & SELECT) {
         copy_v3_v3(b.vec[0], r + 0);
+        reset_channels.append({i, 0});
         reset_num++;
       }
       if (b.f3 & SELECT) {
         copy_v3_v3(b.vec[2], r + 6);
+        reset_channels.append({i, 2});
         reset_num++;
       }
     }
@@ -4142,6 +4227,19 @@ static wmOperatorStatus greasepencil_curve_reset_exec(bContext *C, wmOperator *o
   }
   if (reset_num == 0) {
     return OPERATOR_CANCELLED;
+  }
+
+  /* A keyed shape would replay over the points written above, so carry the reset into the
+   * channels as well. Silent until now: the operator reported FINISHED either way. */
+  const int keyed = curve_reset_key_channels(
+      CTX_data_scene(C), curve_ob, rest, reset_channels.as_span());
+  if (keyed > 0) {
+    BKE_reportf(op->reports,
+                RPT_INFO,
+                "Reset %d control point(s), keyed on frame %d (the curve's shape is animated)",
+                reset_num,
+                CTX_data_scene(C)->r.cfra);
+    WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME, &cu->id);
   }
 
   /* Tag the curve DATA (not just the object): in Edit Mode this is what rebuilds the cage batch
