@@ -480,7 +480,37 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-08-11.
+Atualizado em 2026-08-12.
+
+- **PENDENTE (na working tree, NÃO commitado, NÃO publicado) — o Nuclear reivindica o
+  duplo-clique, e não só se oferece (2026-08-12).** Sintoma relatado: "o atalho do Nuclear está
+  em outros aplicativos". O `.desktop` estava impecável — `Categories=Graphics;2DGraphics;`,
+  `desktop-file-validate` limpo, e o `kbuildsycoca6 --menutest` confirma o item em **Gráficos**.
+  Quem estava errado era o **`mimeapps.list`**: escrever `MimeType=` apenas OFERECE o app; quem
+  decide o duplo-clique é a seção `[Default Applications]`, e todo o resto é rebaixado à gaveta
+  "Outros aplicativos". Nenhum dos três pontos que escrevem o lançador (`instalarNuclear.sh`,
+  `instalarNuclear-wizard.sh`, `nuclear_update.py`) chamava `xdg-mime default`, então o padrão
+  continuava sendo o que a máquina já tivesse — frequentemente uma entrada descartável que o
+  **diálogo "Abrir com" do KDE grava sozinho** (`<nome>-N.desktop`, `NoDisplay=true`) apontando
+  para um binário que não existe mais; aí o `.nuc`/`.blend` não abre em **nada**. Conserto em
+  duas alturas, com políticas deliberadamente diferentes: os **instaladores** reivindicam sem
+  perguntar (instalar é ato explícito do usuário) via `xdg-mime default` com fallback inline
+  para máquina sem `xdg-utils`; o **updater** (`_claim_file_associations`, chamado do
+  `_reconcile_desktop` e do `_run_apply`) é conservador — só reclama padrão **ausente ou
+  quebrado**, então escolher outro app para `.blend` continua valendo. ⚠️ **As duas decisões
+  usam critérios propositalmente diferentes**, e misturá-las é como se estraga um `mimeapps.list`
+  alheio: **podar** exige o `.desktop` fisicamente ausente (não há como errar), enquanto o teste
+  mais fraco "o Exec parece morto" fica restrito a decidir se o Nuclear pode reivindicar o
+  padrão — ali um falso negativo custa uma reivindicação, nunca a associação de outro app. A
+  primeira versão podava pelo teste fraco e apagou uma associação boa na hora do teste (o
+  `Exec` do handler tinha o caminho **entre aspas**, e o `"` era lido como parte do caminho).
+  ✅ **Sem a lacuna estrutural de sempre:** como roda no `register()` (startup), a máquina se
+  conserta na PRIMEIRA abertura depois de receber a build — não precisa de duas releases.
+  Testes: 12 checagens headless em HOME falso (padrão morto reclamado, escolha válida
+  preservada, arquivo criado do zero, idempotência, poda de órfã, Exec entre aspas, entrada
+  zumbi, no-op sem Nuclear utilizável, seção faltante) + fallback shell dos dois instaladores
+  exercitado nos dois ramos.
+  ⚠️ **Falta commit + release** para chegar às máquinas em produção.
 
 - **Nuclear 1.7.8 (Beta) — `NUCLEAR_BUILD = 21` — PUBLICADO (2026-08-11).** MINOR a partir da
   branch `Nuclear` (HEAD `4b5b83d220fa`, já em `origin/Nuclear` antes do build; o binário
