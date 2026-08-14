@@ -15,7 +15,7 @@ de `translations.py`, seguindo o idioma configurado no próprio Nuclear.
 bl_info = {
     "name": "Storyboard & Animatic",
     "author": "Rapadura Atômica",
-    "version": (0, 15, 0),
+    "version": (0, 17, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar (N) > Storyboard",
     "description": "Storyboard por take, áudio de diálogo e animatic — sem geração automática",
@@ -25,13 +25,15 @@ bl_info = {
 if "bpy" in locals():  # recarga do add-on: reimporta os submódulos
     import importlib
     from . import (audioedit, audiotl, autoswitch, bgguard, core, dragdrop, gp,
-                   ops, ops_approval, ops_canvas, ops_export, ops_timeline,
-                   overlay, props, state, sync, takefile, thumbs, timelineui,
-                   timingtools, translations, ui, workspace)
+                   ops, ops_approval, ops_canvas, ops_export, ops_takecopy,
+                   ops_timeline, overlay, props, state, strokecopy, sync,
+                   takefile, thumbs, timelineui, timingtools, translations, ui,
+                   workspace)
     for _mod in (core, state, gp, audiotl, audioedit, timingtools, translations,
                  props, sync, thumbs, workspace, takefile, autoswitch, ops,
-                 ops_canvas, ops_timeline, ops_export, ops_approval, dragdrop,
-                 bgguard, overlay, timelineui, ui):
+                 ops_canvas, ops_timeline, ops_export, ops_approval,
+                 ops_takecopy, strokecopy, dragdrop, bgguard, overlay,
+                 timelineui, ui):
         importlib.reload(_mod)
 
 try:
@@ -43,13 +45,14 @@ except ModuleNotFoundError:
     MODULES = ()
 else:
     from . import (audioedit, bgguard, boardpanel, dragdrop, ops, ops_approval,
-                   ops_canvas, ops_export, ops_timeline, overlay, props,
-                   takefile, thumbs, timelineui, translations, ui)
+                   ops_canvas, ops_export, ops_takecopy, ops_timeline, overlay,
+                   props, strokecopy, takefile, thumbs, timelineui,
+                   translations, ui)
 
     # translations primeiro: os rótulos das classes já registram traduzidos.
     MODULES = (translations, props, ops, ops_canvas, ops_timeline, ops_export,
-               ops_approval, dragdrop, takefile, bgguard, audioedit, thumbs,
-               overlay, timelineui, ui, boardpanel)
+               ops_approval, ops_takecopy, strokecopy, dragdrop, takefile,
+               bgguard, audioedit, thumbs, overlay, timelineui, ui, boardpanel)
 
 
 def register():

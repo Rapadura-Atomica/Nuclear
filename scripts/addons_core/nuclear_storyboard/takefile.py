@@ -130,6 +130,9 @@ def open_take(store, project_take, episode, scene_obj) -> Path:
         bpy.ops.wm.read_homefile(use_empty=True, load_ui=False)
 
     scene = bpy.context.scene
+    # De quem o ARQUIVO diz ser. Um `.nuc` duplicado (ou adotado do disco) traz
+    # o carimbo de quem o gravou, e não o do take que está sendo aberto.
+    carimbo = scene.get(TAKE_ID_KEY)
     ob = gp.ensure_take_object(scene, store.project, project_take, store.library)
     stamp_scene(scene, store, project_take)
     # O `load_post` roda DENTRO do `open_mainfile` acima e pode ter atrelado a
@@ -159,7 +162,11 @@ def open_take(store, project_take, episode, scene_obj) -> Path:
     # arquivo tem de keyframe é arte, o timing quem manda é o índice.
     refresh_take_view(scene, store, project_take, capture=False)
 
-    if not path.is_file():
+    # Grava quando o arquivo ainda não existe (take novo) e também quando ele
+    # pertencia a OUTRO take: um `.nuc` duplicado abre carimbado com o id do
+    # original, e enquanto esse carimbo estiver no disco, abri-lo por fora
+    # atrela a sessão ao take de origem — desenhar aqui gravaria lá.
+    if not path.is_file() or carimbo != project_take.id:
         bpy.ops.wm.save_as_mainfile(filepath=str(path))
 
     # Carregar um arquivo recria o WindowManager, e com ele os índices da UI

@@ -166,14 +166,98 @@ def forget() -> None:
     _LOADED.clear()
 
 
+# ---------------------------------------------------------------------------
+# Prévia de uma imagem qualquer
+#
+# Coleção à parte da do board: lá a chave é o id do take, e uma limpeza de uma
+# esvaziaria a outra. Esta serve à imagem que o artista anexa a um prop — ver o
+# que se está mandando antes de abrir uma pendência no estúdio.
+# ---------------------------------------------------------------------------
+
+#: Extensões que o Blender carrega como preview. Arquivo fora da lista nem é
+#: tentado: o `load` não reclama na hora, e o quadrado sairia vazio na tela.
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp",
+                  ".tga", ".exr", ".psd"}
+
+_IMAGES = None
+_IMAGES_LOADED = {}
+
+
+def image_previews():
+    global _IMAGES
+    if _IMAGES is None:
+        import bpy.utils.previews
+        _IMAGES = bpy.utils.previews.new()
+    return _IMAGES
+
+
+def load_image_preview(path):
+    """Prévia carregada deste arquivo de imagem, ou None.
+
+    Recarrega quando o arquivo muda de data, pelo mesmo motivo da miniatura do
+    take: o Blender guarda o pixel, e trocar a imagem escolhida mostraria a
+    anterior.
+
+    Separada de `image_icon` porque `icon_id` é 0 em background — ícone é coisa
+    de interface — e sem esta função não haveria como um teste headless dizer
+    se a prévia foi lida ou se o arquivo foi recusado.
+    """
+    caminho = Path(path)
+    if caminho.suffix.lower() not in IMAGE_SUFFIXES:
+        return None
+    try:
+        carimbo = caminho.stat().st_mtime_ns
+    except OSError:
+        return None
+
+    chave = str(caminho)
+    pcoll = image_previews()
+    mudou = _IMAGES_LOADED.get(chave) not in (None, carimbo)
+    if mudou and chave in pcoll:
+        del pcoll[chave]
+    _IMAGES_LOADED[chave] = carimbo
+
+    if chave not in pcoll:
+        try:
+            # `force_reload` porque tirar da coleção NÃO basta: o Blender guarda
+            # o pixel num cache global chaveado pelo caminho, e recarregar o
+            # mesmo arquivo devolvia a imagem anterior — o artista trocaria a
+            # referência e continuaria vendo a que descartou.
+            pcoll.load(chave, chave, "IMAGE", force_reload=mudou)
+        except KeyError:
+            return None
+
+    prévia = pcoll[chave]
+    # `load` não lê o arquivo na hora — ele só é aberto quando alguém pede o
+    # tamanho ou o pixel. Um arquivo que só TEM cara de imagem (o print salvo
+    # com a extensão errada, o `.png` que na verdade é texto) passa pelo load e
+    # viraria um quadrado vazio na tela, com jeito de "ainda carregando".
+    if tuple(prévia.image_size) == (0, 0):
+        del pcoll[chave]
+        _IMAGES_LOADED.pop(chave, None)
+        return None
+    return prévia
+
+
+def image_icon(path) -> int:
+    """Ícone de um arquivo de imagem do disco, ou 0 quando não dá para mostrar."""
+    prévia = load_image_preview(path)
+    return prévia.icon_id if prévia is not None else 0
+
+
 def register():
     previews()
 
 
 def unregister():
-    global _PREVIEWS
+    global _PREVIEWS, _IMAGES
+    import bpy.utils.previews
+
     if _PREVIEWS is not None:
-        import bpy.utils.previews
         bpy.utils.previews.remove(_PREVIEWS)
         _PREVIEWS = None
+    if _IMAGES is not None:
+        bpy.utils.previews.remove(_IMAGES)
+        _IMAGES = None
     _LOADED.clear()
+    _IMAGES_LOADED.clear()

@@ -19,6 +19,7 @@ preservando as exposições manuais já ajustadas.
 from __future__ import annotations
 
 import math
+import re
 from typing import List, Optional
 
 import bpy
@@ -346,6 +347,9 @@ def ensure_take_object(scene, project, take, library=None):
 
     data = ob.data
     _drop_duplicate_groups(data)
+    # Cópias de material deixadas por colagens antigas: a lista do take volta a
+    # ser a paleta do episódio, e não ela mais um punhado de repetições.
+    merge_duplicate_materials(ob)
     for name in (GROUP_BG, GROUP_CHARACTERS, GROUP_PROPS):
         _ensure_group(data, name)
 
@@ -360,6 +364,87 @@ def ensure_take_object(scene, project, take, library=None):
     for layer in data.layers:
         flatten_layer(layer)
     return ob
+
+
+#: `SB_LN_Joao.001` — o sufixo que o Blender põe quando o nome já está tomado.
+DUPLICATE_RE = re.compile(r"^(.*)\.\d{3}$")
+
+#: Ajustes que decidem se dois materiais de GP são o MESMO material. Cor e o que
+#: liga traço e preenchimento: dois materiais que pintam igual pintam igual.
+MATERIAL_FIELDS = ("color", "fill_color", "show_stroke", "show_fill", "mode",
+                   "stroke_style", "fill_style")
+
+
+def same_material(a, b) -> bool:
+    if a is None or b is None or a.grease_pencil is None or b.grease_pencil is None:
+        return False
+    for campo in MATERIAL_FIELDS:
+        va, vb = getattr(a.grease_pencil, campo, None), getattr(b.grease_pencil, campo, None)
+        if va is None or vb is None:
+            continue
+        # Enum vem como string, e string também tem `__len__`: sem separar os
+        # dois casos, comparar "SOLID" com "SOLID" tentaria subtrair letras.
+        if isinstance(va, str) or isinstance(vb, str):
+            if va != vb:
+                return False
+        elif hasattr(va, "__len__"):
+            if len(va) != len(vb) or any(abs(x - y) > 1e-4 for x, y in zip(va, vb)):
+                return False
+        elif va != vb:
+            return False
+    return True
+
+
+def merge_duplicate_materials(ob) -> int:
+    """Funde `X.001` em `X` quando os dois são o mesmo material. Devolve quantos.
+
+    Rastro do copiar/colar entre takes: o clipboard do Blender casa material por
+    `session_uid`, que morre ao trocar de arquivo, e cada colagem deixava uma
+    cópia do material na lista do objeto. O add-on já não cria essas cópias
+    (`strokecopy`), mas os boards que existem estão cheios delas — e uma lista de
+    materiais com quatro "SB_LN_Joao" é uma armadilha na hora de escolher a cor.
+
+    Só funde o que pinta IGUAL: dois materiais de mesmo nome-base com cores
+    diferentes são escolha do artista, e fundi-los repintaria o desenho dele.
+    """
+    data = ob.data
+    por_nome = {}
+    for i, slot in enumerate(data.materials):
+        if slot is not None:
+            por_nome.setdefault(slot.name, i)
+
+    remap = {}
+    for i, slot in enumerate(data.materials):
+        achado = DUPLICATE_RE.match(slot.name) if slot is not None else None
+        if achado is None:
+            continue
+        alvo = por_nome.get(achado.group(1))
+        if alvo is None or alvo == i or not same_material(data.materials[alvo], slot):
+            continue
+        remap[i] = alvo
+    if not remap:
+        return 0
+
+    # Índice final de cada slot: primeiro para onde ele foi fundido, depois
+    # descontando os que somem antes dele. Reapontar os traços ANTES de remover
+    # é o que impede o desenho de trocar de cor no meio da faxina.
+    mortos = sorted(remap)
+    total = len(data.materials)
+    depois = {i: i - sum(1 for m in mortos if m < i)
+              for i in range(total) if i not in remap}
+    final = {i: depois[remap.get(i, i)] for i in range(total)}
+
+    for layer in data.layers:
+        for frame in layer.frames:
+            drawing = frame.drawing
+            for stroke in drawing.strokes:
+                novo = final.get(stroke.material_index)
+                if novo is not None and novo != stroke.material_index:
+                    stroke.material_index = novo
+
+    for i in sorted(mortos, reverse=True):
+        data.materials.pop(index=i)
+    return len(mortos)
 
 
 def character_material_name(character) -> str:

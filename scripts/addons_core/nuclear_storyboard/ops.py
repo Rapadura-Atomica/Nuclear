@@ -483,20 +483,6 @@ class NSB_OT_add_scene(Operator):
         return {"FINISHED"}
 
 
-def free_take_code(scene) -> str:
-    """Próximo código de take livre na cena: T001, T002…
-
-    Conta a partir de quantos takes existem e só anda enquanto o código estiver
-    tomado — apagar o T002 e criar outro devolve "T002", e não um "T004" que
-    deixaria buraco na numeração do board.
-    """
-    usados = {tk.code for tk in scene.takes}
-    i = len(scene.takes) + 1
-    while f"T{i:03d}" in usados:
-        i += 1
-    return f"T{i:03d}"
-
-
 class NSB_OT_add_take(Operator):
     """Cria o take seguinte da cena. Sem diálogo: o código é a ordem dele.
 
@@ -518,7 +504,7 @@ class NSB_OT_add_take(Operator):
     def execute(self, context):
         store = state.require_store()
         sc = sync.current_scene(context)
-        store.add_take(sc, self.code or free_take_code(sc), self.name)
+        store.add_take(sc, self.code or store.free_take_code(sc), self.name)
         store.save()
         context.window_manager.nsb.take_index = len(sc.takes) - 1
         sync.sync_all(context)
@@ -1096,6 +1082,9 @@ PROP_SOURCE_LABEL = {
     "NONE": "nothing yet — the request waits for a picture",
 }
 
+#: Altura da prévia da imagem anexada ao prop, em alturas de ícone.
+PROP_PREVIEW_SCALE = 7.0
+
 
 class NSB_OT_add_prop(Operator):
     """Cadastra um prop na biblioteca do projeto.
@@ -1165,6 +1154,7 @@ class NSB_OT_add_prop(Operator):
         linha.label(text=_("Reference") + ": " + texto,
                     icon="IMAGE_DATA" if origem != "NONE" else "INFO")
         layout.prop(self, "reference")
+        self._draw_preview(layout)
 
         if self.temporary:
             linha = layout.row()
@@ -1181,6 +1171,37 @@ class NSB_OT_add_prop(Operator):
                     linha.label(text=_("this board is not linked to a project yet"),
                                 icon="ERROR")
         layout.prop(self, "notes")
+
+    def _draw_preview(self, layout):
+        """Mostra a imagem anexada antes de o prop virar pedido.
+
+        O que sai daqui vai para o estúdio como versão 1 de uma pendência —
+        alguém vai desenhar a partir dela. Escolher o arquivo errado (a foto do
+        lado, o print da pasta) só aparecia depois de enviado, e desfazer um
+        pedido custa a ida de volta a duas pessoas.
+        """
+        from . import thumbs
+
+        if not self.reference:
+            return
+        caminho = Path(bpy.path.abspath(self.reference)).expanduser()
+        if not caminho.is_file():
+            linha = layout.row()
+            linha.alert = True
+            linha.label(text=_("reference image not found"), icon="ERROR")
+            return
+        # Pela PRÉVIA e não pelo `icon_id`: o id é 0 em background, e decidir
+        # por ele faria o desenho tomar caminhos diferentes na tela e no teste.
+        prévia = thumbs.load_image_preview(caminho)
+        if prévia is not None:
+            layout.template_icon(icon_value=prévia.icon_id, scale=PROP_PREVIEW_SCALE)
+        else:
+            # Arquivo que existe e não vira imagem: dizer isto agora é melhor do
+            # que deixar o quadrado vazio passar por "ainda carregando".
+            linha = layout.row()
+            linha.alert = True
+            linha.label(text=_("this file is not an image the program can show"),
+                        icon="ERROR")
 
     # -- referência --------------------------------------------------------
     def _source(self, context):

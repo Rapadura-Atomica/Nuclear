@@ -134,6 +134,8 @@ def draw_take_column(layout, context, store, st, takes, open_take):
     row.operator("nsb.move_take", icon="TRIA_UP", text="").offset = -1
     row.operator("nsb.move_take", icon="TRIA_DOWN", text="").offset = 1
 
+    _draw_copy_row(layout)
+
     faltando = thumbs.missing(store, takes)
     if faltando:
         # Take feito antes das miniaturas (ou em outra máquina, ou adotado do
@@ -143,8 +145,35 @@ def draw_take_column(layout, context, store, st, takes, open_take):
                               text=f"{_('Draw the board')} ({len(faltando)})")
 
 
+def _draw_copy_row(layout):
+    """Duplicar aqui, ou levar o plano para outra cena.
+
+    Qual plano está copiado é dito numa LINHA, e não no botão: entre copiar e
+    colar passa uma troca de board, e "Colar" sozinho seria um clique no escuro
+    depois de dez minutos desenhando noutra cena. No botão, esse texto viraria
+    "Colar T0…" numa coluna estreita — que é pior do que não dizer nada.
+    A linha só existe quando há algo copiado.
+    """
+    from . import ops_takecopy
+
+    copiado = ops_takecopy.clipboard_label()
+    if copiado:
+        layout.label(text=f"{_('Copied')}: {copiado}", icon="PASTEDOWN")
+
+    row = layout.row(align=True)
+    row.operator("nsb.duplicate_take", icon="DUPLICATE")
+    row.operator("nsb.copy_take", icon="COPYDOWN", text="")
+    row.operator("nsb.paste_take", icon="PASTEDOWN", text="")
+
+
+#: Altura do campo do código e do botão de abrir, dentro do card. Somadas, dão
+#: a altura da miniatura — senão o card cresce e a coluna fica serrilhada.
+CODE_SCALE = 1.6
+OPEN_SCALE = 3.4
+
+
 def _draw_card(col, store, thumbs, item, take, open_take):
-    """Um plano: miniatura à esquerda, código e duração à direita."""
+    """Um plano: miniatura à esquerda; código (editável) e duração à direita."""
     card = col.box()
     linha = card.split(factor=THUMB_SPLIT, align=True)
 
@@ -159,14 +188,24 @@ def _draw_card(col, store, thumbs, item, take, open_take):
         vazio.label(text="", icon="IMAGE_DATA")
 
     legenda = linha.column(align=True)
-    # O botão cresce com o card para o clique pegar a faixa inteira ao lado da
-    # miniatura: mirar numa tira fina de 20px é o que torna uma lista cansativa.
-    legenda.scale_y = THUMB_SCALE / 2.0
     # Take que não passa na validação aparece em alerta — era a única coisa que
     # a lista de texto dizia e a miniatura não diria.
     legenda.alert = not item.ok
-    op = legenda.operator("nsb.goto_take", depress=open_take is take,
-                          text=f"{item.code}   {item.duration:.1f}s")
+
+    # O código fica num campo: renomear um plano era coisa de abrir o diálogo da
+    # estrutura inteira, e é aqui que o artista está olhando quando percebe que
+    # o nome está errado.
+    campo = legenda.row(align=True)
+    campo.scale_y = CODE_SCALE
+    campo.prop(item, "code", text="")
+
+    # O botão de abrir fica com o resto da altura: o clique tem de pegar a faixa
+    # inteira ao lado da miniatura — mirar numa tira fina é o que torna uma
+    # lista cansativa.
+    abrir = legenda.column(align=True)
+    abrir.scale_y = OPEN_SCALE
+    op = abrir.operator("nsb.goto_take", depress=open_take is take,
+                        text=f"{item.duration:.1f}s")
     op.uid = take.id
 
 

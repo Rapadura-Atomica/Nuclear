@@ -133,6 +133,45 @@ PT_BR = {
     ("*", "New take"): "Novo take",
     ("*", "Remove take"): "Remover take",
     ("*", "Move take"): "Mover take",
+
+    # --- duplicar e colar plano --------------------------------------
+    ("*", "Duplicate take"): "Duplicar",
+    ("*", "Creates a copy of this plan at the end of the scene, with drawing, "
+          "timing and dialogue"):
+        "Cria uma cópia deste plano no fim da cena, com desenho, tempo e falas",
+    ("*", "Code of this plan — it names the file delivered for it"):
+        "Código deste plano — é ele que abre o nome do arquivo entregue",
+    ("*", "Copy take"): "Copiar take",
+    ("*", "Keeps this plan to paste into another scene"):
+        "Guarda este plano para colar em outra cena",
+    ("*", "Paste take"): "Colar take",
+    ("*", "Puts the copied plan at the end of this scene, with drawing, "
+          "timing and dialogue"):
+        "Põe o plano copiado no fim desta cena, com desenho, tempo e falas",
+    ("*", "Copied"): "Copiado",
+    ("*", "take duplicated"): "take duplicado",
+    ("*", "take copied"): "take copiado",
+    ("*", "take pasted"): "take colado",
+    ("*", "the board the take was copied from is gone"):
+        "o board de onde o take foi copiado sumiu",
+    ("*", "the copied take is no longer in that board"):
+        "o take copiado já não está naquele board",
+    ("*", "take pasted, but these are not in this board's library"):
+        "take colado, mas estes não estão na biblioteca deste board",
+
+    # --- copiar e colar desenho --------------------------------------
+    ("*", "Copy drawing"): "Copiar desenho",
+    ("*", "Copies the drawing in this frame (or just what is selected)"):
+        "Copia o desenho deste quadro (ou só o que está selecionado)",
+    ("*", "Paste drawing"): "Colar desenho",
+    ("*", "Pastes the copied drawing into this frame, reusing the take's "
+          "materials"):
+        "Cola o desenho copiado neste quadro, reaproveitando os materiais do take",
+    ("*", "nothing to copy in this frame"): "não há o que copiar neste quadro",
+    ("*", "drawing copied"): "desenho copiado",
+    ("*", "drawing pasted"): "desenho colado",
+    ("*", "materials"): "materiais",
+
     ("*", "Code"): "Código",
     ("*", "Name"): "Nome",
     ("*", "scene(s)"): "cena(s)",
@@ -564,6 +603,8 @@ PT_BR = {
         "Anexa a imagem de referência do prop provisório — é o que vai para o "
         "sistema de aprovação como pedido",
     ("*", "reference image not found"): "imagem de referência não encontrada",
+    ("*", "this file is not an image the program can show"):
+        "este arquivo não é uma imagem que o programa consiga mostrar",
     ("*", "reference attached"): "referência anexada",
     ("*", "reference attached; request pending"):
         "referência anexada; a pendência ficou para enviar",

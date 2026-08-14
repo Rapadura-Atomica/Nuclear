@@ -164,9 +164,51 @@ def remember_board(context, root, name: str, kind: str = "board") -> None:
         pass  # sem permissao de escrita na config: a lista some, o board abre igual
 
 
+def _on_take_code(item, context):
+    """Código digitado no card do plano -> código do take no índice.
+
+    O código não é enfeite: é ele que abre o nome de cada arquivo entregue
+    (`DPE_EP13_C01T05`) e o que o artista lê na coluna. Editar aqui era o único
+    jeito de corrigi-lo sem passar pelo diálogo de renomear a estrutura inteira.
+
+    O `.nuc` NÃO é renomeado junto — ele é carimbado e apontado pelo índice, e
+    mexer no nome do arquivo só criaria chance de perder arte.
+    """
+    from . import state
+
+    if is_mirroring():
+        return
+    store = state.get_store()
+    if store is None:
+        return
+    achado = store.project.find_take(item.uid)
+    if achado is None:
+        return
+    take = achado[2]
+    novo = item.code.strip()
+    if not novo:
+        # Campo apagado: um plano sem código sairia do board e da entrega. A
+        # devolução vai dentro de `mirroring` porque escrever numa property
+        # dispara o update dela, mesmo com o valor que já estava lá.
+        with mirroring():
+            item.code = take.code
+        return
+    if novo == take.code:
+        return
+    # O nome que só repetia o código continua repetindo: ele nasce assim e
+    # ninguém o editou, então deixá-lo apontando para o código antigo seria
+    # guardar um rótulo que já não corresponde a nada.
+    if take.name == take.code:
+        take.name = novo
+    take.code = novo
+    _save_soon(store)
+
+
 class NSB_TakeItem(PropertyGroup):
     uid: StringProperty()
-    code: StringProperty(name="Take")
+    code: StringProperty(name="Take", update=_on_take_code,
+                         description="Code of this plan — it names the file "
+                                     "delivered for it")
     name: StringProperty(name="Name")
     drawing_count: IntProperty(name="Drawings")
     audio_count: IntProperty(name="Audio")

@@ -235,6 +235,23 @@ class ProjectStore:
             scene.takes.append(tk)
         return tk
 
+    def free_take_code(self, scene: Scene) -> str:
+        """Proximo codigo livre da cena: T001, T002…
+
+        Conta a partir de quantos takes existem e so anda enquanto o codigo
+        estiver tomado — apagar o ultimo e criar outro devolve o mesmo codigo,
+        em vez de deixar um buraco na numeracao do board.
+
+        E o codigo de um take A MAIS, seja ele criado do zero ou duplicado: numa
+        cena de cinco planos, duplicar o segundo da o SEXTO. Numerar pela origem
+        (`T002B`) era outra leitura possivel, e o animador pediu esta.
+        """
+        usados = {tk.code for tk in scene.takes}
+        i = len(scene.takes) + 1
+        while f"T{i:03d}" in usados:
+            i += 1
+        return f"T{i:03d}"
+
     def next_take_code(self, scene: Scene, base: str) -> str:
         """Código livre para a metade nova: T003 -> T003B, T003C…
 
