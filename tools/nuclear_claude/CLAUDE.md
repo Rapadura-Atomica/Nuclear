@@ -489,7 +489,16 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 Atualizado em 2026-08-14.
 
-- **Nuclear 1.9.0 (Beta) — `NUCLEAR_BUILD = 24` — PUBLICADO (2026-08-14).** MINOR a partir da
+> **NO AR AGORA: 1.8.1 / build 23.** A 1.9.0 ficou publicada por ~15 minutos em 2026-08-14 e
+> foi **RETIRADA a pedido do usuário**; o servidor foi restaurado a partir do
+> `nuclear.zip.bak-pre-1.9.0`. O zip retirado está guardado em
+> `nuclear.zip.bak-1.9.0-retirada` (+ `version.json.bak-1.9.0-retirada`), então republicar é
+> repor esses dois — **mas o build 24 já circulou**: quem baixou naquela janela está em 24 e
+> **não recebe downgrade** (o updater só oferece build MAIOR que o instalado). Por isso a
+> próxima release deve usar **build 25**, e não reaproveitar o 24: para a máquina que pegou a
+> 24, um 24 novo não é atualização nenhuma.
+
+- **Nuclear 1.9.0 (Beta) — `NUCLEAR_BUILD = 24` — publicada e RETIRADA em 2026-08-14.** MINOR a partir da
   branch `Nuclear` (HEAD `0be9fd3c8338`, pushado antes do build). sha256
   `1002c4cab6522fd388710e394fcf12ad720941855153dd1caa2d95fd29f821d8`, **355.784.643 bytes**;
   backup da b23 = `nuclear.zip.bak-pre-1.9.0` (o `bak-pre-1.8.0` saiu pela política de dois).
