@@ -487,9 +487,28 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-08-12.
+Atualizado em 2026-08-14.
 
-- **Nuclear 1.8.1 (Beta) — `NUCLEAR_BUILD = 23` — PUBLICADO (2026-08-12).** PATCH a partir da
+- **Nuclear 1.9.0 (Beta) — `NUCLEAR_BUILD = 24` — PUBLICADO (2026-08-14).** MINOR a partir da
+  branch `Nuclear` (HEAD `0be9fd3c8338`, pushado antes do build). sha256
+  `1002c4cab6522fd388710e394fcf12ad720941855153dd1caa2d95fd29f821d8`, **355.784.643 bytes**;
+  backup da b23 = `nuclear.zip.bak-pre-1.9.0` (o `bak-pre-1.8.0` saiu pela política de dois).
+  Entrega: **add-on Storyboard & Animatic 0.17.0** — duplicar/colar plano entre cenas, copiar
+  desenho entre takes **sem fabricar material**, a bancada dividida por dono (o pincel é da
+  pessoa e vai para a config; o material é do trabalho e fica com a biblioteca do episódio),
+  código do plano editável no card e prévia da imagem do prop. Sem mudança de C++ além do bump.
+  ⚠️ **Compilada na worktree isolada `nuclear-rel-177`** (build dir `build_nuclear_rel177`, o
+  mesmo que produziu a 1.8.1 sã): o repo principal tinha trabalho **não commitado** da Deform
+  Curve, de outra sessão, e ele não pode entrar numa release sem revisão. A worktree só enxerga
+  o que está commitado, o que resolve os dois problemas de uma vez (build dir comprovado +
+  árvore limpa).
+  ℹ️ **O gate de seleção sai com 139 (SIGSEGV) DEPOIS do `=== ALL PASS ===`** — é o
+  encerramento da GUI, não a seleção. Confirmado como pré-existente rodando o mesmo gate no
+  binário da **b23 publicada**, que faz igual. Sem o controle, isso pareceria regressão e
+  seguraria uma release boa: quando um teste falhar no encerramento, rode-o na versão que já
+  está no ar antes de acusar o código novo.
+
+- **Nuclear 1.8.1 (Beta) — `NUCLEAR_BUILD = 23` — publicado em 2026-08-12.** PATCH a partir da
   branch `Nuclear` (HEAD `ab2c0839ccad`, pushado antes do build). sha256
   `aa70890466d316463dd51e2776713dabc253096b423f6a764fccc849df652444`, **355.731.401 bytes**;
   backup da b22 = `nuclear.zip.bak-pre-1.8.1`. Conteúdo idêntico ao da 1.8.0 — o que muda é o

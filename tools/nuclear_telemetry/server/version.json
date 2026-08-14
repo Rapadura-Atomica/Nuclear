@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 23,
-  "version": "1.8.1",
+  "build": 24,
+  "version": "1.9.0",
   "stage": "Beta",
-  "version_string": "Nuclear 1.8.1 (Beta)",
+  "version_string": "Nuclear 1.9.0 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "aa70890466d316463dd51e2776713dabc253096b423f6a764fccc849df652444",
-  "size": 355731401,
+  "sha256": "1002c4cab6522fd388710e394fcf12ad720941855153dd1caa2d95fd29f821d8",
+  "size": 355784643,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Conserta a selecao na viewport: clicar numa peca ou usar a caixa de selecao voltou a funcionar, em qualquer tipo de objeto. A 1.8.0 saiu com um binario defeituoso que derrubava isso; o conteudo dela (opacidade por objeto e por peg, Xsheet nos tres templates, duplo clique em .nuc/.blend) continua todo aqui."
+  "notes": "Storyboard: duplicar/colar plano, copiar desenho sem criar material, pincel que atravessa a cena, previa do prop"
 }
