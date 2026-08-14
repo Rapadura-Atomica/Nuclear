@@ -54,6 +54,63 @@ def missing(store, takes) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Quando vale a pena renderizar de novo
+# ---------------------------------------------------------------------------
+
+#: Assinatura da arte que gerou a miniatura atual, gravada no objeto do take
+#: (e portanto no `.nuc`).
+ART_SIG_KEY = "nsb_thumb_art"
+
+
+def art_signature(ob) -> str:
+    """Assinatura da arte deste objeto. Muda quando o desenho muda.
+
+    Lê as posições em BLOCO e resume num hash: contar traços não bastaria —
+    arrastar um ponto não muda contagem nenhuma e mudaria a miniatura. Custa uns
+    poucos milissegundos contra os ~300ms de um render, então a conta fecha
+    mesmo quando a arte mudou.
+    """
+    import hashlib
+
+    resumo = hashlib.blake2b(digest_size=16)
+    for layer in ob.data.layers:
+        resumo.update(layer.name.encode("utf-8"))
+        resumo.update(b"\x00" if layer.hide else b"\x01")
+        for frame in layer.frames:
+            drawing = frame.drawing
+            resumo.update(str(frame.frame_number).encode("ascii"))
+            for attr in ("position", "radius", "material_index"):
+                dados = drawing.attributes.get(attr)
+                if dados is None:
+                    continue
+                campo = "vector" if attr == "position" else "value"
+                valores = [0.0] * (len(dados.data) * (3 if attr == "position" else 1))
+                try:
+                    dados.data.foreach_get(campo, valores)
+                except (TypeError, RuntimeError):
+                    continue
+                resumo.update(repr([round(v, 4) for v in valores]).encode("ascii"))
+    return resumo.hexdigest()
+
+
+def needs_thumb(store, take, ob):
+    """Assinatura nova quando a miniatura precisa ser refeita; None se está em dia.
+
+    Renderizar a miniatura custa ~300ms nesta máquina, e ela era refeita a cada
+    salvar — ou seja, a cada troca de plano, inclusive nas muitas em que o
+    artista só passou os olhos e não desenhou nada.
+    """
+    from . import gp
+
+    if ob is None or not gp.has_art(ob):
+        return None
+    assinatura = art_signature(ob)
+    if assinatura == ob.get(ART_SIG_KEY) and thumb_path(store, take).is_file():
+        return None
+    return assinatura
+
+
+# ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
 

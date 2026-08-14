@@ -8,6 +8,7 @@ clique, fora do add-on — reencontra o projeto sozinho.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 import bpy
@@ -206,15 +207,58 @@ def save_take(store, project_take) -> Path:
     # quem o abrisse depois.
     stamp_scene(scene, store, project_take)
 
+    # A decisão sobre a miniatura vem ANTES de gravar, para a assinatura da arte
+    # viajar dentro do `.nuc`: gravada depois, ela só chegaria ao disco no salvar
+    # seguinte e o take renderizaria uma miniatura a mais a cada reabertura.
+    ob = gp.find_take_object(project_take)
+    assinatura = thumbs.needs_thumb(store, project_take, ob)
+    if assinatura:
+        ob[thumbs.ART_SIG_KEY] = assinatura
+
     path = store.paths.abs(project_take.file)
     path.parent.mkdir(parents=True, exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=str(path))
+    with _sem_preview_de_arquivo():
+        bpy.ops.wm.save_as_mainfile(filepath=str(path))
 
     # A miniatura do board sai daqui porque é aqui que a arte está na tela:
     # gerá-la depois custaria abrir o arquivo de novo. Salvar o take é também
     # por onde a troca de take passa, então o board fica em dia sozinho.
-    thumbs.render_thumb(scene, store, project_take)
+    if assinatura:
+        thumbs.render_thumb(scene, store, project_take, ob)
     return path
+
+
+@contextmanager
+def _sem_preview_de_arquivo():
+    """Grava o `.nuc` sem a miniatura que o Blender põe DENTRO do arquivo.
+
+    Todo `.blend` guarda um preview de si mesmo, renderizado a cada gravação
+    (`file_preview_type`). Ele serve ao navegador de arquivos do Blender — e o
+    board não usa isso: quem mostra o plano é a miniatura do `thumbs/`, que o
+    add-on renderiza sozinho e controla. Medido nesta máquina: `save_take`
+    custava ~300ms com o preview e ~7ms sem ele, em TODA troca de plano.
+
+    A preferência é devolvida no fim (e o `is_dirty` junto, para o Blender não
+    gravar o arquivo de preferências por causa de uma ida e volta nossa).
+    """
+    prefs = getattr(bpy.context, "preferences", None)
+    caminhos = getattr(prefs, "filepaths", None)
+    anterior = getattr(caminhos, "file_preview_type", None)
+    if anterior in (None, "NONE"):
+        yield
+        return
+
+    sujo = getattr(prefs, "is_dirty", None)
+    caminhos.file_preview_type = "NONE"
+    try:
+        yield
+    finally:
+        caminhos.file_preview_type = anterior
+        if sujo is not None:
+            try:
+                prefs.is_dirty = sujo
+            except AttributeError:
+                pass
 
 
 def current_take_of_file(store):
