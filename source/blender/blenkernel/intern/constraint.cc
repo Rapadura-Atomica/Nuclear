@@ -1206,12 +1206,21 @@ static void followpeg_evaluate(bConstraint *con, bConstraintOb *cob, ListBase * 
     return;
   }
 
-  /* The peg's world matrix: read the value cached by the rig's PEGRIG_SOLVE depsgraph op (resolved
-   * once per evaluation) instead of recomputing the whole peg chain per object. The depsgraph
-   * guarantees the solve ran first: Follow Peg depends on the rig's PARAMETERS component, and that
-   * component's exit waits on the solve op (see DepsgraphRelationBuilder::build_pegrig). */
+  /* The peg's world matrix: RECOMPUTED from the peg chain, never read from #PegRigPeg::world_mat.
+   *
+   * That cache is runtime data living in DNA, so it is written to the .blend and to the undo
+   * memfile, and comes back from either as the ORIGINAL's copy -- which is never solved, because
+   * PEGRIG_SOLVE only writes to the evaluated copy. The depsgraph does not save us: the
+   * COPY_ON_EVAL relations are built with #RELATION_FLAG_NO_FLUSH, so an ID tagged only
+   * #ID_RECALC_SYNC_TO_EVAL (what every undo step re-reading the rig produces) syncs that identity
+   * into the evaluated copy WITHOUT re-running the solve. Reading the cache then multiplied the
+   * owner by `identity * invmat`, dropping every drawing on the inverse of its peg's position --
+   * the character scattered across the canvas after a Ctrl+Z, snapping back as soon as anything
+   * tagged the rig again. The chain walk is O(depth) per object against O(1), which is noise next
+   * to a single drawing's evaluation, and it only reads authored fields that copy-on-eval keeps
+   * correct. */
   float parmat[4][4];
-  BKE_pegrig_peg_world_matrix_get(data->rig, index, parmat);
+  BKE_pegrig_peg_compute_world_matrix(data->rig, index, parmat);
 
   /* Compute the inverse correction matrix once, so binding keeps the owner's current transform. */
   if (data->flag & FOLLOWPEG_SET_INVERSE) {
@@ -1242,7 +1251,12 @@ static void followpeg_evaluate(bConstraint *con, bConstraintOb *cob, ListBase * 
    * again (1.0, then 0.8, then 0.8*0.5, ...), and because the factor never exceeds 1 the piece
    * decayed toward black and did not come back when the peg returned to 1.0. */
   if (cob->ob != nullptr && cob->ob->runtime != nullptr) {
-    cob->ob->runtime->peg_opacity = std::clamp(data->rig->pegs[index].world_opacity, 0.0f, 1.0f);
+    /* Recomputed from the chain for the same reason as `parmat` above: `world_opacity` is the
+     * other runtime-in-DNA field, and reading it made the whole rig come back from a file (or an
+     * undo) with a stale inheritance until something tagged it. */
+    float peg_opacity;
+    BKE_pegrig_peg_compute_world_opacity(data->rig, index, &peg_opacity);
+    cob->ob->runtime->peg_opacity = std::clamp(peg_opacity, 0.0f, 1.0f);
   }
 }
 

@@ -83,7 +83,17 @@ static void pegrig_blend_read_data(BlendDataReader *reader, ID *id)
 {
   PegRig *rig = (PegRig *)id;
   BLO_read_struct_array(reader, PegRigPeg, rig->pegs_num, &rig->pegs);
-  /* `world_mat` is runtime; it is recomputed by #BKE_pegrig_solve_world_matrices on evaluation. */
+  /* `world_mat` and `world_opacity` are runtime, but they live in DNA -- so they are written to
+   * the file AND to the undo memfile, and come back as whatever the ORIGINAL held. The original is
+   * never solved (#PEGRIG_SOLVE only ever writes to the evaluated copy), which means they come
+   * back as identity / stale. Resolve them here so a freshly read rig is self-consistent before
+   * the depsgraph runs: without this, a re-read that is only tagged #ID_RECALC_SYNC_TO_EVAL
+   * (every undo step re-reading the rig in place) syncs the identity into the evaluated copy
+   * without re-running the solve, and every drawing bound through a Follow Peg lands on the
+   * INVERSE of its peg's position until something tags the rig again. */
+  if (rig->pegs != nullptr) {
+    BKE_pegrig_solve_world_matrices(rig);
+  }
 }
 
 IDTypeInfo IDType_ID_PG = {
@@ -402,6 +412,28 @@ bool BKE_pegrig_peg_compute_world_matrix(const PegRig *rig, const int peg_index,
     return false;
   }
   pegrig_compute_world_recursive(rig, peg_index, 0, r_mat);
+  return true;
+}
+
+static float pegrig_compute_opacity_recursive(const PegRig *rig, const int index, const int depth)
+{
+  const float local = std::clamp(rig->pegs[index].opacity, 0.0f, 1.0f);
+
+  const int parent = rig->pegs[index].parent_index;
+  /* `depth` guards against cycles, exactly like #pegrig_compute_world_recursive. */
+  if (parent >= 0 && parent < rig->pegs_num && parent != index && depth < rig->pegs_num) {
+    return pegrig_compute_opacity_recursive(rig, parent, depth + 1) * local;
+  }
+  return local;
+}
+
+bool BKE_pegrig_peg_compute_world_opacity(const PegRig *rig, const int peg_index, float *r_opacity)
+{
+  if (peg_index < 0 || peg_index >= rig->pegs_num) {
+    *r_opacity = 1.0f;
+    return false;
+  }
+  *r_opacity = pegrig_compute_opacity_recursive(rig, peg_index, 0);
   return true;
 }
 

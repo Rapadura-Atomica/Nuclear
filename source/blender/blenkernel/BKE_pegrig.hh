@@ -75,6 +75,13 @@ bool BKE_pegrig_peg_world_matrix_get(const PegRig *rig, int peg_index, float r_m
 bool BKE_pegrig_peg_compute_world_matrix(const PegRig *rig, int peg_index, float r_mat[4][4]);
 
 /**
+ * Compute a peg's resolved opacity (its own times every ancestor's) on the fly, the read-only
+ * counterpart of #BKE_pegrig_peg_compute_world_matrix. Writes 1.0 and returns false when
+ * `peg_index` is out of range.
+ */
+bool BKE_pegrig_peg_compute_world_opacity(const PegRig *rig, int peg_index, float *r_opacity);
+
+/**
  * Write a peg's local matrix (its own translation/rotation/scale about its pivot, excluding any
  * parent pegs) into `r_mat`. Writes identity and returns false when `peg_index` is out of range.
  */
