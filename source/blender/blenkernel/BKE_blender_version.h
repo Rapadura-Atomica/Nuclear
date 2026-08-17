@@ -53,7 +53,7 @@
 #define NUCLEAR_VERSION_MAJOR 1
 #define NUCLEAR_VERSION_MINOR 8
 #define NUCLEAR_VERSION_PATCH 2
-#define NUCLEAR_BUILD 24
+#define NUCLEAR_BUILD 25
 /* Release stage suffix shown to users, e.g. "Beta"/"RC"/"Stable". */
 #define NUCLEAR_VERSION_STAGE "Beta"
 
