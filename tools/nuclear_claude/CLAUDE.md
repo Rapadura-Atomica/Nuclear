@@ -497,6 +497,13 @@ Atualizado em 2026-08-14.
 > **não recebe downgrade** (o updater só oferece build MAIOR que o instalado). Por isso a
 > próxima release deve usar **build 25**, e não reaproveitar o 24: para a máquina que pegou a
 > 24, um 24 novo não é atualização nenhuma.
+>
+> **2026-08-17 — a numeração 1.9.0 foi ABANDONADA a pedido do usuário: a próxima release é
+> `1.8.2` / build 25.** O header já está em **1.8.2 / build 24**, ou seja, só o build falta
+> subir na hora de publicar — **bumpe apenas o `NUCLEAR_BUILD` (24 → 25) e não mexa no
+> semver**, senão sai 1.8.3. Um `nuclear_release.sh patch` faria as duas coisas: aqui o
+> caminho é editar o header à mão ou passar o bump só do build. Nada foi publicado nesta
+> data; a 1.9.0 continua guardada no servidor como `nuclear.zip.bak-1.9.0-retirada`.
 
 - **Nuclear 1.9.0 (Beta) — `NUCLEAR_BUILD = 24` — publicada e RETIRADA em 2026-08-14.** MINOR a partir da
   branch `Nuclear` (HEAD `0be9fd3c8338`, pushado antes do build). sha256
