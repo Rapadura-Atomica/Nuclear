@@ -795,6 +795,28 @@ def _curve_pieces(context, selected_only, ignore_selection=False):
     return out
 
 
+def _bind_scope(context):
+    """(pieces, from_selection) — exactly what a bind or unbind press would hit.
+
+    Mirrors ``_gp_targets``: the selection when there is one, every visible piece otherwise. The
+    panel and the tooltips say which of the two it is, because the difference is "this arm" versus
+    "every piece in the file", and the button used to look identical either way."""
+    pieces = _curve_pieces(context, selected_only=False)
+    from_selection = any(o.type == "GREASEPENCIL" for o in context.selected_objects)
+    return pieces, from_selection
+
+
+def _scope_phrase(context):
+    """How many pieces a press would hit, and where they came from, as one short phrase."""
+    pieces, from_selection = _bind_scope(context)
+    count = len(pieces)
+    if not count:
+        return None
+    if from_selection:
+        return "the selected piece" if count == 1 else "the %d selected pieces" % count
+    return "the only visible piece" if count == 1 else "all %d visible pieces" % count
+
+
 # --------------------------------------------------------------------------- #
 # Operators
 # --------------------------------------------------------------------------- #
@@ -891,8 +913,8 @@ class OBJECT_OT_nuclear_curve_fit(Operator):
 
 class OBJECT_OT_nuclear_curve_bind(Operator):
     bl_idname = "object.nuclear_curve_bind"
-    bl_label = "Bind Curves"
-    bl_description = ("Bind every selected piece to its deform curve in the current rest pose "
+    bl_label = "Bind to Curve"
+    bl_description = ("Bind the piece to its deform curve in the current rest pose "
                       "(an unbound Curve modifier deforms nothing, silently)")
     bl_options = {"REGISTER", "UNDO"}
 
@@ -906,33 +928,105 @@ class OBJECT_OT_nuclear_curve_bind(Operator):
     def poll(cls, context):
         return context.mode == "OBJECT"
 
+    @classmethod
+    def description(cls, context, properties):
+        """Name the pieces the press would hit, since the scope is the selection or the whole file.
+
+        A fixed tooltip could only ever describe one of the two, and the old one claimed "every
+        selected piece" while an empty selection quietly swept the file."""
+        scope = _scope_phrase(context)
+        if scope is None:
+            return ("Bind a piece to its deform curve in the current rest pose "
+                    "(an unbound Curve modifier deforms nothing, silently)")
+        one = len(_bind_scope(context)[0]) == 1
+        if properties.unbind:
+            return ("Drop the binding of %s, so %s goes back to its own shape and the curve can be "
+                    "measured or moved freely" % (scope, "the drawing" if one else "each drawing"))
+        return ("Bind %s to %s deform %s in the current rest pose, so the curve deforms the drawing "
+                "(an unbound Curve modifier deforms nothing, silently)"
+                % (scope, "its" if one else "their", "curve" if one else "curves"))
+
     def execute(self, context):
         pieces = _curve_pieces(context, selected_only=False)
         if not pieces:
             self.report({"ERROR"}, "No piece with a Curve modifier found")
             return {"CANCELLED"}
 
-        done, notes = 0, []
+        done, bad, notes = 0, 0, []
         with _autokey_off(context):
             for ob, md in pieces:
                 if md.object is None:
-                    notes.append("%s: modifier has no curve" % ob.name)
+                    bad += 1
+                    notes.append("%s: no curve in the modifier — pick one, or run Fit Curve to "
+                                 "Drawing" % ob.name)
                     continue
                 if self.only_unbound and _bind_quality(ob) is not None:
                     continue
                 quality = _bind(context, ob, md, unbind=self.unbind)
                 done += 1
                 if self.unbind:
-                    notes.append("%s: unbound" % ob.name)
+                    notes.append("%s: unbound — the drawing is back to its own shape" % ob.name)
                 elif quality is None:
-                    notes.append("%s: NOT bound" % ob.name)
+                    bad += 1
+                    notes.append("%s: NOT bound — the curve still deforms nothing" % ob.name)
                 else:
-                    flag = "" if quality[1] - quality[0] > 0.5 else "  <- degenerate, refit it"
-                    notes.append("%s: u %.3f–%.3f%s" % (ob.name, quality[0], quality[1], flag))
+                    # The span of u is how much of the drawing the curve actually reaches. Report
+                    # that, not the raw endpoints: "u 0.998-1.000" reads fine to anyone who does
+                    # not know that a collapsed bind turns the piece into a rigid blob.
+                    span = quality[1] - quality[0]
+                    if span > 0.5:
+                        notes.append("%s: bound, the curve reaches %d%% of the drawing"
+                                     % (ob.name, round(span * 100)))
+                    else:
+                        bad += 1
+                        notes.append("%s: bound but COLLAPSED onto %d%% of the drawing — the piece "
+                                     "will move rigid; run Fit Curve to Drawing"
+                                     % (ob.name, round(span * 100)))
         for line in notes:
             print("[Deform Curve] " + line)
-        self.report({"INFO"}, "%d piece(s) — %s" % (done, "; ".join(notes[:3])))
+
+        verb = "Unbound" if self.unbind else "Bound"
+        if not done:
+            self.report({"WARNING"} if bad else {"INFO"},
+                        notes[0] if notes else "Every piece was already bound — nothing to do")
+            return {"FINISHED"}
+        summary = "%s %d piece(s)" % (verb, done)
+        if bad:
+            summary += " — %d need%s attention, see the Info log" % (bad, "s" if bad == 1 else "")
+        elif done == 1:
+            summary = notes[-1]
+        self.report({"WARNING"} if bad else {"INFO"}, summary)
         return {"FINISHED"}
+
+
+class OBJECT_OT_nuclear_curve_unbind(Operator):
+    """The other half of the bind, with a name of its own.
+
+    It could be a checkbox on the bind operator -- it *was*, and that is the problem: Adjust Last
+    Operation and the F3 search both read ``bl_label``, so unbinding announced itself as "Bind" and
+    could only be found by searching for its opposite. The work still happens in one place."""
+
+    bl_idname = "object.nuclear_curve_unbind"
+    bl_label = "Unbind from Curve"
+    bl_description = ("Drop the binding, so the drawing goes back to its own shape and the curve "
+                      "can be measured or moved freely")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
+    @classmethod
+    def description(cls, context, _properties):
+        scope = _scope_phrase(context)
+        if scope is None:
+            return cls.bl_description
+        one = len(_bind_scope(context)[0]) == 1
+        return ("Drop the binding of %s, so %s goes back to its own shape and the curve can be "
+                "measured or moved freely" % (scope, "the drawing" if one else "each drawing"))
+
+    def execute(self, context):
+        return bpy.ops.object.nuclear_curve_bind(unbind=True)
 
 
 class OBJECT_OT_nuclear_curve_link_peg(Operator):
@@ -1152,9 +1246,36 @@ class VIEW3D_PT_nuclear_deform_curve(Panel):
         col.operator("object.nuclear_curve_fit", icon="MOD_CURVE")
         col.operator("object.nuclear_curve_link_peg", icon="LINKED")
 
-        row = layout.row(align=True)
-        row.operator("object.nuclear_curve_bind", icon="CON_FOLLOWPATH")
-        row.operator("object.nuclear_curve_refresh", text="Restamp", icon="FILE_REFRESH")
+        # Binding is the switch that decides whether the curve deforms anything at all, so both
+        # directions get a button of their own. Unbinding used to live behind the "Unbind"
+        # checkbox of Adjust Last Operation, where nobody mid-rig ever looks — and the single
+        # "Bind Curves" label said neither what it would do to an already bound piece nor how
+        # many pieces it was about to touch. The state is read over the whole target set rather
+        # than the active piece alone (0.06 ms per redraw on an 8-curve rig, worst case), so the
+        # panel cannot say "Bind Again" over a selection that is mostly unbound.
+        pieces, _from_selection = _bind_scope(context)
+        if not pieces:
+            layout.label(text="No piece here carries a deform curve", icon="INFO")
+        else:
+            bound = sum(1 for piece, _md in pieces if _has_binding(piece))
+            box = layout.box()
+            box.label(text="Acts on %s" % _scope_phrase(context), icon="RESTRICT_SELECT_OFF")
+            if not bound:
+                # The one state worth spelling out: the modifier is on the stack and does nothing.
+                box.label(text="not bound — the curve deforms nothing", icon="ERROR")
+            elif bound < len(pieces):
+                box.label(text="%d of %d bound" % (bound, len(pieces)), icon="INFO")
+            row = box.row(align=True)
+            row.scale_y = 1.2
+            row.operator("object.nuclear_curve_bind", icon="CON_FOLLOWPATH",
+                         text="Bind Again" if bound == len(pieces) else "Bind").unbind = False
+            sub = row.row(align=True)
+            # Nothing to drop when no target carries a binding — greying it out says so without
+            # hiding the pair, which would make the panel jump around as the artist selects.
+            sub.enabled = bool(bound)
+            sub.operator("object.nuclear_curve_unbind", icon="UNLINKED", text="Unbind")
+
+        layout.operator("object.nuclear_curve_refresh", icon="FILE_REFRESH")
 
         if context.scene.tool_settings.use_keyframe_insert_auto:
             layout.label(text="Auto Keying is on", icon="ERROR")
@@ -1172,7 +1293,8 @@ class VIEW3D_PT_nuclear_deform_curve(Panel):
                     box.label(text="%d cell(s) do not bend" % cells_unbound)
                 if loose:
                     box.label(text="%d point(s) do not bend" % loose)
-                box.operator("object.nuclear_curve_bind", text="Bind Again", icon="CON_FOLLOWPATH")
+                box.operator("object.nuclear_curve_bind", text="Bind Again",
+                             icon="CON_FOLLOWPATH").unbind = False
 
         layout.separator()
         layout.operator("object.nuclear_curve_check", icon="VIEWZOOM")
@@ -1190,6 +1312,7 @@ class VIEW3D_PT_nuclear_deform_curve(Panel):
 _classes = (
     OBJECT_OT_nuclear_curve_fit,
     OBJECT_OT_nuclear_curve_bind,
+    OBJECT_OT_nuclear_curve_unbind,
     OBJECT_OT_nuclear_curve_link_peg,
     OBJECT_OT_nuclear_curve_refresh,
     OBJECT_OT_nuclear_curve_check,

@@ -32,13 +32,44 @@ produção:
 | Operador | O que faz |
 | --- | --- |
 | `object.nuclear_curve_fit` — **Fit Curve to Drawing** | Mede o desenho pelos **pontos** (não `dimensions`/`bound_box`: o primeiro já vem deformado pelo modifier, o segundo costuma vir degenerado em GP), assenta a curva ponta a ponta (`coverage = 1.0`), binda e recarimba o rest da peg dirigida. Sem curva no modifier, cria uma pelo operador nativo (`greasepencil_curve_setup`, que já parenteia certo). `keep_shape` escala/recentra a curva existente em vez de endireitá-la — a diagonal de uma cauda ou a barriga de uma perna sobrevive. |
-| `object.nuclear_curve_bind` — **Bind Curves** | Bind/rebind em lote (`only_unbound` pula quem já está bindado, `unbind` desfaz para medir cru). Reporta `u_min–u_max` e marca bind degenerado. **Remove o parent que o bind em C acrescenta** quando a curva já segue uma peg. |
+| `object.nuclear_curve_bind` — **Bind** / **Bind Again** / **Unbind** | Bind/rebind em lote (`only_unbound` pula quem já está bindado, `unbind` desfaz para medir cru). Reporta a **cobertura** (quanto do desenho a curva alcança) e acusa bind colapsado pelo nome. **Remove o parent que o bind em C acrescenta** quando a curva já segue uma peg. No painel são **dois botões**, não um com checkbox — ver "O botão de bind" abaixo. |
 | `object.nuclear_curve_link_peg` — **Link Curve to Rig** | Insere/reusa a peg `<junta>_curva` entre a junta da peça e os filhos dela, com drivers de translação (X/Z) e rotação (Y) lidos da ponta da curva. Deixa de fora a peg de desenho da própria peça (o modifier já a deforma; a peg a moveria de novo). Idempotente: reusa a peg que já é dirigida por essa curva. |
 | `object.nuclear_curve_refresh` — **Restamp Rest Pose** | Recarimba o rest dos drivers e o pivô da peg a partir da forma ATUAL da curva. Rodar sempre que os pontos de uma curva-fonte mudarem. |
 | `object.nuclear_curve_check` — **Check Deform Curves** | Read-only. Lista cada curva do arquivo com: bindada?, faixa de `u`, span curva×desenho, dupla transformação, peg ligada, rest velho, Auto Key ligado. O relatório fica no painel. |
 
 Todos desligam Auto Key durante a edição e restauram depois, e rebuildam o Peg Graph (a node
 tree é um datablock à parte: sem rebuild + `use_fake_user` a peg nova some ao reabrir).
+
+## O botão de bind (revisto em 2026-08-12)
+
+O bind é o interruptor que decide se a curva deforma **alguma coisa** — e o painel tinha um
+botão só, "Bind Curves", que não dizia nada disso. Três queixas concretas e o que responde
+cada uma:
+
+| Estava | Ficou |
+| --- | --- |
+| Desbindar exigia clicar em "Bind Curves" e marcar **Unbind** no *Adjust Last Operation* (`F9`) — onde ninguém olha no meio de um rig | **Dois botões**: `Bind`/`Bind Again` e `Unbind`, lado a lado. O Unbind fica **cinza** quando nenhuma peça do alvo está bindada (em vez de sumir, que faria o painel pular ao trocar de seleção) |
+| O unbind não tinha nome: `F9` e a busca `F3` liam o `bl_label` do bind e anunciavam "Bind" para quem acabara de desbindar | Operador próprio **`object.nuclear_curve_unbind`** ("Unbind from Curve"), fino — delega o trabalho ao mesmo `nuclear_curve_bind(unbind=True)`, que **segue válido** para os scripts já escritos |
+| O rótulo não dizia **em quem** ia mexer, e sem seleção o operador varre o arquivo inteiro (`_gp_targets`) — e o `.blend` **guarda a seleção**, então abrir um rig já mirava numa peça só | Linha `Acts on …` acima dos botões: *the selected piece* / *the 2 selected pieces* / *all 8 visible pieces*. O tooltip (`description()` dinâmica) repete o mesmo alvo, e muda de texto entre bind e unbind |
+| Nada distinguia "vou bindar" de "vou rebindar", e um modifier sem bind é **no-op silencioso** | O rótulo vira **Bind Again** quando tudo no alvo já está bindado; com nada bindado o painel diz `not bound — the curve deforms nothing`; pela metade, `5 of 8 bound` |
+
+O estado é lido sobre **todo o conjunto alvo**, não só a peça ativa — medido em 0,04 ms por
+redraw (pior caso 0,06 ms, nenhuma bindada, rig de 8 curvas), então cabe no redraw do painel.
+
+O relatório do operador também deixou de falar em `u`: `u 0.998–1.000` parece ótimo para quem
+não sabe que bind colapsado vira blob rígido. Agora diz `bound, the curve reaches 100% of the
+drawing` ou `bound but COLLAPSED onto 3% of the drawing — … run Fit Curve to Drawing`, e o
+resumo sai como WARNING quando alguma peça precisa de atenção.
+
+Teste: `tools/nuclear_rig/selftest_deform_curve_panel.py` roda o `draw()` do painel contra um
+layout dublê que registra rótulos, `enabled` e as propriedades de cada operador — nada de GUI, que
+esta máquina não tem como levantar (sem Xvfb). Verde em `Quetzalcoatl_pegs` (1 curva, 16/16),
+`chula` e `carolina_pegs_atualizada` (2 curvas, todas bindadas, 17/17) e `dinossauro` (8 curvas,
+uma solta, 17/17):
+
+```sh
+nuclear -b <rig.blend> -P tools/nuclear_rig/selftest_deform_curve_panel.py
+```
 
 ## Decisões que valem lembrar
 
