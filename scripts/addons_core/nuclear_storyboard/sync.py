@@ -121,6 +121,24 @@ def sync_takes(context) -> None:
         st.take_index = min(st.take_index, max(0, len(st.takes) - 1))
 
 
+def _prop_image(store, prop) -> str:
+    """Imagem que representa o prop na lista, em caminho absoluto.
+
+    A ARTE vem primeiro; enquanto ela não existe vale a referência anexada, que
+    é justamente o que o artista quer reconhecer de relance ("qual mesmo era o
+    lampião?"). Caminho apontando para arquivo que sumiu devolve vazio: a lista
+    volta ao ícone de sempre em vez de mostrar um quadrado carregando para
+    sempre.
+    """
+    for relativo in (prop.file, prop.reference):
+        if not relativo:
+            continue
+        caminho = store.paths.abs(relativo)
+        if caminho.is_file():
+            return str(caminho)
+    return ""
+
+
 def sync_library(context) -> None:
     st = _state(context)
     store = state.get_store()
@@ -146,6 +164,7 @@ def sync_library(context) -> None:
             item.has_art = bool(prop.file)
             item.has_reference = bool(prop.reference)
             item.resolved = bool(prop.replaced_by)
+            item.art_path = _prop_image(store, prop)
             # "WAITING" não existe do outro lado: é o estado de quem tem
             # referência anexada e ainda não conseguiu (ou não tentou) abrir a
             # pendência.
@@ -165,7 +184,8 @@ def sync_issues(context) -> None:
         st.error_count = st.warning_count = 0
         if store is None:
             return
-        for issue in validate_project(store.project, store.library, store.paths):
+        for issue in validate_project(store.project, store.library, store.paths,
+                                      library_missing=store.library_missing):
             item = st.issues.add()
             item.level, item.code = issue.level, issue.code
             item.message, item.where = issue.message, issue.where

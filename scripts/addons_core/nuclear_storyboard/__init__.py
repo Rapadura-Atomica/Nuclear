@@ -15,7 +15,7 @@ de `translations.py`, seguindo o idioma configurado no próprio Nuclear.
 bl_info = {
     "name": "Storyboard & Animatic",
     "author": "Rapadura Atômica",
-    "version": (0, 18, 0),
+    "version": (0, 19, 1),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar (N) > Storyboard",
     "description": "Storyboard por take, áudio de diálogo e animatic — sem geração automática",

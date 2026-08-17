@@ -506,13 +506,17 @@ def aim_brush_at_material(context, hex_color: str) -> bool:
     cor do personagem) e ainda assim pintamos o pincel da mesma cor: é o que o
     artista vê no cabeçalho da ferramenta, e o que sai se ele reativar a cor de
     vértice na mão.
-    """
-    from .core import rgb_from_hex
 
+    A cor vai em LINEAR, igual à do material: `Brush.color` é `COLOR` (e não
+    `COLOR_GAMMA`), ou seja, o Blender guarda ali cor de cena e converte só na
+    hora de mostrar. Gravar o número do hex direto clareava tudo — `#6E6E6E`
+    aparecia como `#AFAFAF` no seletor — e o mesmo valor é copiado para a cor de
+    vértice do traço, então o desvio não ficava só na tela.
+    """
     brush = active_gp_brush(context)
     if brush is None:
         return False
-    cor = rgb_from_hex(hex_color)
+    cor = to_linear(hex_color)[:3]
     if hasattr(brush, "color"):
         brush.color = cor
     settings = getattr(brush, "gpencil_settings", None)

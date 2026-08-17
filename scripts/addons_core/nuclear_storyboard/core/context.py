@@ -43,6 +43,11 @@ STAGE_WORDS = {
 DEFAULT_EPISODE = "EP01"
 DEFAULT_SCENE = "SC01"
 
+#: Nome de quem a pasta nao soube nomear. Ele vai parar no burn-in de todo
+#: quadro e no comeco do nome de cada arquivo entregue, entao e o sinal de que
+#: a identidade do board ainda esta por decidir.
+DEFAULT_PROJECT_NAME = "New Project"
+
 
 @dataclass
 class FolderContext:
@@ -272,6 +277,95 @@ def find_shared_library(root, levels: int = 4):
         if vizinha != root and alvo.is_file():
             return alvo
     return None
+
+
+def nested_boards(root, levels: int = 2):
+    """Boards que existem DENTRO desta pasta, ate `levels` niveis abaixo.
+
+    Board dentro de board acontece de verdade: abrir a pasta de uma cena
+    estando dentro dela mesma cria `CENA03/CENA03`, e o de FORA — vazio —
+    ganha a pasta, porque quem se chama de cena e o dono dela (`folder_role`).
+    O trabalho fica escondido um nivel abaixo, invisivel na tela e no export,
+    com toda a cara de perdido. Achou-se assim no EP13 do Tarik: 41 planos
+    desenhados atras de um board de 1 plano vazio.
+    """
+    from .storage import PROJECT_FILE
+
+    root = Path(root).expanduser()
+    achados = []
+    def varrer(pasta, restante):
+        if restante <= 0:
+            return
+        for sub in _subfolders(pasta):
+            if (sub / PROJECT_FILE).is_file():
+                achados.append(sub)
+            else:
+                varrer(sub, restante - 1)
+    varrer(root, levels)
+    return achados
+
+
+def board_above(root, levels: int = 3):
+    """Board que ja existe ACIMA desta pasta, ou None.
+
+    Serve para nao criar board dentro de board: a pasta de uma cena mora no
+    EPISODIO, que nao e board nenhum, entao encontrar um `project.json` subindo
+    significa que se esta prestes a abrir um board dentro de outro.
+
+    Pasta que GUARDA cenas nao conta, mesmo tendo `project.json`: e o residuo
+    que o fluxo antigo deixava na raiz do episodio (o EP13 chegou assim do
+    Dropbox), e as cenas dentro dela sao legitimas. Quem decide e o mesmo
+    `folder_role` que ja resolve esse caso na hora de abrir.
+    """
+    from .storage import PROJECT_FILE
+
+    root = Path(root).expanduser()
+    for pasta in list(root.parents)[:levels]:
+        if (pasta / PROJECT_FILE).is_file() and folder_role(pasta) == ROLE_BOARD:
+            return pasta
+    return None
+
+
+def sibling_identity(root, levels: int = 4):
+    """(nome, sigla) do projeto que as cenas VIZINHAS ja usam, ou None.
+
+    Mesma ideia da biblioteca compartilhada, e pelo mesmo motivo: cada cena e um
+    board, e board novo tirava o nome da pasta. Quando a pasta nao dizia nada, o
+    projeto ficava "New Project" — e esse nome vai escrito no burn-in de todo
+    quadro entregue e no comeco do nome de cada arquivo. No EP13 do Tarik quatro
+    cenas nasceram assim ("New Project", "TOI", "CENA05"), e os arquivos saiam
+    com nomes que o montador do episodio nao reconhece.
+
+    Vale a MAIORIA das vizinhas: uma cena que ja tenha nascido torta nao arrasta
+    as outras. Empate devolve None — nao ha o que herdar sem chutar.
+    """
+    import json
+    from collections import Counter
+
+    from .storage import PROJECT_FILE
+
+    root = Path(root).expanduser()
+    contagem = Counter()
+    for vizinha in scene_folders(root):
+        if vizinha == root:
+            continue
+        arquivo = vizinha / PROJECT_FILE
+        if not arquivo.is_file():
+            continue
+        try:
+            dados = json.loads(arquivo.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        nome = (dados.get("name") or "").strip()
+        sigla = ((dados.get("settings") or {}).get("project_code") or "").strip()
+        if nome and nome != DEFAULT_PROJECT_NAME:
+            contagem[(nome, sigla)] += 1
+    if not contagem:
+        return None
+    (melhor, quantas), *resto = contagem.most_common()
+    if resto and resto[0][1] == quantas:
+        return None   # empate: sem maioria, herdar seria chutar
+    return melhor
 
 
 # --------------------------------------------------------------------------

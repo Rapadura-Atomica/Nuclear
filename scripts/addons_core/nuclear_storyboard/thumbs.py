@@ -302,6 +302,22 @@ def image_icon(path) -> int:
     return prévia.icon_id if prévia is not None else 0
 
 
+def forget_image(path) -> bool:
+    """Esquece a prévia deste arquivo. Devolve se havia o que esquecer.
+
+    Para quando o arquivo é APAGADO: o Blender guarda o pixel, então um prop
+    novo que reaproveitasse o mesmo caminho nasceria mostrando a imagem do que
+    foi apagado.
+    """
+    chave = str(Path(path))
+    _IMAGES_LOADED.pop(chave, None)
+    pcoll = image_previews()
+    if chave in pcoll:
+        del pcoll[chave]
+        return True
+    return False
+
+
 def register():
     previews()
 

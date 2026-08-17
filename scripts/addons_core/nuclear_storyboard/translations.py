@@ -257,6 +257,7 @@ PT_BR = {
     # --- biblioteca --------------------------------------------------
     ("*", "Characters (colour -> rig)"): "Personagens (cor → rig)",
     ("*", "Props"): "Props",
+    ("*", "no props in the library yet"): "nenhum prop cadastrado ainda",
     ("*", "New character"): "Novo personagem",
     ("*", "Registers a character with the lineart color and the final rig"):
         "Cadastra personagem com a cor do lineart e o rig final",
@@ -267,6 +268,48 @@ PT_BR = {
         "Cor do lineart deste personagem — clique para escolher",
     ("*", "Colour code"): "Código da cor",
     ("*", "Remove character"): "Remover personagem",
+    ("*", "Remove prop"): "Apagar prop",
+    # o que a PASTA conta ao abrir o board
+    ("*", "this folder is inside the board"): "esta pasta está dentro do board",
+    ("*", "a scene does not live inside another scene"):
+        "uma cena não fica dentro de outra cena",
+    ("*", "drawn plan(s) are in the folder"): "plano(s) desenhado(s) estão na pasta",
+    ("*", "inside this board"): "dentro deste board",
+    ("*", "the other scenes of this episode are called"):
+        "as outras cenas deste episódio se chamam",
+    ("*", "this one is"): "esta se chama",
+    ("*", "this board has no project name yet — it goes in the burn-in and in "
+          "every file name"):
+        "este board ainda não tem nome de projeto — ele vai no carimbo do vídeo "
+        "e no nome de cada arquivo",
+    ("*", "outside what you are delivering now"): "fora do que você vai entregar agora",
+    ("*", "file(s) with a conflicted copy from Dropbox: another machine wrote here too"):
+        "arquivo(s) com cópia em conflito do Dropbox: outra máquina escreveu aqui também",
+    ("*", "Every scene of the episode"): "Todas as cenas do episódio",
+    ("*", "Each scene folder beside this one, joined into a single video"):
+        "Cada pasta de cena ao lado desta, emendadas num vídeo só",
+    ("*", "Whole episode (every scene folder)"):
+        "Episódio inteiro (todas as pastas de cena)",
+    ("*", "Every scene of the episode folder, each one a board, joined into a "
+          "single video"):
+        "Todas as cenas da pasta do episódio, cada uma um board, emendadas num "
+        "vídeo só",
+    ("*", "scene folder(s) beside this one"): "pasta(s) de cena ao lado desta",
+    ("*", "scenes with no drawn plan are left out"):
+        "cenas sem nenhum plano desenhado ficam de fora",
+    ("*", "another machine had written in this board"):
+        "outra máquina tinha gravado neste board",
+    ("*", "copy(ies) of what was there kept beside the file"):
+        "cópia(s) do que havia guardada(s) ao lado do arquivo",
+    ("*", "Deletes this prop, its images and its use in every take"):
+        "Apaga o prop, as imagens dele e o uso em todos os planos",
+    ("*", "Delete"): "Apagar",
+    ("*", " and its images?"): " e as imagens dele?",
+    ("*", "deleted"): "apagado",
+    ("*", "plan(s) used it"): "plano(s) usavam",
+    ("*", "the request opened in the approval system is still there; close it "
+          "over there"):
+        "a pendência aberta no sistema de aprovação continua lá; feche por lá",
     ("*", "Link rig"): "Vincular rig",
     ("*", "drawing with"): "desenhando com",
     ("*", "Bring prop into the take"): "Trazer o prop para o take",

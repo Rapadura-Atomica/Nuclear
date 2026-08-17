@@ -326,6 +326,81 @@ def build_command(plan: ExportPlan, burnin, concat_list: Path, output: Path,
     return command
 
 
+FFPROBE = "ffprobe"
+
+
+def has_audio(video: Path) -> bool:
+    """O arquivo tem faixa de áudio? (`False` também quando não dá para saber.)"""
+    try:
+        saida = subprocess.run(
+            [FFPROBE, "-v", "error", "-select_streams", "a", "-show_entries",
+             "stream=index", "-of", "csv=p=0", str(video)],
+            capture_output=True, text=True)
+    except OSError:
+        return False
+    return bool(saida.stdout.strip())
+
+
+def _with_silent_audio(video: Path, destino: Path) -> Path:
+    """Cópia do vídeo com uma faixa MUDA, para poder ser emendada às que soam.
+
+    Nada é recodificado no vídeo — só nasce um áudio de silêncio do tamanho
+    dele.
+    """
+    comando = [FFMPEG, "-nostdin", "-v", "error", "-y", "-i", str(video),
+               "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+               "-c:v", "copy", "-c:a", "aac", "-shortest", str(destino)]
+    resultado = subprocess.run(comando, capture_output=True, text=True)
+    if resultado.returncode != 0:
+        tail = "\n".join(resultado.stderr.strip().splitlines()[-8:])
+        raise ExportError(f"ffmpeg falhou ao dar silêncio a {video.name}:\n{tail}")
+    return destino
+
+
+def join_videos(videos: Sequence[Path], output: Path) -> Path:
+    """Emenda vídeos já prontos num só, SEM recodificar. Devolve o caminho.
+
+    É como o episódio inteiro se monta: cada cena é um board próprio e já
+    entregou o animatic dela, então juntar é copiar os fluxos na ordem — o
+    resultado tem exatamente a soma dos quadros, e nenhuma geração de perda.
+    Exige que as cenas tenham o mesmo formato, o que é o caso: todas saem do
+    mesmo exportador, com a resolução e o fps do projeto.
+
+    ⚠️ Com ÁUDIO a exigência é literal: o demuxer `concat` decide os fluxos de
+    saída pela PRIMEIRA entrada, então uma cena muda na frente faz o episódio
+    inteiro sair sem faixa de áudio — o som de todas as outras é descartado sem
+    um aviso sequer (medido). Por isso, quando alguma cena soa, as mudas ganham
+    silêncio antes da emenda.
+    """
+    if not have_ffmpeg():
+        raise ExportError("ffmpeg não encontrado no PATH")
+    existentes = [Path(v) for v in videos if Path(v).is_file()]
+    if not existentes:
+        raise ExportError("nenhum vídeo de cena para juntar")
+
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="nsb_join_") as tmp:
+        com_som = [has_audio(v) for v in existentes]
+        if any(com_som) and not all(com_som):
+            existentes = [
+                v if tem else _with_silent_audio(v, Path(tmp) / f"mudo_{i:03d}{v.suffix}")
+                for i, (v, tem) in enumerate(zip(existentes, com_som))]
+        lista = Path(tmp) / "cenas.txt"
+        # `-safe 0` + caminho absoluto: nome de pasta do estúdio tem espaço e
+        # acento ("1 - Thumbs", "Produção"), e o demuxer recusa por padrão.
+        lista.write_text("".join(f"file '{v.resolve()}'\n" for v in existentes),
+                         encoding="utf-8")
+        comando = [FFMPEG, "-nostdin", "-v", "error", "-y",
+                   "-f", "concat", "-safe", "0", "-i", str(lista),
+                   "-c", "copy", str(output)]
+        resultado = subprocess.run(comando, capture_output=True, text=True)
+    if resultado.returncode != 0:
+        tail = "\n".join(resultado.stderr.strip().splitlines()[-12:])
+        raise ExportError(f"ffmpeg falhou ao juntar as cenas:\n{tail}")
+    return output
+
+
 def run_export(project: Project, paths, output: Path,
                slices: Optional[Sequence[TakeSlice]] = None,
                fmt: Optional[OutputFormat] = None) -> Path:

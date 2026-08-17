@@ -25,8 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .model import (SCHEMA_VERSION, Library, Project, Scene, Episode, Take,
-                    from_dict, to_dict)
+from .model import (SCHEMA_VERSION, Library, Project, Prop, Scene, Episode,
+                    Take, from_dict, to_dict)
 
 PROJECT_FILE = "project.json"
 LIBRARY_FILE = "library.json"
@@ -48,6 +48,35 @@ def _code_from_take_file(stem: str):
 
 class StorageError(Exception):
     pass
+
+
+def _signature(path: Path):
+    """Como o arquivo esta agora: (data em ns, tamanho). None se nao existe."""
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return (info.st_mtime_ns, info.st_size)
+
+
+def _keep_aside(path: Path):
+    """Guarda uma copia do arquivo antes de sobrescreve-lo. Devolve o caminho.
+
+    O nome diz o que aconteceu e quando, em portugues, porque quem vai encontrar
+    isso na pasta e o artista — e ele ja convive com o
+    "conflicted copy" do Dropbox, que e a mesma historia contada em ingles.
+    """
+    import time
+
+    if not path.is_file():
+        return None
+    quando = time.strftime("%Y-%m-%d %Hh%M")
+    destino = _unique_path(path.with_name(f"{path.stem} (mudou por fora {quando}){path.suffix}"))
+    try:
+        shutil.copy2(path, destino)
+    except OSError:
+        return None
+    return destino
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -149,6 +178,20 @@ class ProjectStore:
         self.paths = ProjectPaths(Path(root))
         self.project = project
         self.library = library
+        #: Como cada JSON estava no disco quando este store o leu. E o que
+        #: permite perceber que ALGUEM MAIS escreveu nele desde entao — no
+        #: estudio o board vive no Dropbox e duas maquinas abrem o mesmo
+        #: episodio (em 2026-08-17 isso desfez a correcao de nome de cinco
+        #: boards e trouxe de volta 42 arquivos apagados).
+        self._seen = {}
+        self._remember_files()
+        #: Arquivos que este store sobrescreveu depois de terem mudado por
+        #: fora, e onde ficou a copia do que estava la. A UI conta ao artista.
+        self.overwritten = []
+        #: Caminho da biblioteca COMPARTILHADA que o projeto declara e que nao
+        #: foi encontrada. None quando esta tudo no lugar (ou quando a
+        #: biblioteca e a do proprio board, que nasce junto com ele).
+        self.library_missing = None
 
     # ---- ciclo de vida -------------------------------------------------
     @classmethod
@@ -186,13 +229,21 @@ class ProjectStore:
         # A biblioteca pode morar fora do board (uma por episódio, dividida
         # entre as cenas) — quem diz onde é o próprio projeto.
         arquivo = library_file(paths, project)
+        # Biblioteca COMPARTILHADA que nao esta no lugar (o `library.json` do
+        # episodio ainda nao sincronizou, ou o caminho relativo deixou de valer)
+        # nao pode virar uma biblioteca vazia calada: cada personagem e cada
+        # prop citado pelos takes passa a "nao estar na biblioteca", e o board
+        # inteiro parece quebrado sem que nada explique o motivo.
+        faltando = project.settings.library_path and not arquivo.exists()
         if arquivo.exists():
             lib_payload = _read_json(arquivo)
             _check_schema(lib_payload, arquivo)
             library = from_dict(Library, lib_payload)
         else:
             library = Library()
-        return cls(root, project, library)
+        store = cls(root, project, library)
+        store.library_missing = arquivo if faltando else None
+        return store
 
     @property
     def library_file(self) -> Path:
@@ -203,11 +254,45 @@ class ProjectStore:
         for sub in SUBDIRS:
             (self.paths.root / sub).mkdir(parents=True, exist_ok=True)
 
+    def _files_to_watch(self):
+        return (self.paths.project_json, self.library_file)
+
+    def _remember_files(self) -> None:
+        """Anota como cada JSON esta no disco AGORA."""
+        for arquivo in self._files_to_watch():
+            self._seen[str(arquivo)] = _signature(arquivo)
+
+    def changed_outside(self):
+        """Arquivos do board que mudaram no disco desde que este store os leu.
+
+        Board no Dropbox aberto em duas maquinas nao e caso raro no estudio: a
+        outra grava, o cliente sincroniza, e o arquivo debaixo de nos deixa de
+        ser o que tinhamos lido. Quem descobre isso tarde perde trabalho.
+        """
+        mudados = []
+        for arquivo in self._files_to_watch():
+            visto = self._seen.get(str(arquivo))
+            if visto is not None and _signature(arquivo) != visto:
+                mudados.append(arquivo)
+        return mudados
+
     def save(self) -> None:
+        """Grava o board. Nunca APAGA o que outro escreveu enquanto isso.
+
+        Quando o arquivo mudou por fora desde a leitura, o que estava la e
+        guardado ao lado antes de ser sobrescrito (`.mudou-por-fora-<hora>`) e
+        o caminho vai para `overwritten`, que a tela mostra. Recusar a gravacao
+        seria pior: o trabalho que o artista tem na tela e o que se perderia.
+        """
         self.project.schema_version = SCHEMA_VERSION
         self.library.schema_version = SCHEMA_VERSION
+        for arquivo in self.changed_outside():
+            copia = _keep_aside(arquivo)
+            if copia is not None:
+                self.overwritten.append(copia)
         _write_json(self.paths.project_json, to_dict(self.project))
         _write_json(self.library_file, to_dict(self.library))
+        self._remember_files()
 
     # ---- estrutura -----------------------------------------------------
     def add_episode(self, code: str, name: str = "") -> Episode:
@@ -348,6 +433,55 @@ class ProjectStore:
         self.paths.props.mkdir(parents=True, exist_ok=True)
         slug = "".join(c if c.isalnum() or c in "-_" else "_" for c in name) or "prop"
         return _unique_path(self.paths.props / f"{slug}.png")
+
+    def remove_prop(self, prop: Prop) -> dict:
+        """Tira o prop da biblioteca, dos takes e do disco. NAO grava.
+
+        Apagar so o cadastro deixaria os takes apontando para um id que nao
+        existe mais — que e o erro RF-B01, o unico problema de prop que TRAVA o
+        export. Por isso a limpeza e uma coisa so.
+
+        As imagens dele saem junto (decisao do usuario, 2026-08-17), menos as
+        que outro prop ainda usa: dois cadastros podem apontar para o mesmo
+        arquivo, e apagar ali levaria a arte de quem ficou.
+
+        Devolve o que aconteceu, para quem chamou poder contar ao artista:
+        `takes` (de quantos ele saiu), `files` (imagens apagadas), `kept`
+        (imagens que ficaram porque outro prop usa) e `request` (id da pendencia
+        aberta no aprovacao, que continua la — daqui nao se cancela nada).
+        """
+        try:
+            self.library.props.remove(prop)
+        except ValueError:
+            return {"takes": 0, "files": [], "kept": [], "request": ""}
+
+        takes = 0
+        for _ep, _sc, take in self.project.iter_takes():
+            if prop.id in take.prop_ids:
+                take.prop_ids.remove(prop.id)
+                takes += 1
+
+        # Quem tinha sido substituido por ele volta a ser o que e: sem isto o
+        # provisorio aponta para um id morto e `resolve_prop` devolve None.
+        for outro in self.library.props:
+            if outro.replaced_by == prop.id:
+                outro.replaced_by = None
+
+        em_uso = {rel for outro in self.library.props
+                  for rel in (outro.file, outro.reference) if rel}
+        apagados, mantidos = [], []
+        for rel in dict.fromkeys(r for r in (prop.file, prop.reference) if r):
+            if rel in em_uso:
+                mantidos.append(rel)
+                continue
+            caminho = self.paths.abs(rel)
+            try:
+                caminho.unlink()
+                apagados.append(rel)
+            except OSError:
+                pass  # arquivo ja sumiu ou e de fora do projeto: o cadastro sai igual
+        return {"takes": takes, "files": apagados, "kept": mantidos,
+                "request": prop.request_id or ""}
 
     # ---- midia ---------------------------------------------------------
     def import_audio(self, source, take: Take, start: float = 0.0, duration: Optional[float] = None):

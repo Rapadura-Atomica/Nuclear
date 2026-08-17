@@ -256,7 +256,27 @@ def _on_character_color(item, context):
     character.hex_color = novo
     item.hex_color = novo
     _repaint_open_take(store)
+    _aim_brush_if_selected(context, store, character)
     _save_soon(store)
+
+
+def _aim_brush_if_selected(context, store, character) -> None:
+    """Trocar a cor de QUEM ESTA na mao repinta o pincel junto.
+
+    `_repaint_open_take` cuida do material; o pincel e a outra metade do que o
+    artista ve. Sem isto o cabecalho da ferramenta segue mostrando a cor antiga
+    ate ele clicar no personagem de novo.
+    """
+    from . import gp
+
+    st = getattr(context.window_manager, "nsb", None)
+    if st is None:
+        return
+    elenco = store.library.characters
+    if not (0 <= st.character_index < len(elenco)):
+        return
+    if elenco[st.character_index].id == character.id:
+        gp.aim_brush_at_material(context, character.hex_color)
 
 
 def _on_character_change(state, context):
@@ -361,6 +381,11 @@ class NSB_PropItem(PropertyGroup):
     request_status: StringProperty(name="Request", default="")
     has_reference: BoolProperty(name="Has reference", default=False)
     resolved: BoolProperty(name="Resolved", default=False)
+    #: Caminho ABSOLUTO da imagem que representa o prop na lista: a arte dele,
+    #: ou a referencia anexada enquanto arte nao ha. Vem pronto do `sync`
+    #: porque `draw_item` roda uma vez por linha a cada redesenho — resolver
+    #: caminho e bater no disco ali seria consultar o modelo no meio do desenho.
+    art_path: StringProperty(name="Art", default="", subtype="FILE_PATH")
 
 
 class NSB_IssueItem(PropertyGroup):
@@ -598,7 +623,11 @@ class NSB_State(PropertyGroup):
         items=[("TAKE", "This take", "Only the take on screen"),
                ("SCENE", "This scene", "Every take of the scene"),
                ("EPISODE", "This episode", "Every take of the episode"),
-               ("PROJECT", "Whole board", "Everything, in order")],
+               ("PROJECT", "Whole board", "Everything, in order"),
+               # Cada cena e um board: este e o unico item que sai desta pasta
+               # e varre as vizinhas, entregando o episodio num video so.
+               ("EPISODE_DIR", "Every scene of the episode",
+                "Each scene folder beside this one, joined into a single video")],
         default="SCENE")
     delivery_format: EnumProperty(
         name="Format",

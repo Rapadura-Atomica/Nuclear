@@ -62,20 +62,98 @@ REQUEST_LOOK = {
 }
 
 
-class NSB_UL_props(UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index=0, flt_flag=0):
-        row = layout.row(align=True)
-        row.label(text=item.name, icon="IMAGE_DATA" if item.has_art else "MESH_DATA")
-        direita = row.row(align=True)
-        direita.alignment = "RIGHT"
-        if item.resolved:
-            direita.label(text=_("final art in"), icon="SOLO_ON")
-        elif item.request_status:
-            rotulo, icone = REQUEST_LOOK.get(item.request_status,
-                                             (item.request_status, "TIME"))
-            direita.label(text=_(rotulo), icon=icone)
-        elif item.temporary:
-            direita.label(text=_("temporary"), icon="TIME")
+#: Altura da arte de cada prop, em unidades de interface. No tamanho de ícone
+#: (1) não se reconhece o desenho; grande demais, a lista come o painel. Duas
+#: unidades é o meio-termo — medido na tela, com a arte real de um board.
+PROP_ART_SCALE = 2.0
+
+
+def draw_prop_list(col, st) -> None:
+    """Os props com a ARTE de cada um, e não uma lista de nomes.
+
+    Desenhada à mão, e não com `template_list`, por um motivo que só a tela
+    conta: a linha da lista nativa tem altura FIXA, então a arte em escala
+    maior desce por cima da linha de baixo. Fora dela a linha cresce com o
+    conteúdo. (No 5.0 a lista nativa também não tem mais o modo `GRID` — o enum
+    aceita só `DEFAULT` e `COMPACT`.)
+
+    Quem decide se há arte é a PRÉVIA, não o `icon_id`: o id é 0 em background
+    (ícone é coisa de interface), e decidir por ele faria o teste ver um desenho
+    diferente do que o artista vê.
+
+    Escolher é clicar no nome — `wm.context_set_int` escreve o índice, o mesmo
+    que a lista nativa fazia, sem precisar de operador próprio.
+    """
+    from . import thumbs
+
+    if not len(st.props):
+        col.label(text=_("no props in the library yet"))
+        return
+    for i, item in enumerate(st.props):
+        linha = col.row(align=True)
+        miniatura = thumbs.load_image_preview(item.art_path) if item.art_path else None
+        if miniatura is not None:
+            linha.template_icon(icon_value=miniatura.icon_id, scale=PROP_ART_SCALE)
+
+        # Nome em cima, estado embaixo: os dois empilhados ocupam a altura da
+        # arte, então a linha fica alinhada. Lado a lado, o estado roubaria
+        # largura do nome — e nome de prop truncado é o que o artista lê.
+        info = linha.column(align=True)
+        estado = _prop_state(item)
+        nome = info.row(align=True)
+        if estado is None:
+            nome.scale_y = PROP_ART_SCALE   # sem estado, o nome ocupa a altura toda
+        escolha = nome.operator(
+            "wm.context_set_int", text=item.name, depress=(i == st.prop_index),
+            icon="NONE" if miniatura is not None
+            else ("IMAGE_DATA" if item.has_art else "MESH_DATA"))
+        escolha.data_path = "window_manager.nsb.prop_index"
+        escolha.value = i
+        if estado is not None:
+            rotulo, icone = estado
+            info.label(text=rotulo, icon=icone)
+
+
+def _issue_in_scope(issue, st, store) -> bool:
+    """O problema está dentro do que se vai entregar agora?
+
+    O contador de erros é do BOARD inteiro, mas a entrega tem recorte: um plano
+    quebrado na cena 2 não impede entregar a cena 1 — a validação do export só
+    olha o recorte. Sem esta resposta, a tela dizia "1 coisa para resolver" e o
+    artista ia procurar defeito onde não havia.
+
+    O `where` da mensagem é `EP13/CENA01/T009`, então basta comparar o começo
+    dele com o episódio e a cena escolhidos. Escopo de projeto/episódio pega
+    tudo; sem saber, a resposta é SIM (avisar demais é melhor que de menos).
+    """
+    escopo = getattr(st, "delivery_scope", "PROJECT")
+    if escopo in {"PROJECT", "EPISODE"} or store is None:
+        return True
+    episodio = sync.current_episode(bpy.context)
+    cena = sync.current_scene(bpy.context)
+    onde = (issue.where or "").split("/")
+    if cena is None or episodio is None or len(onde) < 2:
+        return True
+    if onde[0] != episodio.code or onde[1] != cena.code:
+        return False
+    if escopo == "TAKE":
+        take = sync.current_take(bpy.context)
+        if take is not None and len(onde) > 2 and onde[2] != take.code:
+            return False
+    return True
+
+
+def _prop_state(item):
+    """(texto, ícone) do estado do prop, ou None quando não há o que dizer."""
+    if item.resolved:
+        return _("final art in"), "SOLO_ON"
+    if item.request_status:
+        rotulo, icone = REQUEST_LOOK.get(item.request_status,
+                                         (item.request_status, "TIME"))
+        return _(rotulo), icone
+    if item.temporary:
+        return _("temporary"), "TIME"
+    return None
 
 
 class _Base:
@@ -252,10 +330,36 @@ class NSB_PT_storyboard(_Base, Panel):
         row.operator("nsb.save_project", icon="FILE_TICK", text="")
         row.operator("nsb.close_project", icon="X", text="")
         if st.error_count and has_takes:
-            row = layout.row()
-            row.alert = True
+            col = layout.column(align=True)
+            col.alert = True
             plural = _("thing to fix") if st.error_count == 1 else _("things to fix")
-            row.label(text=f"{st.error_count} {plural}", icon="ERROR")
+            col.label(text=f"{st.error_count} {plural}", icon="ERROR")
+            # QUAL e ONDE, não só quantos: um contador solto manda o artista
+            # procurar o problema em 91 planos, e o erro costuma estar numa cena
+            # que ele nem está entregando.
+            primeiro = next((i for i in st.issues if i.level == "error"), None)
+            if primeiro is not None:
+                col.label(text=f"{primeiro.where}: {primeiro.message}")
+
+        # O que a PASTA contou ao abrir (trabalho preso num board aninhado,
+        # identidade que destoa das cenas vizinhas, cópia em conflito do
+        # Dropbox). Não é erro de validação: o board funciona, só está
+        # escondendo alguma coisa.
+        for _codigo, mensagem in state.board_notes():
+            linha = layout.row()
+            linha.alert = True
+            linha.label(text=mensagem, icon="ERROR")
+
+        # Gravamos por cima de algo que outra máquina tinha escrito. O trabalho
+        # dela não foi perdido — ficou guardado ao lado —, mas quem está aqui
+        # precisa saber que aconteceu, senão descobre dias depois.
+        if store is not None and store.overwritten:
+            col = layout.column(align=True)
+            col.alert = True
+            col.label(text=_("another machine had written in this board"),
+                      icon="ERROR")
+            col.label(text=f"{len(store.overwritten)} "
+                      + _("copy(ies) of what was there kept beside the file"))
 
     def _draw_navigation(self, context, layout, st, store, selected, open_take):
         """Onde o board está e os takes. Episódio e cena não se escolhem.
@@ -572,9 +676,10 @@ class NSB_PT_library(_Base, Panel):
 
         layout.label(text=_("Props"))
         row = layout.row()
-        row.template_list("NSB_UL_props", "", st, "props", st, "prop_index", rows=3)
+        draw_prop_list(row.column(align=True), st)
         side = row.column(align=True)
         side.operator("nsb.add_prop", icon="ADD", text="")
+        side.operator("nsb.remove_prop", icon="REMOVE", text="")
         side.operator("nsb.prop_reference", icon="IMAGE_REFERENCE", text="")
         side.operator("nsb.replace_prop", icon="FILE_REFRESH", text="")
         layout.operator("nsb.place_prop", icon="IMPORT")
@@ -635,22 +740,33 @@ class NSB_PT_delivery(_Base, Panel):
 
         takes, nome = scope_takes(context, st.delivery_scope)
         formato = output_format(st.delivery_format)
-        if not takes:
+        episodio_inteiro = st.delivery_scope == "EPISODE_DIR"
+        if episodio_inteiro:
+            # Aqui não há contagem de planos: as outras cenas são boards que
+            # este nem abriu, e lê-los a cada redesenho custaria uma varredura
+            # do Dropbox. O que dá para prometer é o arquivo e de onde ele sai.
+            caixa = layout.box()
+            caixa.label(text=f"{nome}{formato.suffix}", icon="FILE_MOVIE")
+            vizinhas = scene_neighbours(store)
+            caixa.label(text=f"{len(vizinhas)} " + _("scene folder(s) beside this one"))
+            caixa.label(text=_("scenes with no drawn plan are left out"), icon="INFO")
+        elif not takes:
             layout.label(text=_("nothing selected to deliver"), icon="INFO")
             return
 
-        # O que vai sair, escrito antes de sair: nome do arquivo, quantos planos
-        # e quanto tempo. É por aqui que se percebe a sigla errada — e não com
-        # vinte arquivos já na pasta da produção.
-        caixa = layout.box()
-        linha = caixa.row(align=True)
-        linha.label(text=f"{nome}{formato.suffix}", icon="FILE_MOVIE")
-        segundos = sum(take_duration(tk) for tk in takes)
-        caixa.label(text=f"{len(takes)} " + _("plan(s)") + f" · {segundos:.1f}s")
+        else:
+            # O que vai sair, escrito antes de sair: nome do arquivo, quantos
+            # planos e quanto tempo. É por aqui que se percebe a sigla errada —
+            # e não com vinte arquivos já na pasta da produção.
+            caixa = layout.box()
+            linha = caixa.row(align=True)
+            linha.label(text=f"{nome}{formato.suffix}", icon="FILE_MOVIE")
+            segundos = sum(take_duration(tk) for tk in takes)
+            caixa.label(text=f"{len(takes)} " + _("plan(s)") + f" · {segundos:.1f}s")
         # Take a take vem ligado, e sair calado seria pior do que não sair: são
         # mais quinze arquivos na pasta da produção. Escrito com o nome de um
         # deles, que é como o animador reconhece o que vai receber.
-        if st.delivery_per_take:
+        if st.delivery_per_take and takes:
             from .ops_export import _take_example_name
 
             exemplo = _take_example_name(store, takes)
@@ -729,11 +845,20 @@ class NSB_PT_delivery(_Base, Panel):
         if st.error_count:
             # O contador é do BOARD inteiro, e o recorte pode nem incluir o take
             # quebrado: dizer só "1 coisa para resolver" aqui faria parecer que
-            # esta entrega está travada quando ela vai sair normalmente.
-            linha = layout.row()
-            linha.alert = True
-            linha.label(text=f"{st.error_count} " + _("thing(s) to fix in the board"),
-                        icon="ERROR")
+            # esta entrega está travada quando ela vai sair normalmente. Então a
+            # tela diz QUAL é o problema, ONDE ele está, e se ele atrapalha ESTA
+            # entrega — que é a única pergunta que importa na hora de entregar.
+            col = layout.column(align=True)
+            col.alert = True
+            col.label(text=f"{st.error_count} " + _("thing(s) to fix in the board"),
+                      icon="ERROR")
+            primeiro = next((i for i in st.issues if i.level == "error"), None)
+            if primeiro is not None:
+                col.label(text=f"{primeiro.where}: {primeiro.message}")
+                if not _issue_in_scope(primeiro, st, store):
+                    col.alert = False
+                    col.label(text=_("outside what you are delivering now"),
+                              icon="CHECKMARK")
 
         linha = layout.row(align=True)
         linha.operator("nsb.watch_scene", icon="PLAY")
@@ -806,7 +931,7 @@ class NSB_PT_delivery_setup(_Base, Panel):
 
 
 CLASSES = (
-    NSB_UL_characters, NSB_UL_props,
+    NSB_UL_characters,
     NSB_PT_storyboard, NSB_PT_more, NSB_PT_library,
     # O subpainel vem DEPOIS do pai: o Blender precisa do `bl_parent_id` já
     # registrado para pendurar o filho nele.

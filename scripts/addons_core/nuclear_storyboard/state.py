@@ -31,3 +31,20 @@ def require_store() -> ProjectStore:
 
 def has_project() -> bool:
     return _store is not None
+
+
+#: O que a PASTA revelou sobre este board na hora de abrir: trabalho escondido
+#: num board aninhado, identidade que destoa das cenas vizinhas. Fica guardado
+#: porque descobrir isso e VARRER O DISCO — o `draw()` de um painel roda a cada
+#: redesenho, e a pasta costuma estar no Dropbox.
+_notes: list = []
+
+
+def set_board_notes(notes) -> None:
+    global _notes
+    _notes = list(notes or [])
+
+
+def board_notes() -> list:
+    """[(codigo, mensagem)] do que se achou na pasta ao abrir o board."""
+    return list(_notes)

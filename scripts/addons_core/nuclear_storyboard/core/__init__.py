@@ -4,11 +4,12 @@ Manter este pacote livre de `bpy` e proposital: da para rodar os testes no
 Python do host e reaproveitar o mesmo codigo num worker headless depois.
 """
 
-from .context import (ROLE_BOARD, ROLE_EPISODE, ROLE_SCENE, FolderContext,
-                      context_from_path, dropbox_local_root, ensure_structure,
-                      episode_scenes, find_shared_library, folder_role,
-                      is_stage_folder, next_scene_number, path_from_link,
-                      scene_folder_name, scene_folders)
+from .context import (DEFAULT_PROJECT_NAME, ROLE_BOARD, ROLE_EPISODE,
+                      ROLE_SCENE, FolderContext, board_above, context_from_path,
+                      dropbox_local_root, ensure_structure, episode_scenes,
+                      find_shared_library, folder_role, is_stage_folder,
+                      nested_boards, next_scene_number, path_from_link,
+                      scene_folder_name, scene_folders, sibling_identity)
 from .model import (SCHEMA_VERSION, Audio, BurnIn, Character, Drawing, Episode,
                     Library, Project, Prop, Scene, Settings, Take,
                     hex_from_rgb, normalize_hex, rgb_from_hex)
@@ -20,10 +21,11 @@ from .storage import ProjectPaths, ProjectStore, StorageError
 from .timing import build_timeline, distribute_exposures, take_duration
 
 __all__ = [
-    "ROLE_BOARD", "ROLE_EPISODE", "ROLE_SCENE", "FolderContext",
-    "context_from_path", "dropbox_local_root", "ensure_structure",
-    "episode_scenes", "find_shared_library", "folder_role", "is_stage_folder",
-    "next_scene_number", "path_from_link", "scene_folder_name", "scene_folders",
+    "DEFAULT_PROJECT_NAME", "ROLE_BOARD", "ROLE_EPISODE", "ROLE_SCENE",
+    "FolderContext", "board_above", "context_from_path", "dropbox_local_root",
+    "ensure_structure", "episode_scenes", "find_shared_library", "folder_role",
+    "is_stage_folder", "nested_boards", "next_scene_number", "path_from_link",
+    "scene_folder_name", "scene_folders", "sibling_identity",
     "SCHEMA_VERSION", "Audio", "BurnIn", "Character", "Drawing", "Episode",
     "Library", "Project", "Prop", "Scene", "Settings", "Take",
     "hex_from_rgb", "normalize_hex", "rgb_from_hex",

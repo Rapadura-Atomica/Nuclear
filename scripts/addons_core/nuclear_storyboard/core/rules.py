@@ -81,11 +81,17 @@ def validate_take(take: Take, library: Library, paths: Optional[ProjectPaths] = 
                                 f"desenho {i + 1} com exposicao <= 0", where))
 
     # RN03 — personagem sem rig vinculado
+    #
+    # Citar alguem que nao esta mais na biblioteca e AVISO, nao erro: o animatic
+    # e feito dos DESENHOS, e o vinculo com personagem/prop nao entra em um
+    # quadro sequer do video. Travar a entrega por causa disso e o que impedia
+    # entregar uma cena inteira quando a biblioteca do episodio nao estava
+    # acessivel — quatro "inexistente na biblioteca" e nenhuma pista do porque.
     for cid in take.character_ids:
         char = next((c for c in library.characters if c.id == cid), None)
         if char is None:
-            issues.append(Issue(ERROR, "RN03",
-                                f"take aponta para personagem inexistente na biblioteca ({cid})", where))
+            issues.append(Issue(WARNING, "RN03",
+                                f"take aponta para personagem que nao esta na biblioteca ({cid})", where))
         elif not char.is_linked:
             issues.append(Issue(WARNING, "RN03",
                                 f"personagem '{char.name}' ({char.hex_color}) nao tem rig vinculado", where))
@@ -94,9 +100,20 @@ def validate_take(take: Take, library: Library, paths: Optional[ProjectPaths] = 
     for pid in take.prop_ids:
         prop = next((p for p in library.props if p.id == pid), None)
         if prop is None:
-            issues.append(Issue(ERROR, "RF-B01",
-                                f"take aponta para prop inexistente na biblioteca ({pid})", where))
-        elif prop.temporary:
+            issues.append(Issue(WARNING, "RF-B01",
+                                f"take aponta para prop que nao esta na biblioteca ({pid})", where))
+            continue
+        # Arte ou referencia apontando para arquivo que sumiu: o cadastro
+        # continua de pe e ninguem percebe ate tentar trazer o prop de volta ao
+        # canvas ou mandar a pendencia para o estudio, quando o arquivo faz
+        # falta. Aviso, porque o animatic sai igual.
+        if paths is not None:
+            for rotulo, relativo in (("arte", prop.file), ("referencia", prop.reference)):
+                if relativo and not paths.abs(relativo).is_file():
+                    issues.append(Issue(WARNING, "RF-B02",
+                                        f"a {rotulo} do prop '{prop.name}' nao esta no "
+                                        f"disco ({relativo})", where))
+        if prop.temporary:
             final = library.resolve_prop(pid)
             if final is not None and final.id != pid:
                 issues.append(Issue(INFO, "RN04",
@@ -128,14 +145,27 @@ def validate_library(library: Library) -> List[Issue]:
 
 def validate_project(project: Project, library: Library,
                      paths: Optional[ProjectPaths] = None,
-                     take_ids: Optional[Iterable[str]] = None) -> List[Issue]:
+                     take_ids: Optional[Iterable[str]] = None,
+                     library_missing=None) -> List[Issue]:
     """Valida o projeto inteiro ou so um recorte de takes.
 
     O recorte existe por causa do RF-13: assistir a uma cena nao pode travar
     porque uma OUTRA cena ainda esta pela metade.
+
+    `library_missing` e o caminho da biblioteca compartilhada que o board
+    declara e que nao foi encontrada (`ProjectStore.library_missing`). Sem
+    dize-lo aqui, a falta dela aparece como uma lista de "personagem/prop que
+    nao esta na biblioteca" — sintoma, nunca a causa.
     """
     wanted = set(take_ids) if take_ids is not None else None
     issues = validate_library(library)
+
+    if library_missing is not None:
+        issues.append(Issue(WARNING, "RF-B03",
+                            f"a biblioteca compartilhada do episodio nao foi "
+                            f"encontrada em {library_missing} — os personagens e "
+                            f"props deste board ficam sem cadastro ate ela voltar",
+                            "biblioteca"))
 
     if project.settings.fps <= 0:
         issues.append(Issue(ERROR, "RNF", "fps precisa ser positivo", "settings"))

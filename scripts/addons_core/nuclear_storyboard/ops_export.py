@@ -269,6 +269,13 @@ def scope_takes(context, scope: str):
     """
     store = state.require_store()
     project = store.project
+    if scope == "EPISODE_DIR":
+        # As cenas são pastas IRMÃS, cada uma com o board dela: contar os planos
+        # delas aqui significaria ler todos os `project.json` vizinhos a cada
+        # redesenho de painel — e a pasta costuma estar no Dropbox. Quem varre é
+        # o worker, uma vez, quando a entrega começa.
+        ep = project.episodes[0] if project.episodes else None
+        return [], scope_basename(project, ep)
     if scope == "PROJECT":
         return ([tk for _e, _s, tk in project.iter_takes()],
                 scope_basename(project))
@@ -299,6 +306,9 @@ class NSB_OT_export_animatic(_WorkerOperator):
     scope: EnumProperty(
         name="Scope",
         items=[
+            ("EPISODE_DIR", "Whole episode (every scene folder)",
+             "Every scene of the episode folder, each one a board, joined into "
+             "a single video"),
             ("PROJECT", "Whole project", "Every take, in document order"),
             ("EPISODE", "Selected episode", "Every take of the selected episode"),
             ("SCENE", "Selected scene", "Every take of the selected scene (RF-13)"),
@@ -396,7 +406,7 @@ class NSB_OT_export_animatic(_WorkerOperator):
         if not (self.video or self.kdenlive or self.per_take):
             self.report({"ERROR"}, _("nothing to export: pick at least one file"))
             return {"CANCELLED"}
-        if not scope_takes(context, self.scope)[0]:
+        if self.scope != "EPISODE_DIR" and not scope_takes(context, self.scope)[0]:
             self.report({"ERROR"}, _("nothing selected to export"))
             return {"CANCELLED"}
 
@@ -474,9 +484,15 @@ class NSB_OT_export_animatic(_WorkerOperator):
         destino = self._folder or store.paths.exports
         formato = output_format(self.fmt)
 
-        args = ["--project", str(store.paths.root), "--format", formato.key]
-        if self.scope != "PROJECT":
-            args += ["--takes", ",".join(tk.id for tk in takes)]
+        if self.scope == "EPISODE_DIR":
+            # Uma pasta acima do board estão as cenas irmãs — é ela que o worker
+            # varre, exportando cada board e emendando tudo num vídeo só.
+            args = ["--episode", str(Path(store.paths.root).parent),
+                    "--format", formato.key]
+        else:
+            args = ["--project", str(store.paths.root), "--format", formato.key]
+            if self.scope != "PROJECT":
+                args += ["--takes", ",".join(tk.id for tk in takes)]
         if self.force:
             args.append("--force")
         if self.video:

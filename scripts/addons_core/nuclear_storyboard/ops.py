@@ -123,14 +123,33 @@ def open_or_create_board(context, alvo):
     from .core.storage import PROJECT_FILE
     from .props import remember_board
 
+    from .core import board_above, sibling_identity
+
     alvo = Path(alvo)
     existente = (alvo / PROJECT_FILE).is_file()
     deduzido = context_from_path(alvo)
     if existente:
         store = ProjectStore.load(alvo)
     else:
-        store = ProjectStore.create(alvo, deduzido.project_name,
-                                    project_code=deduzido.project_code,
+        # Board DENTRO de board é engano — foi assim que 41 planos do Tarik
+        # ficaram escondidos em `CENA03/CENA03`, atrás de um board vazio. A cena
+        # mora no episódio, que não é board nenhum; achar `project.json` subindo
+        # significa que se está prestes a criar um board dentro de outro.
+        de_fora = board_above(alvo)
+        if de_fora is not None:
+            raise StorageError(
+                _("this folder is inside the board") + f" {Path(de_fora).name} — "
+                + _("a scene does not live inside another scene"))
+
+        # Nome e sigla vêm das cenas VIZINHAS quando elas concordam: o episódio
+        # é um só, e board novo tirava o nome da pasta — quando ela não dizia
+        # nada, virava "New Project" para sempre, escrito no burn-in de todo
+        # quadro e no nome de cada arquivo entregue.
+        nome, sigla = deduzido.project_name, deduzido.project_code
+        herdado = sibling_identity(alvo)
+        if herdado is not None:
+            nome, sigla = herdado
+        store = ProjectStore.create(alvo, nome, project_code=sigla,
                                     library_path=_shared_library(alvo))
     store.ensure_dirs()
     mudou = ensure_structure(store)
@@ -149,6 +168,7 @@ def open_or_create_board(context, alvo):
         store.save()
 
     state.set_store(store)
+    state.set_board_notes(board_notes(store))
     context.window_manager.nsb.episode_dir = str(alvo.parent)
     remember_board(context, store.paths.root, store.project.name)
     sync.sync_all(context)
@@ -159,6 +179,53 @@ def open_or_create_board(context, alvo):
     # do navegador de pastas.
     autoswitch.request_open(context)
     return store, existente
+
+
+def board_notes(store):
+    """O que a PASTA conta sobre este board — [(código, mensagem)].
+
+    São as duas coisas que fizeram 41 planos do EP13 sumirem da tela por dias:
+    trabalho preso num board aninhado, e uma identidade que destoa das cenas
+    vizinhas (o nome vai no burn-in e abre o nome de cada arquivo entregue).
+    Nenhuma das duas é erro de validação — o board funciona, só está mentindo
+    sobre si mesmo, e por isso o aviso é da PASTA e não do `validate_project`.
+
+    Roda ao ABRIR, nunca no desenho do painel: as duas perguntas varrem o disco.
+    """
+    from .core import DEFAULT_PROJECT_NAME, nested_boards, sibling_identity
+
+    notas = []
+    for pasta in nested_boards(store.paths.root):
+        try:
+            outro = ProjectStore.load(pasta)
+        except Exception:
+            continue
+        planos = sum(1 for _e, _s, t in outro.project.iter_takes() if t.drawings)
+        if planos:
+            notas.append(("NESTED", f"{planos} " + _("drawn plan(s) are in the folder")
+                          + f" {pasta.name}/, " + _("inside this board")))
+
+    # Cópia em conflito é o Dropbox dizendo que DOIS computadores escreveram no
+    # mesmo arquivo. Quem não vê isso passa a tarde corrigindo um board que a
+    # outra máquina desfaz em seguida — foi o que aconteceu no EP13.
+    conflitos = [p for padrao in ("*conflicted copy*", "*/*conflicted copy*")
+                 for p in store.paths.root.glob(padrao)]
+    if conflitos:
+        notas.append(("CONFLICT", f"{len(conflitos)} " + _("file(s) with a conflicted "
+                      "copy from Dropbox: another machine wrote here too")))
+
+    herdado = sibling_identity(store.paths.root)
+    nome = store.project.name
+    sigla = store.project.settings.project_code
+    if herdado is not None and (nome, sigla) != herdado:
+        notas.append(("IDENTITY",
+                      _("the other scenes of this episode are called")
+                      + f" {herdado[0]} ({herdado[1] or '—'}), " + _("this one is")
+                      + f" {nome} ({sigla or '—'})"))
+    elif nome == DEFAULT_PROJECT_NAME:
+        notas.append(("IDENTITY", _("this board has no project name yet — it goes "
+                                    "in the burn-in and in every file name")))
+    return notas
 
 
 def _first_scene(store):
@@ -1312,6 +1379,63 @@ class NSB_OT_add_prop(Operator):
         return {"FINISHED"}
 
 
+class NSB_OT_remove_prop(Operator):
+    """Apaga o prop escolhido da biblioteca — cadastro, imagens e uso nos takes.
+
+    Some de tudo de uma vez porque meia-limpeza quebra o board: cadastro fora e
+    id ainda nos takes é o erro que TRAVA o export ("take aponta para prop
+    inexistente"). As imagens dele vão junto, menos as que outro prop use.
+
+    Pede confirmação por apagar arquivo do disco, que é o que não volta. E se
+    houver pendência aberta no sistema de aprovação, o aviso diz que ela
+    continua lá: daqui não se cancela nada no servidor.
+    """
+
+    bl_idname = "nsb.remove_prop"
+    bl_label = "Remove prop"
+    bl_description = "Deletes this prop, its images and its use in every take"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    @classmethod
+    def poll(cls, context):
+        st = context.window_manager.nsb
+        return state.has_project() and 0 <= st.prop_index < len(st.props)
+
+    def invoke(self, context, event):
+        store = state.require_store()
+        st = context.window_manager.nsb
+        prop = store.library.props[st.prop_index]
+        return context.window_manager.invoke_confirm(
+            self, event, message=_("Delete") + f" '{prop.name}'" + _(" and its images?"))
+
+    def execute(self, context):
+        from . import gp, thumbs
+
+        store = state.require_store()
+        st = context.window_manager.nsb
+        prop = store.library.props[st.prop_index]
+        nome = prop.name
+
+        gp.remove_prop(prop)   # tira da cena aberta, se ele estiver no canvas
+        for rel in (prop.file, prop.reference):
+            if rel:
+                thumbs.forget_image(store.paths.abs(rel))
+        feito = store.remove_prop(prop)
+        store.save()
+        st.prop_index = min(st.prop_index, max(0, len(store.library.props) - 1))
+        sync.sync_all(context)
+
+        recado = f"{nome}: " + _("deleted")
+        if feito["takes"]:
+            recado += f" ({feito['takes']} " + _("plan(s) used it") + ")"
+        self.report({"INFO"}, recado)
+        if feito["request"]:
+            self.report({"WARNING"},
+                        _("the request opened in the approval system is still "
+                          "there; close it over there"))
+        return {"FINISHED"}
+
+
 class NSB_OT_replace_prop(Operator):
     """RN04: aponta o prop selecionado para a versão final; todos os takes que
     usam o provisório passam a resolver para ela."""
@@ -1361,7 +1485,8 @@ class NSB_OT_validate(Operator):
         store = state.require_store()
         sync.sync_issues(context)
         from .core import validate_project
-        issues = validate_project(store.project, store.library, store.paths)
+        issues = validate_project(store.project, store.library, store.paths,
+                                 library_missing=store.library_missing)
         blocking = blocks_export(issues, store.project.settings.strict_hex_link)
         if blocking:
             self.report({"WARNING"}, f"{len(blocking)} " + _("problem(s) block the export"))
@@ -1381,7 +1506,7 @@ CLASSES = (
     NSB_OT_edit_audio_external, NSB_OT_reload_audio, NSB_OT_set_take_duration,
     NSB_OT_rename_project, NSB_OT_rename_structure,
     NSB_OT_add_character, NSB_OT_link_character_rig, NSB_OT_remove_character,
-    NSB_OT_add_prop, NSB_OT_replace_prop,
+    NSB_OT_add_prop, NSB_OT_remove_prop, NSB_OT_replace_prop,
     NSB_OT_validate,
 )
 
