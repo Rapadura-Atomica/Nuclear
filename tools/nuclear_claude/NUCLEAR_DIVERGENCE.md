@@ -732,6 +732,30 @@ pasta, e quem quiser o padrão antigo escreve `####` no caminho.
 
 ---
 
+### Interpolação padrão de keyframe: Bezier → Constant (2026-08-18)
+Pedido dos animadores: preferem trabalhar com interpolação **Constant** por padrão em vez de
+Bezier, já que a produção usa muito pose-a-pose (cut-out) e Constant reflete melhor o desenho
+mantido até o próximo keyframe.
+
+Isso **já era configurável** sem código (Edit > Preferences > Animation > New F-Curve Defaults
+> Default Interpolation, RNA `keyframe_new_interpolation_type` / campo `ipo_new`). A divergência é
+só sobre o **default de fábrica**, para o artista não ter que trocar essa preferência em toda
+instalação nova.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `release/datafiles/userdef/userdef_default.c` | Campo `.ipo_new` do struct estático `U_default`: `BEZT_IPO_BEZ` → `BEZT_IPO_CONST`. |
+
+Alcance: `U_default` é copiado para `U` sempre que as preferências são resetadas para o padrão de
+fábrica (`blendfile.cc`, `*userdef = blender::dna::shallow_copy(U_default);`) — cobre instalação
+nova e "Load Factory Preferences". ⚠️ **Não** cobre: instalações existentes com um
+`userpref.blend` já salvo (a preferência do usuário, uma vez gravada em disco, prevalece — não há
+migração retroativa), nem o fallback hardcoded em `source/blender/animrig/intern/fcurve.cc`
+(`get_keyframe_settings`, `from_userprefs=false`), que é usado deliberadamente em pontos que não
+devem obedecer à preferência do usuário e foi deixado como está.
+
+---
+
 ## 3. Branding (subconjunto de pontos quentes + dados)
 
 Pontos onde a identidade "Blender" aparece. Itens marcados [feito] já foram alterados;
