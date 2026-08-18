@@ -1,13 +1,13 @@
 {
   "name": "Nuclear",
-  "build": 23,
-  "version": "1.8.1",
+  "build": 25,
+  "version": "1.8.2",
   "stage": "Beta",
-  "version_string": "Nuclear 1.8.1 (Beta)",
+  "version_string": "Nuclear 1.8.2 (Beta)",
   "url": "https://rapaduraatomica.com.br/estacao/nuclear.zip",
-  "sha256": "aa70890466d316463dd51e2776713dabc253096b423f6a764fccc849df652444",
-  "size": 355731401,
+  "sha256": "a5b9a0bf366465ffb8bc5269f13e447831df336f5c695db803408243df5bd04a",
+  "size": 354728224,
   "min_build": 0,
   "notes_url": "https://github.com/Rapadura-Atomica/Nuclear/releases",
-  "notes": "Conserta a selecao na viewport: clicar numa peca ou usar a caixa de selecao voltou a funcionar, em qualquer tipo de objeto. A 1.8.0 saiu com um binario defeituoso que derrubava isso; o conteudo dela (opacidade por objeto e por peg, Xsheet nos tres templates, duplo clique em .nuc/.blend) continua todo aqui."
+  "notes": "Limpar Camera: devolve a cena ao estado de template, so com a camera\nCopiar animacao de pegs: reaproveita a atuacao de um personagem em outro\nStoryboard 0.19.1: correcoes da EP13 e troca de cena bem mais rapida\nDeform Curve: Bind e Unbind viraram botoes e o painel mostra o estado\nPegs: correcao das matrizes de mundo que eram lidas do disco"
 }

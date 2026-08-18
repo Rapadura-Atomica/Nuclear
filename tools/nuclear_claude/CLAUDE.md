@@ -487,9 +487,12 @@ instalação não-gravável caem nesse fallback. Ver `[[nuclear-auto-update]]` n
 
 ## 10. Estado atual
 
-Atualizado em 2026-08-14.
+Atualizado em 2026-08-18.
 
-> **NO AR AGORA: 1.8.1 / build 23.** A 1.9.0 ficou publicada por ~15 minutos em 2026-08-14 e
+> **NO AR AGORA: 1.8.2 / build 25** (publicada em 2026-08-18). A nota abaixo sobre a 1.8.1
+> fica como histórico da 1.9.0 retirada.
+
+> **Histórico — até 2026-08-18 estava no ar 1.8.1 / build 23.** A 1.9.0 ficou publicada por ~15 minutos em 2026-08-14 e
 > foi **RETIRADA a pedido do usuário**; o servidor foi restaurado a partir do
 > `nuclear.zip.bak-pre-1.9.0`. O zip retirado está guardado em
 > `nuclear.zip.bak-1.9.0-retirada` (+ `version.json.bak-1.9.0-retirada`), então republicar é
@@ -504,6 +507,27 @@ Atualizado em 2026-08-14.
 > semver**, senão sai 1.8.3. Um `nuclear_release.sh patch` faria as duas coisas: aqui o
 > caminho é editar o header à mão ou passar o bump só do build. Nada foi publicado nesta
 > data; a 1.9.0 continua guardada no servidor como `nuclear.zip.bak-1.9.0-retirada`.
+
+- **Nuclear 1.8.2 (Beta) — `NUCLEAR_BUILD = 25` — publicada em 2026-08-18.** PATCH a partir da
+  branch `Nuclear` (HEAD `fdf8686cb451`). sha256
+  `a5b9a0bf366465ffb8bc5269f13e447831df336f5c695db803408243df5bd04a`, **354.728.224 bytes**;
+  backup da b23 = `nuclear.zip.bak-pre-1.8.2`. Entrega: **Limpar Câmera** (devolve a cena ativa
+  ao estado de template), **Biblioteca de Pegs** (copiar a atuação de um personagem para outro
+  pelo nome dos pegs), **Storyboard & Animatic 0.19.1** (correções da EP13 + troca de cena
+  ~20× mais rápida), Deform Curve com Bind/Unbind em botões e estado no painel, e o fix dos
+  pegs que liam matrizes de mundo do disco.
+  Motivo do release: a 1.8.2 tinha sido bumpada em 2026-08-17 mas **nunca publicada** — o
+  manifesto seguia anunciando build 23, então nenhum cliente detectava atualização.
+  Compilado **do zero** em `~/build_nuclear_2d` (container `blenderdev`, preset
+  `nuclear_2d.cmake`, ninja -j4) — o dir estava parado desde 8/jul, o mesmo caso que quebrou a
+  1.8.0. ⚠️ O `verify-zip` barrou o primeiro pacote: **`scipy` não está no `lib/` do repo**,
+  vive só dentro de um build dir, então todo build limpo nasce sem ele — copiado do
+  `Nuclear/build` antigo para `bin/` e staging (mesma solução da 1.7.1). Gates: smoke 2D ALL
+  PASS, `selftest_selection.py` 12/12 na GUI (o segfault ao sair é do próprio script, o binário
+  anterior faz igual), verify-zip + check-manifest OK, sha256 conferido **no servidor** antes do
+  `mv` (upload em duas fases). Detecção validada de ponta a ponta contra o manifesto público:
+  b23 → oferece, b24 → oferece, b25 → não oferece.
+  `ping.php`/`instalarNuclear.sh` não tocados.
 
 - **Nuclear 1.9.0 (Beta) — `NUCLEAR_BUILD = 24` — publicada e RETIRADA em 2026-08-14.** MINOR a partir da
   branch `Nuclear` (HEAD `0be9fd3c8338`, pushado antes do build). sha256
