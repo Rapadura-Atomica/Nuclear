@@ -4,9 +4,10 @@
 > personagens rigados com peg, e do caminho até uma **biblioteca de ações**.
 > Implementado 100% em Python sobre a API de PegRig
 > (`scripts/startup/nuclear_peg_library.py`), sem mudança em C.
-> Núcleo validado headless contra dois rigs sintéticos.
+> Validado headless contra rigs sintéticos e contra `dionisio_pegs_fix.nuc` (Dionisio +
+> Baco reais); eficiência medida no §11.
 >
-> Última atualização: 2026-08-11.
+> Última atualização: 2026-08-18.
 
 ---
 
@@ -189,7 +190,83 @@ hierarquia detectada. Todas passam.
 Falta a validação contra dois personagens reais do acervo — é o próximo passo, e é o que vai
 dizer o quanto do overlap de nomes o contrato realmente entrega na prática.
 
-## 11. O que isto ainda não é
+### Validação contra dois personagens reais
+
+`dionisio_pegs_fix.nuc` carrega os dois rigs no mesmo arquivo — DIONISIO (50 pegs, com o
+aceno) e BACO (47 pegs).
+
+| | resultado |
+|---|---|
+| casamento exato de nomes | **46 de 50 (92%)** |
+| hierarquia | idêntica nos 46 |
+| proporção medida | 1,0000 |
+| transferência do aceno | 9 canais em 0,16 ms |
+| diferença máxima de valor | **0,00e+00** |
+
+Os pegs que não casam são exatamente `Bigode`, `saia_base`, `detalhe.cabelo`,
+`detalhe.cabelo.001` (só Dionisio) e `chapeu` (só Baco) — **todo o guarda-roupa, nada do
+corpo nem do rosto**. O contrato de nomes de §3 entregou 100% do que promete e falhou
+precisamente onde o `RigAutoFeature.md` já avisa que falharia.
+
+O aceno é um peg só: `Antebraço.d`, −111,8° entre os quadros 1 e 12. Chegou bit-exato.
+
+### A lição dos holds
+
+O arquivo também tem `1maoAction.001` no objeto `mao.d`: nove curvas de `location`,
+`rotation_euler` e `scale`, com dois keyframes cada, no mesmo intervalo do aceno. Parece
+atuação fora do rig — e não é. Todos os pares de keyframes têm **o mesmo valor**: é o
+animador apertando `I` com um keying set LocRotScale, não movimento.
+
+Contar keyframes reporta um arquivo inofensivo como alarmante. `_curve_varies()` compara
+valores, e é o critério que `object_performance()` usa.
+
+### Atuação fora do rig
+
+Uma peça pode ser posada de duas formas: pela peg de desenho dela, ou animando o **objeto**
+direto. Só a primeira viaja dentro da ação do rig. `object_performance()` detecta a segunda e
+reporta no `Check` — sem isso o animador receberia metade de uma atuação sem saber.
+
+O casamento é feito **pelo peg que cada objeto segue, nunca pelo nome do objeto**: num
+arquivo com dois personagens os objetos do segundo vêm todos com sufixo (`mao.d` contra
+`mao.d.001`, zero nomes em comum), enquanto o peg que ambos seguem é `mao.d (ctrl)` nos dois.
+Injetando movimento real na curva do `mao.d`, a detecção aponta o `mao.d.001` do Baco como
+contraparte. Transferir essa animação ainda não está implementado — só o aviso.
+
+## 11. Eficiência medida
+
+Medido headless no build 1.9.0. Personagem cheio — 76 pegs (38 juntas + 38 pegs de desenho),
+235 canais animados, keys em 4s:
+
+| plano de 240 quadros | cópia de curvas | bake quadro a quadro |
+|---|---|---|
+| tempo | **2,1 ms** | 1 430 ms |
+| keyframes gravados | 13 860 | 54 720 |
+
+Como cada um escala com a duração do plano (56 pegs, 168 canais de rotação):
+
+| quadros | cópia | bake | ganho |
+|---:|---:|---:|---:|
+| 48 | 1,3 ms | 175 ms | 130× |
+| 120 | 1,8 ms | 394 ms | 217× |
+| 240 | 1,9 ms | 1 010 ms | 530× |
+| 480 | 2,3 ms | 4 178 ms | 1 791× |
+| 960 | 4,8 ms | 12 520 ms | 2 606× |
+
+O ganho **cresce** com a duração porque os dois lados escalam de forma diferente:
+
+- a **cópia** é O(keyframes), com um custo fixo de ~1 ms do plano. 20× mais quadros custaram
+  3,6× mais tempo;
+- o **bake** é super-linear: 20× mais quadros custaram **72×** mais tempo. Cada
+  `keyframe_insert` numa f-curve que já tem N keys paga O(N) para achar onde inserir, então o
+  total tende a O(n²) — além do `frame_set` + reavaliação por quadro.
+
+E o bake grava **4× mais keyframes** para dizer a mesma coisa: um por quadro, em vez dos que
+o animador de fato pôs. Isso pesa no tamanho do `.blend` e no tempo de reabrir, mas o custo
+que importa é outro — uma curva com key em todo quadro não é mais editável. A cópia devolve a
+animação com o mesmo espaçamento e o mesmo easing que o animador original criou, que é o
+ponto inteiro de reaproveitar.
+
+## 12. O que isto ainda não é
 
 O modelo implementado é **origem → destino**. Mas se os nomes de peg são canônicos, uma ação
 de peg **não pertence a personagem nenhum** — ela só está guardada no `adt` de um `PegRig`

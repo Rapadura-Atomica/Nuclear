@@ -209,6 +209,61 @@ def hierarchy_mismatches(src_rig, tgt_rig, pairs):
     return out
 
 
+def _curve_varies(fcurve, epsilon=1e-6):
+    """Whether a curve actually moves.
+
+    Two keyframes holding the same value is not a performance — it is the animator pressing
+    I with a LocRotScale keying set. Counting keyframes instead of checking variation
+    reports holds as animation, which is how a harmless file looks alarming.
+    """
+    points = fcurve.keyframe_points
+    if len(points) < 2:
+        return False
+    first = points[0].co[1]
+    return any(abs(point.co[1] - first) > epsilon for point in points)
+
+
+def _followed_peg(obj):
+    for constraint in obj.constraints:
+        if constraint.type == "FOLLOW_PEG":
+            return constraint.rig, constraint.peg_name
+    return None, None
+
+
+def object_performance(src_rig, tgt_rig, pairs):
+    """Objects of the source rig whose OWN transform is animated, and their counterpart.
+
+    A Grease Pencil piece can be posed two ways: through its drawing peg, or by animating the
+    object itself. Only the first travels inside the rig's action, so the second has to be
+    reported — otherwise the animator silently receives half a performance and goes hunting.
+
+    The counterpart is found by the PEG each object follows, never by object name: in a file
+    holding two characters, the second one's objects are all suffixed (`mao.d` vs
+    `mao.d.001`) while the peg they follow is identical.
+    """
+    mapping = dict(pairs)
+    by_peg = {}
+    for obj in bpy.data.objects:
+        rig, peg_name = _followed_peg(obj)
+        if rig == tgt_rig and peg_name:
+            by_peg.setdefault(peg_name, obj)
+
+    found = []
+    for obj in bpy.data.objects:
+        rig, peg_name = _followed_peg(obj)
+        if rig != src_rig or not peg_name:
+            continue
+        action = obj.animation_data.action if obj.animation_data else None
+        if action is None:
+            continue
+        moving = [fc for fc in _iter_fcurves(action) if _curve_varies(fc)]
+        if not moving:
+            continue
+        counterpart = by_peg.get(mapping.get(peg_name, peg_name))
+        found.append((obj, counterpart, len(moving), action.name))
+    return found
+
+
 # --------------------------------------------------------------------------- #
 # Proportion
 # --------------------------------------------------------------------------- #
@@ -249,6 +304,18 @@ def limb_ratio(src_rig, tgt_rig, pairs):
     if len(ratios) % 2:
         return ratios[middle]
     return (ratios[middle - 1] + ratios[middle]) / 2.0
+
+
+def measured_proportion(src_rig, tgt_rig, settings=None):
+    """The two rigs' limb ratio, measured over every peg they share.
+
+    Deliberately independent of which pegs the action animates — see the note in
+    ``plan_transfer``.
+    """
+    ignore_suffix = bool(settings.ignore_number_suffix) if settings else False
+    every_name = {peg.name for peg in src_rig.pegs}
+    body_pairs, _ = match_pegs(src_rig, tgt_rig, every_name, ignore_suffix)
+    return limb_ratio(src_rig, tgt_rig, body_pairs)
 
 
 # --------------------------------------------------------------------------- #
@@ -318,8 +385,11 @@ def plan_transfer(src_rig, tgt_rig, action, settings):
     mapping = dict(pairs)
 
     if settings.scale_mode == "AUTO":
-        measured = limb_ratio(src_rig, tgt_rig, pairs)
-        proportion = measured if measured else 1.0
+        # Measured over EVERY peg the two rigs share, not just the animated ones: the
+        # proportion between two bodies is a property of the bodies. A shot that happens to
+        # animate one forearm would otherwise scale the whole performance by that single
+        # segment's ratio.
+        proportion = measured_proportion(src_rig, tgt_rig, settings) or 1.0
     elif settings.scale_mode == "MANUAL":
         proportion = settings.scale_factor
     else:
@@ -500,7 +570,9 @@ class OBJECT_OT_nuclear_peg_reuse_check(Operator):
         mismatched = hierarchy_mismatches(
             settings.source_rig, settings.target_rig, pairs
         )
-        measured = limb_ratio(settings.source_rig, settings.target_rig, pairs)
+        measured = measured_proportion(
+            settings.source_rig, settings.target_rig, settings
+        )
 
         print("\n[Peg Reuse] '%s': %s -> %s"
               % (action.name, settings.source_rig.name, settings.target_rig.name))
@@ -518,6 +590,15 @@ class OBJECT_OT_nuclear_peg_reuse_check(Operator):
         if measured:
             print("  measured limb ratio: %.4f" % measured)
 
+        outside = object_performance(
+            settings.source_rig, settings.target_rig, pairs
+        )
+        for obj, counterpart, count, action_name in outside:
+            print("    OUTSIDE THE RIG: object '%s' animates itself (%s, %d curve(s)) -> %s"
+                  % (obj.name, action_name, count,
+                     "would land on '%s'" % counterpart.name if counterpart
+                     else "no counterpart in the target"))
+
         summary = "%d channels cross, %d skipped, %d pegs matched" % (
             len(moves), len(skips), len(pairs))
         if missing:
@@ -526,7 +607,11 @@ class OBJECT_OT_nuclear_peg_reuse_check(Operator):
             summary += " | %d hang elsewhere" % len(mismatched)
         if measured and abs(measured - 1.0) > 0.02:
             summary += " | limbs %.2fx" % measured
-        self.report({"WARNING"} if (missing or mismatched) else {"INFO"}, summary)
+        if outside:
+            summary += " | %d object(s) animate outside the rig" % len(outside)
+        self.report(
+            {"WARNING"} if (missing or mismatched or outside) else {"INFO"}, summary
+        )
         return {"FINISHED"}
 
 
@@ -582,7 +667,7 @@ class VIEW3D_PT_nuclear_peg_reuse(Panel):
 
     @classmethod
     def poll(cls, context):
-        return len(bpy.data.pegrigs) > 1
+        return len(bpy.data.pegrigs) > 0
 
     def draw(self, context):
         layout = self.layout
@@ -590,11 +675,17 @@ class VIEW3D_PT_nuclear_peg_reuse(Panel):
         layout.use_property_decorate = False
         settings = context.scene.nuclear_peg_reuse
 
+        # prop_search, not prop: a PointerProperty to a custom ID type renders as an empty
+        # field with plain prop(), so the rigs are there but unpickable. This is the same
+        # widget the Peg Graph uses to choose its rig.
         column = layout.column()
-        column.prop(settings, "source_rig", icon="ARMATURE_DATA")
-        column.prop(settings, "source_action", icon="ACTION")
+        column.prop_search(settings, "source_rig", bpy.data, "pegrigs",
+                           text="From", icon="ARMATURE_DATA")
+        column.prop_search(settings, "source_action", bpy.data, "actions",
+                           text="Animation", icon="ACTION")
         column.separator()
-        column.prop(settings, "target_rig", icon="OUTLINER_OB_ARMATURE")
+        column.prop_search(settings, "target_rig", bpy.data, "pegrigs",
+                           text="To", icon="OUTLINER_OB_ARMATURE")
 
         layout.separator()
         column = layout.column()
@@ -614,7 +705,10 @@ class VIEW3D_PT_nuclear_peg_reuse(Panel):
         actions = layout.column(align=True)
         actions.use_property_split = False
         ready = bool(settings.source_rig and settings.target_rig)
-        if not ready:
+        if len(bpy.data.pegrigs) < 2:
+            actions.label(text="This file has only one peg rig", icon="INFO")
+            ready = False
+        elif not ready:
             actions.label(text="Pick both characters", icon="INFO")
         elif settings.source_rig == settings.target_rig:
             actions.label(text="Both are the same character", icon="ERROR")
