@@ -357,19 +357,29 @@ class GreasePencil : Overlay {
   /**
    * Nuclear: give each Grease Pencil object a flat depth plane that follows the *render* order.
    *
-   * The Grease Pencil engine paints objects back-to-front, sorted by the depth of the object
-   * ORIGIN (#gpencil_object_cache_add / `gpencil_tobject_dist_sort`), and clears the depth buffer
-   * between objects (#Instance::draw_object) -- so where the strokes actually sit in depth never
-   * decides which piece covers which. The selection prepass had no such notion: the fragment
-   * shader skips the depth plane under `SELECT_ENABLE`, so hits were resolved by the raw geometric
-   * depth of the stroke, with ties broken by distance to the cursor. On a cut-out rig those two
-   * orders are unrelated -- measured on production rigs, 22% of the overlapping pairs came out
-   * inverted, and on a rig whose pieces all share one origin there was no correlation at all.
+   * The Grease Pencil engine paints each 2D object into its own buffer and clears the depth
+   * between objects (#Instance::draw_object), so where the strokes sit in depth never decides
+   * which piece covers which: what composites the object back into the scene is the flat plane
+   * anchored at the centre of its BOUNDING BOX (`plane_mat` in #gpencil_object_cache_add, the same
+   * point #depth_plane_get uses outside selection). The selection prepass had no such notion: the
+   * fragment shader skips the depth plane under `SELECT_ENABLE`, so hits were resolved by the raw
+   * geometric depth of the stroke, with ties broken by distance to the cursor. On a cut-out rig
+   * those two orders are unrelated -- measured on production rigs, 22% of the overlapping pairs
+   * came out inverted, and on a rig whose pieces all share one origin there was no correlation.
    *
    * So in selection mode we rebuild the engine's order here (every object is known by now) and
    * hand each object a plane at a distinct depth that follows it. Ordering is only nudged where it
    * has to be: an object keeps its own depth unless the object in front of it is not strictly
    * closer, which keeps Grease Pencil consistent with the rest of the scene.
+   *
+   * The anchor was the object ORIGIN until 2026-08-20, which is what the engine sorts its draw
+   * LIST by -- but the list order only breaks ties, the composite plane is what decides. On a peg
+   * rig the two are far apart, because the origin is inherited and does not follow the artwork:
+   * JUPITER's beard, cut out of the head, kept the head's origin at y = -0.72 while its drawing
+   * sits at y = -1.12, so the torso and the hair took every click that landed on it. Measured on
+   * the same rigs: the beard and the head answered 0 of 364 and 0 of 740 clicks inside their own
+   * visible area; five isolated pairs showed the render on top and the click underneath, 5 out
+   * of 5, and ordering by this anchor predicts the render in all five.
    */
   static void compute_selection_depth_planes(View &view, Resources &res)
   {
@@ -381,11 +391,11 @@ class GreasePencil : Overlay {
     Array<float> camera_z(count);
     for (const int64_t i : IndexRange(count)) {
       order[i] = i;
-      camera_z[i] = math::dot(camera_z_axis, res.depth_planes[i].object_origin);
+      camera_z[i] = math::dot(camera_z_axis, res.depth_planes[i].depth_anchor);
     }
 
     /* Stable sort, back to front: the engine's own comparison, and the stability is what
-     * reproduces its tie-breaking (objects sharing an origin keep the sync order). */
+     * reproduces its tie-breaking (objects sharing an anchor keep the sync order). */
     std::stable_sort(order.begin(), order.end(), [&](const int64_t a, const int64_t b) {
       return camera_z[a] < camera_z[b];
     });
@@ -417,7 +427,7 @@ class GreasePencil : Overlay {
       previous_object = plane.object;
 
       /* Anchor a plane facing the viewer at that depth. */
-      const float3 anchor = plane.object_origin + camera_z_axis * (depth - camera_z[i]);
+      const float3 anchor = plane.depth_anchor + camera_z_axis * (depth - camera_z[i]);
       const float3 normal = view.is_persp() ? math::normalize(view.location() - anchor) :
                                               camera_z_axis;
       plane.plane = float4(normal, -math::dot(normal, anchor));
@@ -493,7 +503,8 @@ class GreasePencil : Overlay {
       GreasePencilDepthPlane &plane = res.depth_planes[index];
       plane.bounds = BKE_object_boundbox_get(ob).value_or(blender::Bounds(float3(0)));
       plane.handle = res_handle;
-      plane.object_origin = float3(ob->object_to_world().location());
+      /* Nuclear: the centre of the bounding box in world space -- see #GreasePencilDepthPlane. */
+      plane.depth_anchor = math::transform_point(ob->object_to_world(), plane.bounds.center());
       plane.object = ob;
 
       pass.push_constant("gp_depth_plane", &plane.plane);
