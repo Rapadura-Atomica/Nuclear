@@ -583,10 +583,13 @@ struct GreasePencilDepthPlane {
   Bounds<float3> bounds;
   /* Grease-pencil object resource handle. */
   ResourceHandleRange handle;
-  /* Nuclear: origin of the object in world space. The Grease Pencil engine sorts objects by the
-   * depth of this point (#gpencil_object_cache_add), so in selection mode it -- not the geometry
-   * -- is what decides which piece is on top. */
-  float3 object_origin;
+  /* Nuclear: the point whose depth decides which piece is on top, in world space -- the centre of
+   * the object's bounding box, which is where the Grease Pencil engine anchors the plane it
+   * composites each 2D object with (`plane_mat` in #gpencil_object_cache_add). Selection reuses it
+   * so a click stacks the pieces the way the viewport shows them. NOT the object origin: on a peg
+   * rig the origin is inherited and does not follow the artwork (a beard cut out of the head keeps
+   * the head's origin), and the two orders then disagree. */
+  float3 depth_anchor;
   /* Nuclear: owner, so that several draws of one object (a layer pulled out to be clipped, for
    * instance) share a single depth and do not end up stacked against each other. */
   const Object *object;
