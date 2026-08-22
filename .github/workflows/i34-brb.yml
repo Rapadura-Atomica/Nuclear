@@ -1,0 +1,71 @@
+# I3.4 — verificação do exportador `.brb` no CI do lado do Nuclear.
+#
+# O laço completo do I3.4 tem quatro passos: extrair a árvore do arquivo do
+# Nuclear, exportar para `.brb`, reabrir e comparar. Os dois primeiros exigem o
+# binário do Nuclear e os `.blend` do acervo — nenhum dos dois existe num runner
+# do GitHub, e nem deveria: o acervo é do estúdio e o binário tem 1,7 GB.
+#
+# Por isso a verificação é dividida em duas camadas, e esta é a de cima:
+#
+#   AQUI (CI)      autoteste do arnês, sobre árvores já extraídas e versionadas.
+#                  Só Python. Pega regressão no comparador, no leitor de `.brb`
+#                  e no fixture — que é onde o erro é silencioso e caro.
+#
+#   NA ESTAÇÃO     `./I3.4-rodar.sh`, o laço inteiro com o Nuclear e o acervo.
+#                  Roda em ~12 s para as cinco referências.
+#
+# A divisão não é preguiça: o comparador é o que decide se uma conversão passou,
+# então um defeito nele aprova migração errada em silêncio. É justamente essa
+# parte que dá para testar sem dependência nenhuma, e é a que mais precisa de
+# rede de proteção a cada mudança.
+
+name: I3.4 — arnês de conversão .brb
+
+on:
+  push:
+    paths:
+      - "tools/briba_export/**"
+      - ".github/workflows/i34-brb.yml"
+  pull_request:
+    paths:
+      - "tools/briba_export/**"
+      - ".github/workflows/i34-brb.yml"
+
+concurrency:
+  group: i34-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  arnes:
+    name: Autoteste do comparador
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout raso (sem submódulos, sem LFS)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Autoteste — o arnês passa quando deve e reprova quando deve
+        working-directory: tools/briba_export
+        run: ./I3.4-autoteste.sh
+
+      # O laço completo não roda aqui, e o CI diz isso em voz alta em vez de
+      # deixar a impressão de que a conversão inteira foi verificada. Silêncio
+      # sobre o que não foi testado é como um relatório de fidelidade mente.
+      - name: O que este job NÃO verifica
+        if: always()
+        run: |
+          echo "::notice title=Cobertura do I3.4::Este job testa o comparador, o leitor de .brb e o fixture."
+          echo "::notice title=Não verificado::A extração da árvore e a exportação exigem o Nuclear e o acervo — rode ./I3.4-rodar.sh numa estação."
+          echo "::notice title=Também não verificado::Que o app do Briba aceite o arquivo. Isso só se prova abrindo lá."
