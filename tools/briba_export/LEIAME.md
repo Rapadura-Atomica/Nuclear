@@ -1,6 +1,6 @@
-# Exportador `.brb` e arnês de conversão (I3.1 / I3.4)
+# Exportador `.brb`, relatório de fidelidade e modo lote (I3.1 a I3.4)
 
-Ferramentas do **lado Nuclear** do Lote Israel: converter o acervo do estúdio
+Ferramentas do **lado Nuclear** do lote de aposentadoria do fork: converter o acervo do estúdio
 para o formato `.brb` do Briba Anima, e verificar que a conversão não mente.
 
 Escritas a partir da **especificação** do formato, nunca do código do Briba —
@@ -10,14 +10,46 @@ a especificação atravessa a fronteira entre os dois lados; código, nunca.
 
 ```
 arquivo.blend ──[I3.4-arvore-canonica.py]──> árvore ─┐
-      │                                               ├─> I3.4-comparar.py ─> veredito
-      └──[I3.1-exportar-brb.py]──> .brb ──[I3.4-ler-brb.py]──> árvore ┘
+      │                                               ├─> I3.4-comparar.py ─┐
+      └──[I3.1-exportar-brb.py]──> .brb ──[I3.4-ler-brb.py]──> árvore ──────┤
+                                     │                                      │
+                                     └── relatorio-de-fidelidade.json ───────┤
+                                          (o que o conversor DECLAROU)      │
+                                                                            v
+                                                     I3.2-relatorio-fidelidade.py
+                                                     o que veio · o que se perdeu
+                                                     o que conferir · perda CALADA
 ```
+
+O I3.2 cruza duas fontes independentes: o que o conversor declarou de si mesmo
+(dentro do `.brb`) e o que a comparação observou. Diferença observada onde o
+conversor não avisou nada é **perda calada**, e reprova — é literalmente o
+critério de aceite do lote.
 
 | Comando | O que faz | Precisa de |
 |---|---|---|
-| `./I3.4-rodar.sh` | o laço inteiro sobre as referências | Nuclear + acervo |
+| `./I3.3-lote.py --lista L --saida D --verificar` | converte o acervo inteiro, sem intervenção | Nuclear + acervo |
+| `./I3.4-rodar.sh` | o laço sobre as cinco referências | Nuclear + acervo |
+| `./I3.2-relatorio-fidelidade.py` | relatório por arquivo e consolidado | só Python |
+| `./I3.1-recarimbar-brb.py` | troca o carimbo do container sem reconverter | só Python |
 | `./I3.4-autoteste.sh` | prova que o arnês passa e reprova quando deve | só Python |
+| `./I3.2-autoteste.py` | prova que o relatório reprova perda calada | só Python |
+
+## Modo lote (I3.3)
+
+```sh
+./I3.3-lote.py --dir ~/acervo/Projeto --saida ~/lote-brb --verificar
+./I3.3-lote.py --lista lista.txt --saida ~/lote-brb --continuar   # retomar
+```
+
+Um Nuclear por vez, de propósito: cada instância come RAM e dois em paralelo
+numa estação de 16 GB derrubam a noite inteira. Cada arquivo tem prazo
+(`--prazo`, 10 min), e arquivo que falha vira linha no registro em vez de parar
+a fila. O registro (`lote-registro.jsonl`) é gravado e sincronizado a cada
+arquivo — estação que reinicia às 4h da manhã retoma com `--continuar`.
+
+Varre `.blend` **e** `.nuc`; pula backup `.blend1`, lixeira e cópia de conflito
+do Dropbox (essas são decisão humana pendente, não acervo).
 
 O CI roda o **autoteste**, não o laço: extrair e exportar exigem o binário do
 Nuclear e os arquivos do acervo, e nenhum dos dois cabe num runner. Ver
@@ -52,9 +84,28 @@ no documento do formato, e todas são necessárias para escrever um conversor:
 | Lacuna | O que foi adotado | Como apareceu |
 |---|---|---|
 | Método de compressão do ZIP | **armazenado**, sem compressão | o aplicativo recusa entrada comprimida |
-| Número mágico | `BRB\0` — **provisório** | o aplicativo recusa o arquivo; falta o valor real |
+| Número mágico | `BRB\0` — **suposição declarada** | o aplicativo recusa o arquivo; falta o valor real |
 | Nomes dos campos do manifesto | `magic`, `schema_version`, `project` | inferidos |
 | Endianness do buffer de pontos | little-endian, 4 floats por ponto | não confirmado |
+| `actions/` × `performances/` | `performances/` | a própria spec marca como pendência |
+
+Nenhuma delas é constante de código, e é de propósito: **o Briba ainda está
+sendo escrito**, então nem tirar o valor de um arquivo que ele mesmo salvou é
+possível hoje. O número mágico sai de `BRB_MAGIC`; quando o valor real for
+fixado, o acervo já convertido **não precisa reconverter** — `I3.1-recarimbar-brb.py`
+troca o carimbo, o nome dos campos e o nome da pasta dentro do container em
+segundos por arquivo, deixando geometria e CBOR byte a byte iguais aos que já
+foram conferidos:
+
+```sh
+./I3.1-recarimbar-brb.py --ver ~/lote-brb/brb/personagem.brb
+./I3.1-recarimbar-brb.py ~/lote-brb/brb --magic 'BRBA' --backup
+./I3.1-recarimbar-brb.py ~/lote-brb/brb --pasta 'performances/=actions/'
+```
+
+Enquanto o valor não for confirmado, todo `.brb` sai com um achado `SUSPEITO`
+de número mágico no relatório de fidelidade — a suposição fica escrita dentro
+do próprio arquivo, não só na cabeça de quem exportou.
 
 ## O que o exportador ainda não faz
 

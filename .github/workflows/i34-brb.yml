@@ -19,7 +19,7 @@
 # parte que dá para testar sem dependência nenhuma, e é a que mais precisa de
 # rede de proteção a cada mudança.
 
-name: I3.4 — arnês de conversão .brb
+name: I3.2 / I3.4 — arnês de conversão .brb
 
 on:
   push:
@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   arnes:
-    name: Autoteste do comparador
+    name: Autoteste do comparador e do relatório
     runs-on: ubuntu-latest
 
     steps:
@@ -56,9 +56,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Autoteste — o arnês passa quando deve e reprova quando deve
+      - name: Autoteste do comparador — passa quando deve e reprova quando deve
         working-directory: tools/briba_export
         run: ./I3.4-autoteste.sh
+
+      # O relatório de fidelidade é a peça em que o estúdio vai confiar para
+      # decidir o que reconverter e o que aceitar. Um relatório que só sabe
+      # dizer "passou" é pior que relatório nenhum — dá confiança sem base.
+      - name: Autoteste do relatório — perda calada reprova
+        working-directory: tools/briba_export
+        run: ./I3.2-autoteste.py
 
       # O laço completo não roda aqui, e o CI diz isso em voz alta em vez de
       # deixar a impressão de que a conversão inteira foi verificada. Silêncio
@@ -66,6 +73,6 @@ jobs:
       - name: O que este job NÃO verifica
         if: always()
         run: |
-          echo "::notice title=Cobertura do I3.4::Este job testa o comparador, o leitor de .brb e o fixture."
-          echo "::notice title=Não verificado::A extração da árvore e a exportação exigem o Nuclear e o acervo — rode ./I3.4-rodar.sh numa estação."
-          echo "::notice title=Também não verificado::Que o app do Briba aceite o arquivo. Isso só se prova abrindo lá."
+          echo "::notice title=Cobertura::Este job testa o comparador, o leitor de .brb, o fixture, o relatório de fidelidade e a recarimbagem."
+          echo "::notice title=Não verificado::A extração da árvore, a exportação e o modo lote exigem o Nuclear e o acervo — rode ./I3.3-lote.py ou ./I3.4-rodar.sh numa estação."
+          echo "::notice title=Também não verificado::Que o app do Briba aceite o arquivo. Isso só se prova abrindo lá — e o Briba ainda está sendo escrito, então nem o número mágico do container está confirmado."

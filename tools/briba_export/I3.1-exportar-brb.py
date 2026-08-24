@@ -17,13 +17,25 @@ Uso:
 """
 import bpy
 import json
+import os
 import struct
 import sys
 import zipfile
 from pathlib import Path
 
 VERSAO_ESQUEMA = 1
-NUMERO_MAGICO = "BRB\x00"
+
+# O número mágico é a única coisa que decide se o Briba aceita ou recusa o
+# arquivo antes de olhar qualquer conteúdo — e a spec o cita **uma vez**, numa
+# tabela, sem dizer o valor. O Briba ainda está sendo escrito, então também não
+# dá para tirar o valor de um arquivo que ele mesmo salvou.
+#
+# Por isso o valor NÃO é constante de código: vem de `BRB_MAGIC`, e o padrão
+# abaixo é declaradamente um chute. O dia em que o lado do Briba fixar o valor,
+# nada aqui muda — e o acervo já convertido também não precisa reconverter:
+# `I3.1-recarimbar-brb.py` troca o carimbo no lugar, em segundos por arquivo.
+NUMERO_MAGICO = os.environ.get("BRB_MAGIC", "BRB\x00")
+MAGICO_CONFIRMADO = "BRB_MAGIC" in os.environ
 
 # Limiar de profundidade: o `.brb` é 2D e o Grease Pencil é 3D. Traço mais
 # fundo que isto perde informação de verdade na projeção, e o relatório de
@@ -138,10 +150,9 @@ def pontos_para_buffer(st, matriz, rel, onde):
     """Projeta o traço para 2D e empacota os pontos.
 
     O plano de desenho do estúdio é X-Z com Y≈0, então a projeção é
-    (x, z) -> (x, y). Isso foi conferido no acervo, e não vale para tudo: numa
-    das referências, 41 de 45 objetos são planos e quatro têm profundidade de
-    verdade. Esses quatro perdem informação aqui — por isso a perda é medida e
-    reportada, nunca presumida como zero.
+    (x, z) -> (x, y). Isso foi conferido no acervo: 41 de 45 objetos do
+    uma das referências são planos, e os quatro que não são perdem profundidade aqui —
+    por isso a perda é medida e reportada, não presumida como zero.
 
     Formato: 4 floats little-endian por ponto — x, y, pressão, tempo.
     `tilt` é opcional na spec e o GP não o expõe por ponto, então fica de fora.
@@ -329,6 +340,14 @@ def exportar(destino):
         "resolution": [int(cena.render.resolution_x), int(cena.render.resolution_y)],
         "layers": camadas,
     }
+
+    if not MAGICO_CONFIRMADO:
+        rel.add("SUSPEITO", "número mágico",
+                f"o manifesto foi carimbado com {NUMERO_MAGICO!r}, que é uma "
+                f"suposição: a especificação cita o número mágico sem dar o "
+                f"valor. Se o Briba recusar o arquivo dizendo que ele não é um "
+                f".brb, é isto — e o conserto é `I3.1-recarimbar-brb.py`, sem "
+                f"reconverter")
 
     manifesto = {
         "magic": NUMERO_MAGICO,
