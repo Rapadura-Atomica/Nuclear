@@ -112,6 +112,32 @@ class Relatorio:
         return dict(Counter(i["categoria"] for i in self.itens))
 
 
+def regiao_preenchida(ob, st):
+    """O traço é uma região preenchida, no sentido de `closed` da spec (T2.6)?
+
+    Quem manda é o MATERIAL ter preenchimento, não o traço ser geometricamente
+    cíclico: no acervo do estúdio a maior parte das áreas chapadas é desenhada
+    com traço aberto e preenchida pelo material. Fechamento geométrico continua
+    recuperável dos pontos, quando o primeiro coincide com o último.
+    """
+    try:
+        idx = int(getattr(st, "material_index", 0) or 0)
+        slots = ob.material_slots
+        if 0 <= idx < len(slots) and slots[idx].material:
+            gp = getattr(slots[idx].material, "grease_pencil", None)
+            if gp is not None and getattr(gp, "show_fill", False):
+                return True
+    except (AttributeError, IndexError, ReferenceError):
+        pass
+    try:
+        fc = getattr(st, "fill_color", None)
+        if fc is not None and len(fc) >= 4 and float(fc[3]) > 0.0:
+            return True
+    except (AttributeError, TypeError, ValueError):
+        pass
+    return False
+
+
 def tinta_de_vertice(pts):
     """Média das cores de vértice que **de fato** tingem o traço.
 
@@ -174,22 +200,24 @@ def cor_do_traco(ob, st, rel, onde, tinta=None):
 
     linha = tinta or traco
     area = tinta_fill or fill
-    fechado = bool(getattr(st, "cyclic", False))
 
-    if fechado and area:
+    # `closed` na spec é "preenchimento por região" (T2.6), NÃO fechamento
+    # geométrico. Mapear do `cyclic` do traço foi o erro que só apareceu quando
+    # o desenho foi redesenhado a partir do `.brb`: num personagem do acervo,
+    # 311 de 395 traços preenchíveis têm fill no material e não são cíclicos —
+    # ou seja, 79% das áreas chapadas saíam como linha fina, e o personagem
+    # chegava do outro lado como contorno vazio. Nenhuma comparação de árvore
+    # pegou isso, porque os dois lados concordavam sobre o que eu escolhi
+    # comparar.
+    if area:
         if linha:
             rel.add("SUSPEITO", "cor",
-                    "traço fechado com cor de área E de linha; o .brb guarda uma "
-                    "cor por traço — exportada a da área, que é o que se vê", onde)
+                    "região preenchida com cor de área E de linha; o .brb guarda "
+                    "uma cor por traço — exportada a da área, que é o que se vê",
+                    onde)
         return area
     if linha:
-        if area:
-            rel.add("SUSPEITO", "cor",
-                    "traço aberto com cor de linha E de área; o .brb guarda uma "
-                    "cor por traço — exportada a da linha, que é o que se vê", onde)
         return linha
-    if area:
-        return area
     rel.add("SUSPEITO", "cor", "traço sem cor nenhuma — nem material, nem vertex "
                                "color, nem preenchimento; exportado preto", onde)
     return [0.0, 0.0, 0.0, 1.0]
@@ -329,7 +357,7 @@ def exportar(destino):
                         "color": cor_do_traco(ob, st, rel, onde, tinta),
                         "smoothing": 0.0,
                         "stabilizer": None,
-                        "closed": bool(getattr(st, "cyclic", False)),
+                        "closed": regiao_preenchida(ob, st),
                     })
                     n_tracos += 1
                     n_pontos += n
