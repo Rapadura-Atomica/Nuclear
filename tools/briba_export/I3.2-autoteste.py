@@ -284,6 +284,52 @@ def main():
                torto.read_bytes() == b"isto nao e um zip"
                and "ilegível" in r.stdout, r.stdout)
 
+        print("\nbuffer de pontos - a suposicao que nao dava erro")
+
+        REC = [sys.executable, str(RAIZ / "I3.1-recarimbar-brb.py")]
+        alvo = tmp / "buffer.brb"
+        escrever_brb(alvo, [], n_pontos=9)
+        original = alvo.read_bytes()
+
+        subprocess.run(REC + [str(alvo), "--trocar-bytes"], capture_output=True)
+        virado = alvo.read_bytes()
+        checar("trocar a ordem de bytes muda o buffer", virado != original)
+        subprocess.run(REC + [str(alvo), "--trocar-bytes"], capture_output=True)
+        checar("e trocar de novo devolve o arquivo idêntico",
+               alvo.read_bytes() == original)
+
+        subprocess.run(REC + [str(alvo), "--ordem-campos", "x,y,tempo,pressao"],
+                       capture_output=True)
+        checar("permutar campos muda o buffer", alvo.read_bytes() != original)
+        subprocess.run(REC + [str(alvo), "--ordem-campos", "x,y,tempo,pressao"],
+                       capture_output=True)
+        checar("e a permutação inversa devolve o arquivo idêntico",
+               alvo.read_bytes() == original)
+
+        with zipfile.ZipFile(alvo) as z:
+            antes_cbor = z.read("document.cbor")
+        subprocess.run(REC + [str(alvo), "--trocar-bytes"], capture_output=True)
+        with zipfile.ZipFile(alvo) as z:
+            checar("mexer no buffer não encosta no resto do container",
+                   z.read("document.cbor") == antes_cbor
+                   and all(i.compress_type == zipfile.ZIP_STORED
+                           for i in z.infolist()))
+        subprocess.run(REC + [str(alvo), "--trocar-bytes"], capture_output=True)
+
+        r = subprocess.run(REC + [str(alvo), "--ordem-campos", "x,y,z,w"],
+                           capture_output=True, text=True)
+        checar("ordem que não é permutação dos 4 campos é recusada",
+               r.returncode != 0 and "permutação" in r.stderr, r.stderr[-120:])
+
+        cortado = tmp / "cortado.brb"
+        escrever_brb(cortado, [], n_pontos=9, truncar=True)
+        intacto = cortado.read_bytes()
+        r = subprocess.run(REC + [str(cortado), "--trocar-bytes"],
+                           capture_output=True, text=True)
+        checar("buffer truncado é recusado em vez de ter o estrago espalhado",
+               cortado.read_bytes() == intacto and "truncado" in r.stdout,
+               r.stdout[-160:])
+
         print("\nI3.3 - descoberta de arquivos (a parte que roda sem o Nuclear)")
 
         acervo = tmp / "acervo"

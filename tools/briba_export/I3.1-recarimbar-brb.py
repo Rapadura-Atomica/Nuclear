@@ -9,6 +9,16 @@ estiver, quatro coisas da especificação do container ainda podem mudar de idei
   nomes dos campos    `magic`, `schema_version`, `project` foram inferidos
   pasta de atuação    `actions/` x `performances/` é pendência de governança
   método do ZIP       resolvido (armazenado), mas o mesmo risco vale
+  buffer de pontos    endianness e ordem dos campos, nenhum dos dois fixado
+
+A última é a pior das cinco, porque é a única que **não dá erro**: endianness
+trocada não faz o leitor recusar o arquivo, faz o desenho sair com coordenadas
+absurdas. Num acervo convertido em lote ninguém olha arquivo por arquivo, e o
+erro passa. Mas ela também é recarimbável: o buffer é um vetor achatado de
+float32, então trocar a ordem de bytes é uma transformação de 4 em 4 bytes e
+trocar a ordem dos campos é uma permutação de 16 em 16. Nenhuma das duas precisa
+do Blender, e nenhuma mexe em offset -- o CBOR continua apontando para os
+mesmos lugares.
 
 Se qualquer uma delas mudar depois que o acervo já rodou, reconverter o acervo
 inteiro custa uma noite de estação. Trocar o carimbo custa segundos por arquivo,
@@ -34,16 +44,70 @@ Uso:
 
   # a pasta virou actions/ mesmo
   ./I3.1-recarimbar-brb.py ~/lote-brb/brb --pasta performances/=actions/
+
+  # o leitor do outro lado le big-endian
+  ./I3.1-recarimbar-brb.py ~/lote-brb/brb --trocar-bytes
+
+  # a ordem dos campos do ponto era outra
+  ./I3.1-recarimbar-brb.py ~/lote-brb/brb --ordem-campos x,y,tempo,pressao
 """
 
 import argparse
 import json
+import struct
 import os
 import shutil
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
+
+
+# O exportador grava 4 floats little-endian por ponto: x, y, pressão, tempo.
+CAMPOS = ("x", "y", "pressao", "tempo")
+BYTES_POR_PONTO = 4 * len(CAMPOS)
+
+
+def eh_buffer(nome):
+    return nome.startswith("strokes/") and nome.endswith(".bin")
+
+
+def transformar_buffer(dados, trocar_bytes, ordem):
+    """Reescreve o buffer de pontos. Devolve (novos_dados, erro)."""
+    if not dados:
+        return dados, None
+    if len(dados) % BYTES_POR_PONTO:
+        return dados, (f"o buffer tem {len(dados)} bytes, que não é múltiplo de "
+                       f"{BYTES_POR_PONTO} — está truncado, e mexer nele agora "
+                       f"só espalharia o estrago")
+    saida = bytearray(dados)
+    if ordem:
+        indices = [CAMPOS.index(c) for c in ordem]
+        for i in range(0, len(dados), BYTES_POR_PONTO):
+            ponto = dados[i:i + BYTES_POR_PONTO]
+            saida[i:i + BYTES_POR_PONTO] = b"".join(
+                ponto[j * 4:(j + 1) * 4] for j in indices)
+    if trocar_bytes:
+        base = bytes(saida)
+        for i in range(0, len(base), 4):
+            saida[i:i + 4] = base[i:i + 4][::-1]
+    return bytes(saida), None
+
+
+def espiar_pontos(dados, quantos=2):
+    """Decodifica os primeiros pontos nas duas ordens de bytes.
+
+    É o diagnóstico que a suposição de endianness pede: coordenada de desenho
+    fica na casa das unidades, e a leitura errada devolve número absurdo —
+    1e-41, 1e+38. Com as duas colunas lado a lado dá para ver qual é a certa
+    sem ter um leitor do outro lado.
+    """
+    linhas = []
+    for i in range(min(quantos, len(dados) // BYTES_POR_PONTO)):
+        bloco = dados[i * BYTES_POR_PONTO:(i + 1) * BYTES_POR_PONTO]
+        linhas.append((struct.unpack("<ffff", bloco),
+                       struct.unpack(">ffff", bloco)))
+    return linhas
 
 
 def alvos(caminhos):
@@ -72,7 +136,28 @@ def ver(p):
     print(f"  {len(entradas)} entrada(s)"
           + (f", {len(comprimidas)} COMPRIMIDA(S): {comprimidas}" if comprimidas
              else ", todas armazenadas"))
+    try:
+        with zipfile.ZipFile(p) as z:
+            bufs = [z.read(n) for n, _ in entradas if eh_buffer(n)]
+    except (zipfile.BadZipFile, OSError):
+        bufs = []
+    total = sum(len(b) for b in bufs)
+    if total:
+        resto = total % BYTES_POR_PONTO
+        print(f"  buffer de pontos: {total} B"
+              + (f" — TRUNCADO, sobra {resto} B" if resto
+                 else f" = {total // BYTES_POR_PONTO} pontos"))
+        for le, be in espiar_pontos(bufs[0]):
+            print(f"    1o ponto  little-endian {fmt(le)}")
+            print(f"              big-endian    {fmt(be)}")
+            break
+        print("    coordenada de desenho fica na casa das unidades; a leitura "
+              "errada devolve absurdo")
     return 0
+
+
+def fmt(t):
+    return "(" + ", ".join(f"{v:.4g}" for v in t) + ")"
 
 
 def recarimbar(p, args):
@@ -98,9 +183,18 @@ def recarimbar(p, args):
         man[chave] = valor
 
     trocas_de_pasta = list(args.pasta)
+    mexe_no_buffer = bool(args.trocar_bytes or args.ordem_campos)
     mudou_manifesto = json.dumps(man, ensure_ascii=False, sort_keys=True) != antes
-    if not mudou_manifesto and not trocas_de_pasta:
+    if not mudou_manifesto and not trocas_de_pasta and not mexe_no_buffer:
         return False, "nada a mudar"
+
+    # Buffer truncado é recusa, não conserto pela metade: transformar um vetor
+    # que já está quebrado espalha o estrago pelos pontos que ainda estavam bons.
+    if mexe_no_buffer:
+        for info, dados in conteudo:
+            if eh_buffer(info.filename) and len(dados) % BYTES_POR_PONTO:
+                return False, (f"{info.filename}: {len(dados)} bytes não é "
+                               f"múltiplo de {BYTES_POR_PONTO} — buffer truncado")
 
     def novo_nome(nome):
         for velho, novo in trocas_de_pasta:
@@ -122,6 +216,11 @@ def recarimbar(p, args):
                 nome = novo_nome(info.filename)
                 if info.filename == "manifest.json":
                     dados = json.dumps(man, ensure_ascii=False).encode("utf-8")
+                elif mexe_no_buffer and eh_buffer(info.filename):
+                    dados, erro = transformar_buffer(
+                        dados, args.trocar_bytes, args.ordem_campos)
+                    if erro:
+                        raise OSError(erro)
                 novo_info = zipfile.ZipInfo(nome, date_time=info.date_time)
                 novo_info.compress_type = zipfile.ZIP_STORED
                 novo_info.external_attr = info.external_attr
@@ -156,6 +255,12 @@ def main():
                     metavar="CAMPO=VALOR", help="define um campo do manifesto")
     ap.add_argument("--pasta", type=par, action="append", default=[],
                     metavar="ANTIGA/=NOVA/", help="renomeia uma pasta dentro do ZIP")
+    ap.add_argument("--trocar-bytes", action="store_true",
+                    help="inverte a ordem de bytes de cada float do buffer de pontos")
+    ap.add_argument("--ordem-campos",
+                    metavar="A,B,C,D",
+                    help="nova ordem dos 4 campos do ponto (padrão hoje: "
+                         + ",".join(CAMPOS) + ")")
     ap.add_argument("--simular", action="store_true", help="mostra e não grava")
     ap.add_argument("--backup", action="store_true",
                     help="guarda o original como `.brb.antes`")
@@ -169,6 +274,13 @@ def main():
         except ValueError as e:
             ap.error(f"--magic-hex inválido: {e}")
 
+    if args.ordem_campos:
+        ordem = [c.strip() for c in args.ordem_campos.split(",")]
+        if sorted(ordem) != sorted(CAMPOS):
+            ap.error(f"--ordem-campos precisa ser uma permutação de "
+                     f"{','.join(CAMPOS)}; veio {args.ordem_campos}")
+        args.ordem_campos = ordem
+
     arquivos = alvos(args.caminho)
     if not arquivos:
         print("[I3.1] nenhum `.brb` nos caminhos informados")
@@ -177,9 +289,11 @@ def main():
     if args.ver:
         return max(ver(p) for p in arquivos)
 
-    if not (args.magic or args.renomear or args.definir or args.pasta):
+    if not (args.magic or args.renomear or args.definir or args.pasta
+            or args.trocar_bytes or args.ordem_campos):
         ap.error("informe pelo menos uma mudança (--magic, --renomear, "
-                 "--definir, --pasta) ou use --ver")
+                 "--definir, --pasta, --trocar-bytes, --ordem-campos) "
+                 "ou use --ver")
 
     mudados = 0
     for p in arquivos:

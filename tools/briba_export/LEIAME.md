@@ -33,7 +33,7 @@ critério de aceite do lote.
 | `./I3.2-relatorio-fidelidade.py` | relatório por arquivo e consolidado | só Python |
 | `./I3.1-recarimbar-brb.py` | troca o carimbo do container sem reconverter | só Python |
 | `./I3.4-autoteste.sh` | prova que o arnês passa e reprova quando deve | só Python |
-| `./I3.2-autoteste.py` | prova que o relatório reprova perda calada | só Python |
+| `./I3.2-autoteste.py` | prova que o relatório reprova perda calada e que a recarimbagem é reversível | só Python |
 
 ## Modo lote (I3.3)
 
@@ -86,7 +86,7 @@ no documento do formato, e todas são necessárias para escrever um conversor:
 | Método de compressão do ZIP | **armazenado**, sem compressão | o aplicativo recusa entrada comprimida |
 | Número mágico | `BRB\0` — **suposição declarada** | o aplicativo recusa o arquivo; falta o valor real |
 | Nomes dos campos do manifesto | `magic`, `schema_version`, `project` | inferidos |
-| Endianness do buffer de pontos | little-endian, 4 floats por ponto | não confirmado |
+| Endianness do buffer de pontos | little-endian, 4 floats por ponto | não confirmado — **a única que não dá erro** |
 | `actions/` × `performances/` | `performances/` | a própria spec marca como pendência |
 
 Nenhuma delas é constante de código, e é de propósito: **o Briba ainda está
@@ -101,6 +101,27 @@ foram conferidos:
 ./I3.1-recarimbar-brb.py --ver ~/lote-brb/brb/personagem.brb
 ./I3.1-recarimbar-brb.py ~/lote-brb/brb --magic 'BRBA' --backup
 ./I3.1-recarimbar-brb.py ~/lote-brb/brb --pasta 'performances/=actions/'
+./I3.1-recarimbar-brb.py ~/lote-brb/brb --trocar-bytes
+./I3.1-recarimbar-brb.py ~/lote-brb/brb --ordem-campos x,y,tempo,pressao
+```
+
+As duas últimas cobrem o buffer de pontos, que era a única suposição fora do
+alcance da recarimbagem — e a mais perigosa, porque endianness trocada não faz
+o leitor recusar nada: o arquivo abre e o desenho sai com coordenada absurda.
+O buffer é um vetor achatado de float32, então trocar a ordem de bytes é uma
+transformação de 4 em 4 bytes e trocar a ordem dos campos é uma permutação de
+16 em 16 — nenhuma das duas mexe em offset, e o CBOR continua apontando para os
+mesmos lugares. Buffer truncado é **recusado** em vez de transformado: mexer num
+vetor já quebrado só espalha o estrago.
+
+`--ver` também serve de diagnóstico: decodifica o primeiro ponto nas duas ordens
+de bytes e mostra lado a lado. Coordenada de desenho fica na casa das unidades,
+e a leitura errada devolve absurdo — dá para saber qual é a certa sem ter um
+leitor do outro lado.
+
+```
+1o ponto  little-endian (0.165, 1.536, 1, 0)
+          big-endian    (2.24e+24, -2.469e-19, 4.601e-41, 0)
 ```
 
 Enquanto o valor não for confirmado, todo `.brb` sai com um achado `SUSPEITO`
