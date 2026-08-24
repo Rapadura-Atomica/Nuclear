@@ -32,6 +32,7 @@ critério de aceite do lote.
 | `./I3.4-rodar.sh` | o laço sobre as cinco referências | Nuclear + acervo |
 | `./I3.2-relatorio-fidelidade.py` | relatório por arquivo e consolidado | só Python |
 | `./I3.1-recarimbar-brb.py` | troca o carimbo do container sem reconverter | só Python |
+| `./I3.5-desenhar-brb.py` | redesenha o `.brb` como SVG, para o olho conferir | só Python |
 | `./I3.4-autoteste.sh` | prova que o arnês passa e reprova quando deve | só Python |
 | `./I3.2-autoteste.py` | prova que o relatório reprova perda calada e que a recarimbagem é reversível | só Python |
 
@@ -54,6 +55,29 @@ do Dropbox (essas são decisão humana pendente, não acervo).
 O CI roda o **autoteste**, não o laço: extrair e exportar exigem o binário do
 Nuclear e os arquivos do acervo, e nenhum dos dois cabe num runner. Ver
 `.github/workflows/i34-brb.yml`.
+
+## A prova que o arnês não dá (I3.5)
+
+Toda a verificação acima compara número com número. Isso pega perda de estrutura
+e passa batido por erro que só o olho vê — e o teste que pegaria esse erro,
+abrir no aplicativo do outro lado, não existe enquanto ele estiver sendo escrito.
+
+`I3.5-desenhar-brb.py` fecha parte da lacuna: lê o container, decodifica o CBOR,
+tira os pontos do buffer binário e emite SVG. Não abre o arquivo de origem e não
+usa o Nuclear — se sair um personagem reconhecível, os dados atravessaram.
+
+```sh
+./I3.5-desenhar-brb.py personagem.brb personagem.svg
+./I3.5-desenhar-brb.py pasta-de-brb/ pasta-de-svg/
+```
+
+Ele já se pagou duas vezes. Achou que `closed` estava sendo mapeado do `cyclic`
+do traço quando na spec é preenchimento por região — 79% das áreas chapadas de
+um personagem saíam como linha fina, com a árvore batendo perfeitamente dos dois
+lados. E achou o espaço de cor, acima.
+
+**O que ele não prova:** que o Briba aceita o arquivo. Ele prova o conteúdo, não
+o container.
 
 ## As árvores de referência são anonimizadas
 
@@ -88,6 +112,11 @@ no documento do formato, e todas são necessárias para escrever um conversor:
 | Nomes dos campos do manifesto | `magic`, `schema_version`, `project` | inferidos |
 | Endianness do buffer de pontos | little-endian, 4 floats por ponto | não confirmado — **a única que não dá erro** |
 | `actions/` × `performances/` | `performances/` | a própria spec marca como pendência |
+| Espaço de cor do campo `color` | linear, sem conversão | **também não dá erro** — descoberto redesenhando o `.brb` |
+
+A última apareceu quando o `.brb` foi redesenhado de volta como imagem: o
+Grease Pencil guarda cor de material em LINEAR, a spec diz `color: RGBA` sem
+dizer o espaço, e escrever esse número como sRGB escurece a arte inteira.
 
 Nenhuma delas é constante de código, e é de propósito: **o Briba ainda está
 sendo escrito**, então nem tirar o valor de um arquivo que ele mesmo salvou é
