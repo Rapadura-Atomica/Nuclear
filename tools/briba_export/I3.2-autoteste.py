@@ -284,6 +284,51 @@ def main():
                torto.read_bytes() == b"isto nao e um zip"
                and "ilegível" in r.stdout, r.stdout)
 
+        print("\ncomparador - arquivo sem desenho nao e arquivo perdido")
+
+        CMP = [sys.executable, str(RAIZ / "I3.4-comparar.py")]
+
+        def comparar_arvores(nome, nuc, brb):
+            a, b = tmp / f"{nome}-n.json", tmp / f"{nome}-b.json"
+            a.write_text(json.dumps(nuc, ensure_ascii=False), encoding="utf-8")
+            b.write_text(json.dumps(brb, ensure_ascii=False), encoding="utf-8")
+            r = subprocess.run(CMP + [str(a), str(b), str(tmp / f"{nome}-r.json")],
+                               capture_output=True, text=True)
+            return r.returncode, json.loads((tmp / f"{nome}-r.json").read_text(encoding="utf-8"))
+
+        def camada(nome, n_tracos=2):
+            return {"nome": nome, "grupo_pai": None, "modo_de_mistura": "REGULAR",
+                    "opacidade": 1.0, "ordem_de_desenho": 0, "mascaras": [],
+                    "n_quadros": 1, "quadros_expostos": [1], "visivel": True,
+                    "quadros": [{"quadro": 1, "tipo": "KEYFRAME", "desenho_ref": 0,
+                                 "n_tracos": n_tracos, "tracos": []}]}
+
+        vazio_nuc = {"schema": 1, "arquivo": "/acervo/actions.blend",
+                     "cena": {"quadros": [1, 250]}, "objetos": [], "resumo": {}}
+        vazio_brb = {"schema": 1, "origem": "brb", "camadas": [], "avisos": [],
+                     "resumo": {}, "fidelidade_declarada": None}
+        cod, r = comparar_arvores("vazio", vazio_nuc, vazio_brb)
+        checar("arquivo sem desenho dos DOIS lados passa",
+               cod == 0 and r["veredito"] == "PASSOU", f"cod={cod} {r['veredito']}")
+        checar("mas o fato fica registrado, porque é notícia para quem abrir",
+               any(a["assunto"] == "arquivo sem desenho" for a in r["achados"]),
+               json.dumps([a["assunto"] for a in r["achados"]], ensure_ascii=False))
+
+        cheio_nuc = {"schema": 1, "arquivo": "/acervo/personagem.blend",
+                     "cena": {"quadros": [1, 250]},
+                     "objetos": [{"nome": "CABECA", "camadas": [camada("linha"),
+                                                               camada("papel")]}],
+                     "resumo": {}}
+        cod, r = comparar_arvores("sumiu", cheio_nuc, vazio_brb)
+        checar("mas desenho que EXISTIA e sumiu continua reprovando",
+               cod != 0 and r["veredito"] == "REPROVOU"
+               and any(a["assunto"] == "estrutura" for a in r["achados"]),
+               f"cod={cod} {r['veredito']}")
+        checar("e a mensagem diz quantas camadas se perderam",
+               any("2 camada" in a["detalhe"] for a in r["achados"]
+                   if a["assunto"] == "estrutura"),
+               json.dumps([a["detalhe"] for a in r["achados"]], ensure_ascii=False))
+
         print("\nbuffer de pontos - a suposicao que nao dava erro")
 
         REC = [sys.executable, str(RAIZ / "I3.1-recarimbar-brb.py")]

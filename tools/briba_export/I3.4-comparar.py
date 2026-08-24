@@ -159,7 +159,21 @@ def comparar(nuc, brb):
 
     # ---- nível 2: estrutura -------------------------------------------------
     if not conv:
-        a.add(PERDIDO, "estrutura", "o .brb não tem nenhuma camada de desenho")
+        if not orig:
+            # Nem todo `.blend` do acervo tem desenho: biblioteca de Actions,
+            # arquivo só de armadura, cena de montagem. Um `.brb` vazio a partir
+            # de um arquivo vazio não perdeu nada — reprovar aqui acusaria o
+            # conversor por uma decisão que o arquivo de entrada já tinha
+            # tomado. Fica registrado como suspeito porque **é** notícia: quem
+            # esperava um personagem vai abrir um arquivo em branco.
+            a.add(SUSPEITO, "arquivo sem desenho",
+                  "o arquivo não tem camada de Grease Pencil nenhuma, e o .brb "
+                  "saiu vazio do mesmo jeito — nada se perdeu. Se ele guarda "
+                  "rig ou animação, isso é nível 3/4 e não entra nos níveis 1 e 2")
+        else:
+            a.add(PERDIDO, "estrutura",
+                  f"o Nuclear tem {len(orig)} camada(s) de desenho e o .brb não "
+                  f"tem nenhuma")
         return a, orig, conv
 
     pares, sobrando = casar(orig, conv)
