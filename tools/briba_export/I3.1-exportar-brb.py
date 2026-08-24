@@ -112,12 +112,41 @@ class Relatorio:
         return dict(Counter(i["categoria"] for i in self.itens))
 
 
-def cor_do_traco(ob, st, rel, onde):
+def tinta_de_vertice(pts):
+    """Média das cores de vértice que **de fato** tingem o traço.
+
+    Em GP v3 o alfa da vertex color é o fator de mistura, então alfa 0 quer
+    dizer "não tinge". Ignorar isso foi o que fez o relatório do acervo acusar
+    fusão de cor em 361 de 381 arquivos: o atributo existe em quase todo traço
+    e quase nunca pinta.
+    """
+    soma = [0.0, 0.0, 0.0]
+    n = 0
+    for p in pts:
+        c = getattr(p, "vertex_color", None)
+        if c is None or len(c) < 4 or float(c[3]) <= 0.0:
+            continue
+        for i in range(3):
+            soma[i] += float(c[i])
+        n += 1
+    if not n:
+        return None
+    return [round(soma[0] / n, 6), round(soma[1] / n, 6),
+            round(soma[2] / n, 6), 1.0]
+
+
+def cor_do_traco(ob, st, rel, onde, tinta=None):
     """Decide a cor única que o `.brb` guarda, e registra o que se perdeu.
 
-    A cor pode vir do MATERIAL (cor de traço, cor de preenchimento) ou de
-    VERTEX COLOR por ponto, e as duas coexistem. O `.brb` tem um campo de cor
-    só, então a fusão é inevitável — o que não pode é ser silenciosa.
+    Quatro fontes de cor coexistem no Grease Pencil e o `.brb` tem um campo só
+    (a spec fixa `color: RGBA` por traço). A escolha segue o que a pessoa VÊ:
+
+      traço aberto    o que aparece é a linha  -> vertex color, senão material
+      traço fechado   o que aparece é a área   -> fill do traço, senão material
+
+    Foi medido no acervo antes de virar regra: 91% dos traços com as duas cores
+    são abertos, então pegar sempre a linha estaria certo na maioria e errado
+    justamente nas peças chapadas, que são as que se vê de longe.
     """
     idx = int(getattr(st, "material_index", 0) or 0)
     traco = fill = None
@@ -133,16 +162,36 @@ def cor_do_traco(ob, st, rel, onde):
     except (AttributeError, IndexError, ReferenceError):
         pass
 
-    if traco and fill:
-        rel.add("SUSPEITO", "cor",
-                "o material tem cor de traço E de preenchimento; o .brb guarda "
-                "uma cor por traço — exportada a de traço", onde)
-        return traco
-    if traco:
-        return traco
-    if fill:
-        return fill
-    rel.add("SUSPEITO", "cor", "traço sem cor de material — exportado preto", onde)
+    # Tinta de preenchimento por traço, também com o alfa como fator de mistura.
+    tinta_fill = None
+    try:
+        fc = getattr(st, "fill_color", None)
+        if fc is not None and len(fc) >= 4 and float(fc[3]) > 0.0:
+            tinta_fill = [round(float(fc[0]), 6), round(float(fc[1]), 6),
+                          round(float(fc[2]), 6), 1.0]
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    linha = tinta or traco
+    area = tinta_fill or fill
+    fechado = bool(getattr(st, "cyclic", False))
+
+    if fechado and area:
+        if linha:
+            rel.add("SUSPEITO", "cor",
+                    "traço fechado com cor de área E de linha; o .brb guarda uma "
+                    "cor por traço — exportada a da área, que é o que se vê", onde)
+        return area
+    if linha:
+        if area:
+            rel.add("SUSPEITO", "cor",
+                    "traço aberto com cor de linha E de área; o .brb guarda uma "
+                    "cor por traço — exportada a da linha, que é o que se vê", onde)
+        return linha
+    if area:
+        return area
+    rel.add("SUSPEITO", "cor", "traço sem cor nenhuma — nem material, nem vertex "
+                               "color, nem preenchimento; exportado preto", onde)
     return [0.0, 0.0, 0.0, 1.0]
 
 
@@ -159,7 +208,7 @@ def pontos_para_buffer(st, matriz, rel, onde):
     """
     pts = list(getattr(st, "points", []))
     if not pts:
-        return b"", 0
+        return b"", 0, None
 
     dados = bytearray()
     ys = []
@@ -181,7 +230,7 @@ def pontos_para_buffer(st, matriz, rel, onde):
                 f"traço com {profundidade:.4f} de extensão em Y foi achatado — "
                 f"o .brb é 2D", onde)
 
-    return bytes(dados), len(pts)
+    return bytes(dados), len(pts), tinta_de_vertice(pts)
 
 
 def perfil_de_espessura(st):
@@ -267,7 +316,7 @@ def exportar(destino):
 
                 tracos = []
                 for st in getattr(desenho, "strokes", []):
-                    bruto, n = pontos_para_buffer(st, matriz, rel, onde)
+                    bruto, n, tinta = pontos_para_buffer(st, matriz, rel, onde)
                     if n == 0:
                         continue
                     offset = len(buffers)
@@ -277,7 +326,7 @@ def exportar(destino):
                         "points": {"offset": offset, "size": n},
                         "brush": PINCEL_PADRAO,
                         "thickness_profile": perfil_de_espessura(st),
-                        "color": cor_do_traco(ob, st, rel, onde),
+                        "color": cor_do_traco(ob, st, rel, onde, tinta),
                         "smoothing": 0.0,
                         "stabilizer": None,
                         "closed": bool(getattr(st, "cyclic", False)),

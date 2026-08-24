@@ -246,6 +246,12 @@ def comparar(nuc, brb):
         # A cor pode vir do material OU de vertex color, e as duas coexistem.
         # Um exportador que lê só o material perde pintura; um que lê só o
         # vertex color perde tudo que nunca foi pintado à mão.
+        #
+        # `tem_cor_vertice` conta apenas vertex color que TINGE: em GP v3 o alfa
+        # é o fator de mistura, e o atributo existir com alfa 0 é o caso normal
+        # (150.555 de 151.425 traços do acervo). Quem filtra isso é o extrator —
+        # antes de ele filtrar, este ramo acusava fusão de cor em 361 de 381
+        # arquivos e mandava um animador conferir o que não tinha mudado.
         if (o["tem_cor_material"] or o["tem_cor_vertice"]) and not c["tem_cor"]:
             origem = []
             if o["tem_cor_material"]: origem.append("material")

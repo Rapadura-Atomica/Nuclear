@@ -111,12 +111,18 @@ def pontos_do_traco(st):
 
 
 def cor_de_vertice(desenho, st_idx, n_pontos):
-    """Vertex color por ponto, se existir. Devolve None se o arquivo não usa.
+    """Vertex color por ponto, **se ela realmente tinge**. Senão, None.
 
-    Em GP v3 a cor de vértice vive em atributo do desenho, não no traço. Como
-    o nome e a forma do atributo variam entre versões, tenta e desiste em
-    silêncio — mas o campo fica no JSON como `null`, que é diferente de ausente:
-    diz que foi procurado e não havia.
+    Em GP v3 a cor de vértice vive em atributo do desenho, não no traço, e o
+    ALFA dela é o fator de mistura: alfa 0 quer dizer "existe o atributo e ele
+    não tinge nada". Isso é o caso normal, não a exceção — no acervo do estúdio,
+    150.555 de 151.425 traços têm o atributo com alfa 0.
+
+    Reportar presença do atributo em vez de efeito foi o que fez 361 de 381
+    arquivos saírem com "conferir a cor" no relatório: um alarme sobre uma fusão
+    que não estava acontecendo. Aqui a pergunta certa é se ALGUM ponto tem alfa
+    acima de zero — e ela é respondida sobre o vetor inteiro, com `foreach_get`,
+    não sobre os oito primeiros pontos.
     """
     try:
         attrs = getattr(desenho, "attributes", None)
@@ -127,10 +133,27 @@ def cor_de_vertice(desenho, st_idx, n_pontos):
             if a is None:
                 continue
             dados = getattr(a, "data", [])
-            if not len(dados):
+            n = len(dados)
+            if not n:
                 continue
-            vals = [rvec(getattr(d, "color", getattr(d, "vector", None)) or ()) for d in dados[:8]]
-            return {"atributo": nome, "n": len(dados), "amostra": [v for v in vals if v]}
+            alfa_max = 0.0
+            try:
+                buf = [0.0] * (n * 4)
+                dados.foreach_get("color", buf)
+                alfa_max = max(buf[3::4]) if buf else 0.0
+                amostra = [[round(v, 6) for v in buf[i * 4:i * 4 + 4]]
+                           for i in range(min(8, n))]
+            except (AttributeError, TypeError, RuntimeError, ValueError):
+                vals = [rvec(getattr(d, "color", getattr(d, "vector", None)) or ())
+                        for d in dados[:8]]
+                amostra = [v for v in vals if v]
+                alfa_max = max((v[3] for v in amostra if len(v) > 3), default=0.0)
+            if alfa_max <= 0.0:
+                # O atributo existe e não pinta. Para efeito de fidelidade é o
+                # mesmo que não existir, e dizer o contrário é ruído.
+                return None
+            return {"atributo": nome, "n": n, "alfa_max": round(float(alfa_max), 6),
+                    "amostra": amostra}
     except (AttributeError, TypeError, KeyError, ReferenceError):
         pass
     return None
