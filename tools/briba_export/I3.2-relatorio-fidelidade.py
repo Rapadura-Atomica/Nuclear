@@ -239,7 +239,8 @@ def foi_declarado(achado, por_lugar):
 def classificar(comparacao, declarado):
     """Separa o observado em: declarada, calada, estrutural, conferir."""
     por_lugar = indexar_declarado((declarado or {}).get("achados"))
-    baldes = {"declarada": [], "calada": [], "estrutural": [], "conferir": []}
+    baldes = {"declarada": [], "calada": [], "estrutural": [], "conferir": [],
+              "suposicoes": []}
 
     for a in (comparacao or {}).get("achados", []):
         cat = a.get("categoria")
@@ -264,7 +265,23 @@ def classificar(comparacao, declarado):
         chave = (d.get("assunto"), d.get("onde"))
         if chave in vistos:
             continue
-        baldes["declarada"].append({**d, "_fonte": "exportador"})
+        item = {**d, "_fonte": "exportador"}
+        # SUSPEITO do lado do exportador é SUPOSIÇÃO, não perda. O número mágico
+        # do container é o caso claro: nada se perdeu, só não se sabe se o valor
+        # está certo. Listar isso como perda faria todo arquivo do acervo nascer
+        # com "perda declarada", e aí a categoria deixa de significar coisa
+        # alguma justamente onde ela mais precisa significar.
+        if d.get("categoria") == "SUSPEITO":
+            # Suposição SEM lugar é do container (número mágico, nome de campo):
+            # nada a conferir no desenho, e recarimbável. Suposição COM lugar é
+            # escolha de conversão numa camada — essa quem confere é o animador,
+            # abrindo o arquivo, e recarimbar não desfaz.
+            if d.get("onde"):
+                baldes["conferir"].append(item)
+            else:
+                baldes["suposicoes"].append(item)
+            continue
+        baldes["declarada"].append(item)
     return baldes
 
 
@@ -407,6 +424,7 @@ def montar(base, caminho_brb, arv_nuc, arv_brb, comparacao):
         "perdeu_calado": baldes["calada"],
         "falhou": baldes["estrutural"],
         "conferir": baldes["conferir"],
+        "suposicoes": baldes["suposicoes"],
         "mascaras_preservadas": n_mascaras,
         "avisos_do_arquivo": avisos_brb,
         "contagem": {
@@ -414,6 +432,7 @@ def montar(base, caminho_brb, arv_nuc, arv_brb, comparacao):
             "calada": len(baldes["calada"]),
             "estrutural": len(baldes["estrutural"]),
             "conferir": len(baldes["conferir"]),
+            "suposicoes": len(baldes["suposicoes"]),
         },
         "nao_verificado": (comparacao or {}).get("nao_verificado", []) or [
             "nada foi verificado de forma independente — só o que o conversor "
@@ -470,6 +489,16 @@ def markdown(r):
     A("")
     A(f"{SELO.get(r['veredito'], '•')} **{r['veredito']}**")
     A("")
+    if r.get("suposicoes"):
+        n = len(r["suposicoes"])
+        A(f"O veredito acima é sobre **fidelidade do desenho**. Além dele, este "
+          f"arquivo carrega {n} suposição{'ões' if n != 1 else ''} de container "
+          f"ainda não confirmada{'s' if n != 1 else ''} — ver o fim do relatório. "
+          f"{'Elas não tiram' if n != 1 else 'Ela não tira'} nem "
+          f"{'alteram' if n != 1 else 'altera'} nada do desenho, mas "
+          f"{'podem' if n != 1 else 'pode'} fazer o aplicativo recusar o "
+          f"arquivo inteiro.")
+        A("")
     if not r["verificacao_independente"]:
         A("> ⚠️ **Sem verificação independente.** Este relatório repete o que o "
           "conversor disse de si mesmo — a árvore do `.brb` não foi comparada "
@@ -575,6 +604,18 @@ def markdown(r):
                 A(f"  - Onde: {mostra}")
     A("")
 
+    if r.get("suposicoes"):
+        A("## Suposições que este arquivo carrega")
+        A("")
+        A("A especificação do formato não fixa estes pontos, e o conversor teve "
+          "de escolher. **Nada se perdeu por causa deles** — mas se o valor "
+          "escolhido estiver errado, o arquivo pode ser recusado na abertura. "
+          "Todos são recarimbáveis com `I3.1-recarimbar-brb.py`, sem reconverter.")
+        A("")
+        for assunto, itens in agrupar(r["suposicoes"]):
+            A(f"- **{assunto}** — {itens[0].get('detalhe', '').strip()}")
+        A("")
+
     if r["avisos_do_arquivo"]:
         A("## Avisos do próprio arquivo")
         A("")
@@ -626,13 +667,14 @@ def consolidar(pasta):
     A("")
     A("## Por arquivo")
     A("")
-    A("| Arquivo | Veredito | Declarada | Calada | Falha | Conferir | Verificado |")
-    A("|---|---|---:|---:|---:|---:|:-:|")
+    A("| Arquivo | Veredito | Declarada | Calada | Falha | Conferir | Suposições | Verificado |")
+    A("|---|---|---:|---:|---:|---:|---:|:-:|")
     for r in sorted(relatorios, key=lambda r: -ORDEM.index(r["veredito"])):
         c = r["contagem"]
         A(f"| [`{r['base']}`]({r['base']}-fidelidade.md) "
           f"| {SELO.get(r['veredito'],'•')} {r['veredito']} "
           f"| {c['declarada']} | {c['calada']} | {c['estrutural']} | {c['conferir']} "
+          f"| {c.get('suposicoes', 0)} "
           f"| {'sim' if r['verificacao_independente'] else '**não**'} |")
     A("")
 

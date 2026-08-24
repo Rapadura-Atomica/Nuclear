@@ -216,6 +216,29 @@ def main():
         checar("o consolidado conta os motivos para o I5.2 priorizar",
                d["motivos"].get("cor") == 1, json.dumps(d["motivos"]))
 
+        supo = [achado("SUSPEITO", "número mágico", None,
+                       "o manifesto foi carimbado com uma suposição")]
+        brb = escrever_brb(tmp / "suposicao.brb", supo)
+        cod, r, md = rodar(tmp, "suposicao", brb, arvore(), arvore(), comparacao([]))
+        checar("suposição de container NÃO é contada como perda",
+               r["contagem"]["declarada"] == 0
+               and r["contagem"]["suposicoes"] == 1, json.dumps(r["contagem"]))
+        checar("mas ela aparece em seção própria e no cabeçalho",
+               "## Suposições que este arquivo carrega" in md
+               and "recusar o arquivo inteiro" in md)
+        checar("e não estraga o veredito de fidelidade",
+               r["veredito"] == "CONVERTIDO LIMPO" and cod == 0, r["veredito"])
+
+        supo_camada = [achado("SUSPEITO", "cor", "CAPUZ/Layer",
+                              "o material tem cor de traço E de preenchimento")]
+        brb = escrever_brb(tmp / "supo-camada.brb", supo_camada)
+        cod, r, md = rodar(tmp, "supo-camada", brb, arvore(), arvore(),
+                           comparacao([]))
+        checar("escolha de conversão numa CAMADA vai para o animador, não "
+               "para as suposições de container",
+               r["contagem"]["suposicoes"] == 0
+               and r["contagem"]["conferir"] == 1, json.dumps(r["contagem"]))
+
         print("\nrecarimbagem - trocar o carimbo sem tocar no desenho")
 
         alvo = tmp / "recarimbar.brb"

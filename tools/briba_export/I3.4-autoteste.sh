@@ -46,10 +46,29 @@ vermelho() {
        >"$TMP/$nome-$defeito.out" 2>&1; then
     printf '  vermelho %-27s NÃO PEGOU o defeito `%s`\n' "$nome" "$defeito"
     falhas=$((falhas+1))
+  elif ! grep -q 'REPROVOU' "$TMP/$nome-$defeito.out"; then
+    # Saída não-zero não basta: um traceback também sai não-zero, e aí o teste
+    # ficaria verde porque TUDO quebrou. O que conta é o comparador ter emitido
+    # o veredito de reprovação.
+    printf '  vermelho %-27s QUEBROU em vez de reprovar `%s`\n' "$nome" "$defeito"
+    sed -n '1,4p' "$TMP/$nome-$defeito.out" | sed 's/^/            /'
+    falhas=$((falhas+1))
   else
     local motivo
     motivo=$(sed -n '2p' "$TMP/$nome-$defeito.out" | tr -s ' ' | cut -c1-64)
     printf '  vermelho %-27s pegou `%s` →%s\n' "$nome" "$defeito" "$motivo"
+  fi
+}
+
+# Árvore que não existe não pode virar teste pulado em silêncio: o roteiro é
+# rodado tanto do repositório (árvores anonimizadas `ref-*`) quanto da estação
+# (árvores do acervo, com outro nome), e um nome errado deixaria metade do
+# caminho vermelho sem rodar sem dizer nada.
+exige() {
+  if [ ! -f "$1" ]; then
+    printf '  AUSENTE %s — o caminho vermelho não pôde rodar\n' "${1:-(sem árvore)}"
+    testes=$((testes+1)); falhas=$((falhas+1))
+    return 1
   fi
 }
 
@@ -62,11 +81,34 @@ echo
 echo "── caminho vermelho: defeito injetado de propósito"
 # cada defeito precisa de um arquivo que tenha o recurso correspondente:
 # `espera` só existe onde há quadro em espera, e só a ref-04 tem.
-vermelho ref03   "$ARVORES/ref-03-pegrig-linha-fill-pt.json"                    tracos
-vermelho ref03   "$ARVORES/ref-03-pegrig-linha-fill-pt.json"                    cor
-vermelho ref03   "$ARVORES/ref-03-pegrig-linha-fill-pt.json"                    ordem
-vermelho ref04    "$ARVORES/ref-04-pegrig-completo.json" espera
-vermelho ref04    "$ARVORES/ref-04-pegrig-completo.json" tracos
+SIMPLES="$ARVORES/ref-03-pegrig-linha-fill-pt.json"
+RICA="$ARVORES/ref-04-pegrig-completo.json"
+
+# Rodando da estação as árvores são as do acervo, com outro nome. Cai na mais
+# simples e na mais rica que existirem, em vez de pular o caminho vermelho.
+if [ ! -f "$SIMPLES" ] || [ ! -f "$RICA" ]; then
+  menor=""; maior=""
+  for a in "$ARVORES"/*.json; do
+    [ -f "$a" ] || continue
+    if [ -z "$menor" ] || [ "$a" -ot "$menor" ] 2>/dev/null; then :; fi
+    if [ -z "$menor" ] || [ "$(stat -c%s "$a")" -lt "$(stat -c%s "$menor")" ]; then menor="$a"; fi
+    if [ -z "$maior" ] || [ "$(stat -c%s "$a")" -gt "$(stat -c%s "$maior")" ]; then maior="$a"; fi
+  done
+  [ -f "$SIMPLES" ] || SIMPLES="$menor"
+  [ -f "$RICA" ] || RICA="$maior"
+  printf '  (árvores de referência não encontradas pelo nome; usando %s e %s)\n' \
+         "$(basename "${SIMPLES:-nenhuma}")" "$(basename "${RICA:-nenhuma}")"
+fi
+
+if exige "$SIMPLES"; then
+  vermelho simples "$SIMPLES" tracos
+  vermelho simples "$SIMPLES" cor
+  vermelho simples "$SIMPLES" ordem
+fi
+if exige "$RICA"; then
+  vermelho rica "$RICA" espera
+  vermelho rica "$RICA" tracos
+fi
 
 echo
 echo "-- perda calada: o .brb perde algo e NAO declara"
@@ -77,8 +119,8 @@ echo "-- perda calada: o .brb perde algo e NAO declara"
 # autoteste roda no CI, onde não há Nuclear nem acervo. O fixture escreve
 # mascaras.json e o relatório; tirar o relatório produz exatamente o arquivo
 # que perde sem declarar.
-arv_mascara="$ARVORES/ref-04-pegrig-completo.json"
-if [ -f "$arv_mascara" ]; then
+arv_mascara="$RICA"
+if exige "$arv_mascara"; then
   testes=$((testes+1))
   python3 "$RAIZ/I3.4-fixture-brb-falso.py" "$arv_mascara" "$TMP/base-mudo.brb" >/dev/null 2>&1
   python3 "$RAIZ/I3.4-tirar-relatorio.py" "$TMP/base-mudo.brb" "$TMP/mudo.brb" >/dev/null 2>&1
