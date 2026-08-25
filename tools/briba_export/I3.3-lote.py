@@ -150,6 +150,34 @@ def base_de(caminho, usadas):
 
 # --------------------------------------------------------------------------- #
 
+def decidir(veredito, cod_cmp, cod_fid):
+    """Situação do arquivo no lote. Devolve (situacao, motivo).
+
+    Quem dá o veredito é o I3.2, não o código de saída do comparador.
+
+    As duas camadas usam régua diferente de propósito: o comparador reprova
+    qualquer perda observada, e o I3.2 sabe distinguir perda DECLARADA — que é
+    limitação conhecida dos níveis 1 e 2 — de perda CALADA, que é o defeito.
+    Enquanto esta decisão saía do código de saída, um arquivo com perda
+    declarada aparecia como `REPROVOU` no resumo do lote e `PRECISA DE OLHO
+    HUMANO` no relatório dele. Um relatório que se contradiz não serve para
+    decidir nada, que é justamente o que o I3.2 existe para evitar.
+
+    O sinal do comparador não some — fica em `comparador_reprovou`, para quem
+    estiver depurando o arnês em vez de triando a conversão.
+    """
+    if veredito is None:
+        # Sem relatório não há veredito, e aí o código de saída é tudo que há.
+        if cod_fid != 0:
+            return "REPROVOU", "o relatório de fidelidade não foi gerado"
+        if cod_cmp != 0:
+            return "REPROVOU", "a comparação reprovou"
+        return "PASSOU", None
+    if str(veredito).startswith("REPROVADO"):
+        return "REPROVOU", veredito
+    return "PASSOU", None
+
+
 def converter(arq, base, dirs, args):
     """Um arquivo do começo ao fim. Devolve o registro dele."""
     log = dirs["logs"] / f"{base}.log"
@@ -227,11 +255,25 @@ def converter(arq, base, dirs, args):
         except (json.JSONDecodeError, OSError):
             pass
 
-    if cod_cmp == 0 and cod_fid == 0:
-        reg["situacao"] = "PASSOU"
-    else:
-        reg["situacao"] = "REPROVOU"
-        reg["motivo"] = reg.get("veredito") or "a comparação reprovou"
+    # Quem dá o veredito é o I3.2, não o código de saída do comparador.
+    #
+    # As duas camadas usam régua diferente de propósito: o comparador reprova
+    # qualquer perda observada, e o I3.2 sabe distinguir perda DECLARADA (que é
+    # limitação conhecida do nível 1/2) de perda CALADA (que é o defeito). Antes
+    # desta função ler o veredito, um arquivo com perda declarada saía marcado
+    # `REPROVOU` no resumo do lote e `PRECISA DE OLHO HUMANO` no relatório dele
+    # — e um relatório que se contradiz não serve para decidir nada, que é
+    # justamente o que o I3.2 existe para evitar.
+    #
+    # O sinal do comparador não some: fica no registro, para quem estiver
+    # depurando o arnês em vez de triando a conversão.
+    reg["comparador_reprovou"] = cod_cmp != 0
+    situacao, motivo = decidir(reg.get("veredito"), cod_cmp, cod_fid)
+    reg["situacao"] = situacao
+    if motivo:
+        reg["motivo"] = motivo
+
+    if reg["situacao"] == "REPROVOU":
         reg["log"] = str(log)
         reg["ultimas_linhas"] = cauda(log)
     return reg
@@ -281,6 +323,24 @@ def resumo(registros, dirs, args, pulados, segundos):
             A("```")
             A("")
         A("</details>")
+        A("")
+
+    divergentes = [r for r in registros
+                   if r.get("comparador_reprovou") and r.get("situacao") == "PASSOU"]
+    if divergentes:
+        A("## Passou com perda declarada")
+        A("")
+        A("O comparador viu diferença nestes arquivos e o relatório de fidelidade "
+          "aceitou: é limitação conhecida dos níveis 1 e 2, declarada dentro do "
+          "próprio `.brb`. Não é defeito — mas é o que o animador confere.")
+        A("")
+        A("| Arquivo | Veredito |")
+        A("|---|---|")
+        for r in divergentes[:40]:
+            A(f"| [`{r['base']}`](fidelidade/{r['base']}-fidelidade.md) "
+              f"| {r.get('veredito', '—')} |")
+        if len(divergentes) > 40:
+            A(f"| … e mais {len(divergentes) - 40} | |")
         A("")
 
     if por.get("REPROVOU"):

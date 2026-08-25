@@ -375,6 +375,33 @@ def main():
                cortado.read_bytes() == intacto and "truncado" in r.stdout,
                r.stdout[-160:])
 
+        print("\nI3.3 - o lote e o relatorio nao podem se contradizer")
+
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "lote", str(RAIZ / "I3.3-lote.py"))
+        lote = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(lote)
+
+        # O comparador reprova qualquer perda; o I3.2 sabe que perda declarada é
+        # limitação do nível, não defeito. Quando divergem, vale o I3.2.
+        sit, _ = lote.decidir("PRECISA DE OLHO HUMANO", cod_cmp=1, cod_fid=0)
+        checar("perda declarada: comparador reprova, mas o lote diz PASSOU",
+               sit == "PASSOU", sit)
+        sit, _ = lote.decidir("CONVERTIDO COM PERDA DECLARADA", cod_cmp=1, cod_fid=0)
+        checar("idem para perda declarada sem conferência", sit == "PASSOU", sit)
+
+        for v in ("REPROVADO — PERDA CALADA", "REPROVADO — FALHA DE CONVERSÃO"):
+            sit, motivo = lote.decidir(v, cod_cmp=0, cod_fid=1)
+            checar(f"veredito {v.split(chr(8212))[1].strip()} reprova o arquivo",
+                   sit == "REPROVOU" and motivo == v, f"{sit} / {motivo}")
+
+        sit, motivo = lote.decidir(None, cod_cmp=0, cod_fid=1)
+        checar("sem relatório gerado, reprova e diz por quê",
+               sit == "REPROVOU" and "não foi gerado" in motivo, f"{sit} / {motivo}")
+        sit, _ = lote.decidir(None, cod_cmp=0, cod_fid=0)
+        checar("sem relatório e sem erro, passa", sit == "PASSOU", sit)
+
         print("\nI3.3 - descoberta de arquivos (a parte que roda sem o Nuclear)")
 
         acervo = tmp / "acervo"
