@@ -104,8 +104,17 @@ def montar(arvore, degradar=None):
                         "smoothing": 0.0,
                         "points": {"offset": offset, "size": n},
                     })
-                    buffers.append(b"\x00" * max(n * 12, 1))
-                    offset += n * 12
+                    # 16 bytes por ponto, os mesmos 4 floats que o exportador
+                    # grava (x, y, pressão, tempo). Aqui ficaram 12 por um bom
+                    # tempo, e passava: o comparador tira a contagem de pontos
+                    # do `size` no CBOR, não do tamanho do buffer. Mas quem lê o
+                    # buffer por fora — o relatório de fidelidade, que divide os
+                    # bytes por 16 justamente para pegar buffer truncado — veria
+                    # este fixture como um arquivo com um quarto dos pontos
+                    # faltando. Fixture que não tem o tamanho do formato real
+                    # não serve para exercitar a verificação que mede por fora.
+                    buffers.append(b"\x00" * max(n * 16, 1))
+                    offset += n * 16
                 if degradar == "tracos" and tracos:
                     tracos = tracos[:-1]
                 quadros.append({"index": q["quadro"], "content": {"Drawn": tracos}})
