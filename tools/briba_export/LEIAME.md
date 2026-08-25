@@ -29,6 +29,7 @@ critério de aceite do lote.
 | Comando | O que faz | Precisa de |
 |---|---|---|
 | `./I3.3-lote.py --lista L --saida D --verificar` | converte o acervo inteiro, sem intervenção | Nuclear + acervo |
+| `./I3.3-reverificar.py D` | recobra a régua nova sobre um lote já convertido | só Python |
 | `./I3.4-rodar.sh` | o laço sobre as cinco referências | Nuclear + acervo |
 | `./I3.2-relatorio-fidelidade.py` | relatório por arquivo e consolidado | só Python |
 | `./I3.1-recarimbar-brb.py` | troca o carimbo do container sem reconverter | só Python |
@@ -53,6 +54,27 @@ arquivo — estação que reinicia às 4h da manhã retoma com `--continuar`.
 
 Varre `.blend` **e** `.nuc`; pula backup `.blend1`, lixeira e cópia de conflito
 do Dropbox (essas são decisão humana pendente, não acervo).
+
+### Mudou a régua? Recobre o acervo sem repetir a noite
+
+Só a primeira etapa da verificação precisa do Nuclear — extrair a árvore do
+arquivo de origem —, e o lote **já guarda** essa árvore em `arvores/<base>.json`.
+As outras três (reler o `.brb`, comparar, relatar) são Python puro.
+
+```sh
+./I3.3-reverificar.py ~/lote-brb --diff        # só o que mudou de veredito
+```
+
+Então toda mudança no leitor, no comparador ou no relatório pode ser cobrada
+contra o acervo inteiro em minutos. Sem isso a tentação é medir o conserto nas
+cinco referências e presumir o resto — e o acervo é justamente onde mora o caso
+que ninguém imaginou. Ele diz quantos **melhoraram** e quantos **pioraram**, e
+sai não-zero se algum piorou; arquivo sem árvore do Nuclear é anunciado como
+lacuna de cobertura, não contado como aprovado.
+
+**Não substitui a noite** quando o *exportador* muda: aí a árvore do `.brb` muda
+junto e a conversão precisa rodar de novo. Serve para mudança na régua, não na
+peça.
 
 O CI roda o **autoteste**, não o laço: extrair e exportar exigem o binário do
 Nuclear e os arquivos do acervo, e nenhum dos dois cabe num runner. Ver
