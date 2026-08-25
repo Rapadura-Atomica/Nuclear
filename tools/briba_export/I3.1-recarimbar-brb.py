@@ -160,6 +160,42 @@ def fmt(t):
     return "(" + ", ".join(f"{v:.4g}" for v in t) + ")"
 
 
+# O valor confirmado pelo lado do Briba em 25/08/2026. Recarimbar PARA ele não é
+# só trocar o campo: cada `.brb` carrega dentro de si um achado `SUSPEITO` dizendo
+# que o carimbo é suposição, e deixar esse achado num arquivo já corrigido é pior
+# que não ter achado nenhum — o arquivo passaria a mentir sobre si mesmo, que é
+# exatamente o que o relatório de fidelidade existe para impedir.
+#
+# ⚠️ O mesmo valor está em `I3.1-exportar-brb.py` e em `I3.4-ler-brb.py`.
+MAGICO_CONFIRMADO = "BRIBA-ANIMA"
+
+
+def limpar_suposicao_de_magico(dados):
+    """Tira o achado de número mágico do relatório embutido. Devolve (bytes, tirou)."""
+    try:
+        rel = json.loads(dados.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return dados, False
+    achados = rel.get("achados")
+    if not isinstance(achados, list):
+        return dados, False
+    ficam = [a for a in achados
+             if not (isinstance(a, dict) and a.get("assunto") == "número mágico")]
+    if len(ficam) == len(achados):
+        return dados, False
+    rel["achados"] = ficam
+    # O resumo é contado a partir dos achados; recontar em vez de decrementar,
+    # senão um arquivo com dois achados de mesma categoria sai com o número
+    # errado e ninguém percebe.
+    resumo = {}
+    for a in ficam:
+        cat = a.get("categoria")
+        if cat:
+            resumo[cat] = resumo.get(cat, 0) + 1
+    rel["resumo"] = resumo
+    return json.dumps(rel, ensure_ascii=False, indent=1).encode("utf-8"), True
+
+
 def recarimbar(p, args):
     """Reescreve só o manifesto. Devolve (mudou, motivo)."""
     try:
@@ -216,6 +252,9 @@ def recarimbar(p, args):
                 nome = novo_nome(info.filename)
                 if info.filename == "manifest.json":
                     dados = json.dumps(man, ensure_ascii=False).encode("utf-8")
+                elif (info.filename == "relatorio-de-fidelidade.json"
+                      and args.magic == MAGICO_CONFIRMADO):
+                    dados, _ = limpar_suposicao_de_magico(dados)
                 elif mexe_no_buffer and eh_buffer(info.filename):
                     dados, erro = transformar_buffer(
                         dados, args.trocar_bytes, args.ordem_campos)

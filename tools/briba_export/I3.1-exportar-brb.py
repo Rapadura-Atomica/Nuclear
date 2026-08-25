@@ -25,17 +25,21 @@ from pathlib import Path
 
 VERSAO_ESQUEMA = 1
 
-# O número mágico é a única coisa que decide se o Briba aceita ou recusa o
+# O número mágico é a única coisa que decide se o outro lado aceita ou recusa o
 # arquivo antes de olhar qualquer conteúdo — e a spec o cita **uma vez**, numa
-# tabela, sem dizer o valor. O Briba ainda está sendo escrito, então também não
-# dá para tirar o valor de um arquivo que ele mesmo salvou.
+# tabela, sem dizer o valor. Ficou como suposição declarada (`BRB\0`) de 21/08 a
+# 25/08, e **o valor chegou em 25/08**: `BRIBA-ANIMA`, no campo `magic` do
+# manifesto.
 #
-# Por isso o valor NÃO é constante de código: vem de `BRB_MAGIC`, e o padrão
-# abaixo é declaradamente um chute. O dia em que o lado do Briba fixar o valor,
-# nada aqui muda — e o acervo já convertido também não precisa reconverter:
-# `I3.1-recarimbar-brb.py` troca o carimbo no lugar, em segundos por arquivo.
-NUMERO_MAGICO = os.environ.get("BRB_MAGIC", "BRB\x00")
-MAGICO_CONFIRMADO = "BRB_MAGIC" in os.environ
+# Segue vindo de `BRB_MAGIC` — sobrescrever continua possível, e aí o arquivo
+# volta a sair declarando que o carimbo é suposição. O que mudou é que o padrão
+# agora é o valor conhecido, não um chute.
+#
+# ⚠️ O mesmo valor está em `I3.4-ler-brb.py` (que agora CONFERE o carimbo). Os
+# dois têm de concordar, e o autoteste do I3.2 reprova se divergirem.
+MAGICO_PADRAO = "BRIBA-ANIMA"
+NUMERO_MAGICO = os.environ.get("BRB_MAGIC", MAGICO_PADRAO)
+MAGICO_CONFIRMADO = NUMERO_MAGICO == MAGICO_PADRAO
 
 # Limiar de profundidade: o `.brb` é 2D e o Grease Pencil é 3D. Traço mais
 # fundo que isto perde informação de verdade na projeção, e o relatório de
@@ -420,9 +424,9 @@ def exportar(destino):
 
     if not MAGICO_CONFIRMADO:
         rel.add("SUSPEITO", "número mágico",
-                f"o manifesto foi carimbado com {NUMERO_MAGICO!r}, que é uma "
-                f"suposição: a especificação cita o número mágico sem dar o "
-                f"valor. Se o Briba recusar o arquivo dizendo que ele não é um "
+                f"o manifesto foi carimbado com {NUMERO_MAGICO!r} por causa de "
+                f"`BRB_MAGIC`, e não com o valor conhecido {MAGICO_PADRAO!r}. "
+                f"Se o outro lado recusar o arquivo dizendo que ele não é um "
                 f".brb, é isto — e o conserto é `I3.1-recarimbar-brb.py`, sem "
                 f"reconverter")
 

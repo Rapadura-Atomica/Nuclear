@@ -180,7 +180,7 @@ no documento do formato, e todas são necessárias para escrever um conversor:
 | Lacuna | O que foi adotado | Como apareceu |
 |---|---|---|
 | Método de compressão do ZIP | **armazenado**, sem compressão | o aplicativo recusa entrada comprimida |
-| Número mágico | `BRB\0` — **suposição declarada** | o aplicativo recusa o arquivo; falta o valor real |
+| Número mágico | ✅ **`BRIBA-ANIMA`**, campo `magic` — respondido em 25/08 | era a única que bloqueava; agora o leitor **confere** o carimbo |
 | Nomes dos campos do manifesto | `magic`, `schema_version`, `project` | inferidos |
 | Endianness do buffer de pontos | little-endian, 4 floats por ponto | não confirmado — **a única que não dá erro** |
 | `actions/` × `performances/` | `performances/` | a própria spec marca como pendência |
@@ -190,17 +190,40 @@ A última apareceu quando o `.brb` foi redesenhado de volta como imagem: o
 Grease Pencil guarda cor de material em LINEAR, a spec diz `color: RGBA` sem
 dizer o espaço, e escrever esse número como sRGB escurece a arte inteira.
 
-Nenhuma delas é constante de código, e é de propósito: **o Briba ainda está
-sendo escrito**, então nem tirar o valor de um arquivo que ele mesmo salvou é
-possível hoje. O número mágico sai de `BRB_MAGIC`; quando o valor real for
-fixado, o acervo já convertido **não precisa reconverter** — `I3.1-recarimbar-brb.py`
-troca o carimbo, o nome dos campos e o nome da pasta dentro do container em
-segundos por arquivo, deixando geometria e CBOR byte a byte iguais aos que já
-foram conferidos:
+Nenhuma delas é constante de código, e é de propósito. O número mágico segue
+saindo de `BRB_MAGIC` — o que mudou em 25/08 é que o **padrão** virou o valor
+conhecido em vez de um chute, e sobrescrever faz o arquivo voltar a declarar que
+o carimbo é suposição.
+
+**A resposta do número mágico provou a aposta da recarimbagem.** O acervo
+inteiro — 381 arquivos — foi recarimbado em **16 segundos**, contra os 51 minutos
+de uma reconversão, com todo o resto do container byte a byte igual ao que já
+tinha sido conferido. Duas coisas andaram junto, e nenhuma é opcional:
+
+- **O leitor passou a CONFERIR o carimbo** (`MAGICO_ESPERADO` em
+  `I3.4-ler-brb.py`). Antes ele registrava o valor e nunca o comparava — não
+  tinha com o quê. Um `.brb` com o número errado atravessava o arnês inteiro e
+  só seria recusado do outro lado; é a mesma família da miniatura de 8 bytes.
+- **A recarimbagem tira a suposição de dentro do arquivo.** Cada `.brb` carrega
+  um achado escrito dizendo que o carimbo é chute. Deixar esse achado num arquivo
+  já corrigido faria o arquivo **mentir sobre si mesmo** — exatamente o que o
+  relatório de fidelidade existe para impedir. O resumo é **recontado** a partir
+  dos achados que ficaram, não decrementado.
+
+O valor agora vive em três arquivos (exportador, leitor, recarimbador), porque o
+exportador roda dentro do Nuclear e não importa nada por caminho, de propósito.
+Valor duplicado deriva — foi assim que o fixture ficou com 12 bytes por ponto
+onde o formato tem 16 —, então **o autoteste do I3.2 reprova se os três
+divergirem**. Fixture e autotestes tiram o valor do leitor, que é quem confere.
+
+Para o resto das lacunas, o acervo já convertido **não precisa reconverter** —
+`I3.1-recarimbar-brb.py` troca o carimbo, o nome dos campos e o nome da pasta
+dentro do container em segundos por arquivo, deixando geometria e CBOR byte a
+byte iguais aos que já foram conferidos:
 
 ```sh
 ./I3.1-recarimbar-brb.py --ver ~/lote-brb/brb/personagem.brb
-./I3.1-recarimbar-brb.py ~/lote-brb/brb --magic 'BRBA' --backup
+./I3.1-recarimbar-brb.py ~/lote-brb/brb --magic 'BRIBA-ANIMA'
 ./I3.1-recarimbar-brb.py ~/lote-brb/brb --pasta 'performances/=actions/'
 ./I3.1-recarimbar-brb.py ~/lote-brb/brb --trocar-bytes
 ./I3.1-recarimbar-brb.py ~/lote-brb/brb --ordem-campos x,y,tempo,pressao

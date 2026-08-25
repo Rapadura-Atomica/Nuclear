@@ -16,7 +16,9 @@ Não precisa do Nuclear nem do acervo: roda em Python puro, no CI.
 Uso: ./I3.2-autoteste.py
 """
 
+import importlib.util
 import json
+import re
 import struct
 import subprocess
 import sys
@@ -26,6 +28,21 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent
 I32 = RAIZ / "I3.2-relatorio-fidelidade.py"
+
+
+def _carregar(nome_arquivo, nome_modulo):
+    """Nome de arquivo com ponto não é importável; entra por caminho."""
+    spec = importlib.util.spec_from_file_location(
+        nome_modulo, str(RAIZ / nome_arquivo))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+# Uma fonte só para o carimbo, em vez de repetir o valor em cada fixture: era
+# assim que o `.brb` deste arnês vinha com "BRB " e o do exportador com outra
+# coisa — ninguém percebia, porque nada conferia o campo.
+MAGICO = _carregar("I3.4-ler-brb.py", "ler_brb_para_teste").MAGICO_ESPERADO
 ALERTA = "⚠️"
 
 falhas = []
@@ -43,7 +60,7 @@ def escrever_brb(destino, achados_declarados, n_pontos=4, comprimir=False,
     if truncar:
         buf = buf[:-7]
     with zipfile.ZipFile(destino, "w", modo) as z:
-        z.writestr("manifest.json", json.dumps({"magic": "BRB ",
+        z.writestr("manifest.json", json.dumps({"magic": MAGICO,
                                                 "schema_version": 1}))
         z.writestr("document.cbor", b"\xa0")
         z.writestr("strokes/0000.bin", buf)
@@ -422,6 +439,22 @@ def main():
                r.stdout)
         checar("e pula backup `.blend1` e cópia de conflito do Dropbox",
                len(achados) == 2, "\n".join(achados))
+
+    print("\nnúmero mágico — o valor tem de ser o MESMO em todo lugar")
+
+    # O exportador roda dentro do Nuclear e não importa nada por caminho, de
+    # propósito: é a peça que não pode quebrar. O preço é o valor aparecer em
+    # mais de um arquivo, e valor duplicado deriva — foi assim que o fixture
+    # ficou com 12 bytes por ponto onde o formato tem 16. Aqui isso vira teste.
+    for nome, padrao, quem in (
+            ("I3.1-exportar-brb.py", r'MAGICO_PADRAO\s*=\s*"([^"]*)"', "que o exportador"),
+            ("I3.1-recarimbar-brb.py", r'MAGICO_CONFIRMADO\s*=\s*"([^"]*)"', "que a recarimbagem")):
+        casou = re.search(padrao, (RAIZ / nome).read_text(encoding="utf-8"))
+        checar(f"{quem.split()[-1]} declara o carimbo", casou is not None, nome)
+        if casou:
+            checar(f"e o valor {quem} usa bate com o do leitor, que é quem confere",
+                   casou.group(1) == MAGICO,
+                   f"{nome}={casou.group(1)!r} leitor={MAGICO!r}")
 
     print(f"\n{testes} testes, {len(falhas)} falha(s)")
     for f in falhas:

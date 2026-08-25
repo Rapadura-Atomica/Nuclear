@@ -151,6 +151,20 @@ def cbor_para_python(dados: bytes):
 # leitura do container
 # --------------------------------------------------------------------------- #
 
+# O número mágico do container, confirmado pelo lado do Briba em 25/08/2026:
+# campo `magic` do `manifest.json`. Ficou como suposição declarada (`BRB\0`) de
+# 21/08 a 25/08 — era a única lacuna que BLOQUEAVA, porque barra o arquivo antes
+# de qualquer outra checagem, e enquanto ela não fechou nenhuma das outras pôde
+# ser testada no aplicativo.
+#
+# Conferir aqui é o que faltava: o leitor sempre REGISTROU o carimbo e nunca o
+# conferiu, então um `.brb` com o número errado passava por todo o arnês e só
+# seria recusado do outro lado — a mesma família da miniatura de 8 bytes.
+#
+# ⚠️ O mesmo valor está em `I3.1-exportar-brb.py` (`MAGICO_PADRAO`). Os dois têm
+# de concordar, e o autoteste do I3.2 reprova se divergirem.
+MAGICO_ESPERADO = "BRIBA-ANIMA"
+
 # Os 8 bytes finais de todo PNG: o pedaço IEND com o CRC dele.
 FIM_PNG = b"IEND\xaeB`\x82"
 
@@ -206,6 +220,17 @@ def ler_brb(caminho):
         if "manifest.json" not in nomes:
             raise ValueError("manifest.json ausente — não é um .brb válido")
         manifesto = json.loads(z.read("manifest.json").decode("utf-8"))
+
+        # O carimbo é a primeira coisa que o outro lado confere, e o arquivo é
+        # recusado antes de qualquer conteúdo ser lido. Sem esta checagem um
+        # acervo inteiro sai com o número errado e ninguém sabe até tentar abrir.
+        carimbo = manifesto.get("magic")
+        if carimbo != MAGICO_ESPERADO:
+            avisos.append(
+                f"número mágico {carimbo!r} no campo `magic` — o esperado é "
+                f"{MAGICO_ESPERADO!r}; o outro lado recusa o arquivo antes de "
+                f"olhar o conteúdo. Conserto: `I3.1-recarimbar-brb.py "
+                f"--magic {MAGICO_ESPERADO!r}`, sem reconverter")
 
         if "document.cbor" not in nomes:
             raise ValueError("document.cbor ausente — não é um .brb válido")

@@ -15,11 +15,29 @@ Uso:
 `--degradar` estraga um aspecto de propósito, para conferir que o comparador
 pega. Valores: tracos, ordem, cor, espera.
 """
+import importlib.util
 import json
 import struct
 import sys
 import zipfile
 from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent
+
+
+def _carregar(nome_arquivo, nome_modulo):
+    """Nome de arquivo com ponto não é importável; entra por caminho."""
+    spec = importlib.util.spec_from_file_location(
+        nome_modulo, str(RAIZ / nome_arquivo))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+# O carimbo vem do leitor, que é quem o CONFERE. Repetir o valor aqui já custou:
+# este fixture carimbava um número que o exportador nunca usou, e passava,
+# porque ninguém conferia o campo. Fixture tem de ser um arquivo BOM.
+MAGICO = _carregar("I3.4-ler-brb.py", "ler_brb_para_fixture").MAGICO_ESPERADO
 
 
 # --------------------------------------------------------------------------- #
@@ -162,7 +180,7 @@ def main():
     # sem compressão: o leitor do Briba recusa entrada deflatada
     with zipfile.ZipFile(destino, "w", zipfile.ZIP_STORED) as z:
         z.writestr("manifest.json", json.dumps({
-            "magic": "BRB\x00", "schema_version": 1,
+            "magic": MAGICO, "schema_version": 1,
             "project": {"name": Path(arvore.get("arquivo", "sem-nome")).stem},
         }))
         z.writestr("document.cbor", enc(doc))

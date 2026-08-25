@@ -49,6 +49,7 @@ def carregar(nome_arquivo, nome_modulo):
 
 
 ENC = carregar("I3.4-fixture-brb-falso.py", "fixture_falso").enc
+MAGICO = carregar("I3.4-ler-brb.py", "ler_brb_para_teste").MAGICO_ESPERADO
 
 
 # --------------------------------------------------------------------------- #
@@ -90,7 +91,7 @@ def documento(tracos):
 def escrever_brb(destino, tracos, thumb=b"\x89PNG\r\n\x1a\n", extras=True):
     doc, buf = documento(tracos)
     with zipfile.ZipFile(destino, "w", zipfile.ZIP_STORED) as z:
-        z.writestr("manifest.json", json.dumps({"magic": "BRB\x00",
+        z.writestr("manifest.json", json.dumps({"magic": MAGICO,
                                                 "schema_version": 1}))
         z.writestr("document.cbor", doc)
         z.writestr("strokes/0000.bin", buf)
