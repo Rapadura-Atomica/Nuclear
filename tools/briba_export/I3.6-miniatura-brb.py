@@ -120,6 +120,24 @@ def desenhar(tracos, lado):
     return img.resize((lado, lado), Image.LANCZOS)
 
 
+def em_branco(lado):
+    """A miniatura de um `.brb` que não tem desenho nenhum.
+
+    Recusar-se a escrever aqui parece a atitude conservadora, e é a errada: o
+    arquivo ficaria com a miniatura quebrada de antes, e um arnês que passe a
+    cobrar miniatura válida reprovaria justamente os arquivos que o lote decidiu
+    NÃO reprovar — nem todo `.blend` do acervo tem desenho (biblioteca de
+    ações, arquivo só de armadura, cena de montagem), e arquivo sem desenho não
+    é arquivo perdido.
+
+    Então sai um PNG válido e em branco, e quem chamou fica sabendo que está em
+    branco. Quem diz que o arquivo não tem desenho é o relatório de fidelidade
+    dentro do container, não a ausência de uma imagem.
+    """
+    Image, _ = pil()
+    return Image.new("RGB", (lado, lado), FUNDO)
+
+
 def png_bytes(img):
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
@@ -203,26 +221,26 @@ def uma(caminho, lado, backup, so_ver, quadro=None, tambem_png=None):
         print(f"[I3.6] {caminho.name}: {antes}")
         # Pelo diagnóstico, não pelo tamanho: PNG truncado com a assinatura
         # certa passa fácil de 8 bytes e não abre em lugar nenhum.
-        return antes.startswith("PNG válido")
+        return antes.startswith("PNG válido"), False
 
     D = carregar("I3.5-desenhar-brb.py", "desenhar_brb")
     tracos, avisos = D.coletar(caminho, quadro)
     img = desenhar(tracos, lado)
-    if img is None:
-        print(f"[I3.6] {caminho.name}: sem traço desenhável — miniatura não gerada "
-              f"(estava: {antes})")
-        for a in avisos:
-            print(f"       aviso: {a}")
-        return False
+    branco = img is None
+    if branco:
+        img = em_branco(lado)
 
     dados = png_bytes(img)
     regravar(caminho, dados, backup=backup)
     if tambem_png:
         Path(tambem_png).parent.mkdir(parents=True, exist_ok=True)
         Path(tambem_png).write_bytes(dados)
-    print(f"[I3.6] {caminho.name}: {antes} -> {diagnostico(dados)} "
-          f"({len(tracos)} traços)")
-    return True
+    quanto = "EM BRANCO — o arquivo não tem desenho" if branco \
+        else f"{len(tracos)} traços"
+    print(f"[I3.6] {caminho.name}: {antes} -> {diagnostico(dados)} ({quanto})")
+    for a in avisos:
+        print(f"       aviso: {a}")
+    return True, branco
 
 
 def main():
@@ -244,25 +262,32 @@ def main():
 
     alvo = Path(args.alvo)
     if not args.lote:
-        ok = uma(alvo, args.lado, not args.sem_backup, args.ver, args.quadro,
-                 Path(args.png_em) / f"{alvo.stem}.png" if args.png_em else None)
+        ok, _ = uma(alvo, args.lado, not args.sem_backup, args.ver, args.quadro,
+                    Path(args.png_em) / f"{alvo.stem}.png" if args.png_em else None)
         return 0 if ok else 1
 
     arquivos = sorted(alvo.rglob("*.brb"))
     if not arquivos:
         print(f"[I3.6] nenhum `.brb` em {alvo}")
         return 2
-    bons = ruins = 0
+    bons = ruins = brancos = 0
     for a in arquivos:
         try:
-            ok = uma(a, args.lado, not args.sem_backup, args.ver, args.quadro,
-                     Path(args.png_em) / f"{a.stem}.png" if args.png_em else None)
+            ok, branco = uma(a, args.lado, not args.sem_backup, args.ver,
+                             args.quadro,
+                             Path(args.png_em) / f"{a.stem}.png"
+                             if args.png_em else None)
         except (zipfile.BadZipFile, OSError, ValueError, KeyError,
                 RuntimeError) as e:
             print(f"[I3.6] {a.name}: não deu — {type(e).__name__}: {e}")
-            ok = False
+            ok, branco = False, False
         bons, ruins = bons + bool(ok), ruins + (not ok)
-    print(f"[I3.6] {bons} com miniatura, {ruins} sem.")
+        brancos += bool(branco)
+    # Quantos saíram em branco é notícia, não detalhe: se esse número crescer de
+    # uma rodada para a outra, o exportador parou de achar desenho em algum
+    # lugar — e a contagem de "com miniatura" sozinha esconderia isso.
+    extra = f" ({brancos} em branco, por falta de desenho)" if brancos else ""
+    print(f"[I3.6] {bons} com miniatura{extra}, {ruins} sem.")
     return 0 if not ruins else 1
 
 

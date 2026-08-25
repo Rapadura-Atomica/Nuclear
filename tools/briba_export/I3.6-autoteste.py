@@ -247,13 +247,21 @@ def main():
         checar("e é trocado por um bom",
                cod == 0 and len(miniatura(p)) > 100)
 
+        # Nem todo arquivo do acervo tem desenho (biblioteca de ações, arquivo
+        # só de armadura, cena de montagem), e o lote decidiu que arquivo sem
+        # desenho NÃO é arquivo perdido. Se aqui a ferramenta se recusasse a
+        # escrever, esses arquivos ficariam com a miniatura quebrada de antes —
+        # e um arnês que cobre miniatura válida reprovaria exatamente os que o
+        # lote decidiu não reprovar.
         vazio = escrever_brb(tmp / "vazio.brb", [])
-        marca = vazio.read_bytes()
         cod, saida = rodar(vazio, "--sem-backup")
-        checar("arquivo sem traço não é regravado às escondidas",
-               vazio.read_bytes() == marca, "o arquivo mudou")
-        checar("e ele DIZ que não gerou, em vez de sair 0 calado",
-               cod != 0 and "miniatura não gerada" in saida, saida.strip())
+        checar("arquivo sem desenho ganha miniatura EM BRANCO, não fica com a quebrada",
+               cod == 0 and "PNG válido" in saida, saida.strip())
+        checar("e o roteiro diz que está em branco, em vez de fingir que desenhou",
+               "EM BRANCO" in saida, saida.strip())
+        branco = pixel(miniatura(vazio), 0.5, 0.5)
+        checar("a miniatura em branco é branca de verdade e decodifica",
+               perto(branco, (255, 255, 255), 2), f"centro={branco}")
 
         print("\nmodo lote")
 
@@ -263,14 +271,27 @@ def main():
             escrever_brb(d / f"p{i}.brb", [quadrado(0, 0, 10, [0, 0, 0, 1])])
         escrever_brb(d / "vazio.brb", [])
         cod, saida = rodar(d, "--lote", "--sem-backup")
-        checar("o lote conta certo os que deram e os que não deram",
-               "3 com miniatura, 1 sem" in saida, saida.strip().splitlines()[-1])
-        checar("e sai não-zero quando algum ficou sem", cod != 0, f"cod={cod}")
+        ultima = saida.strip().splitlines()[-1]
+        checar("o lote conta os em branco à parte, em vez de escondê-los no total",
+               "4 com miniatura (1 em branco, por falta de desenho), 0 sem" in saida,
+               ultima)
+        checar("e sai 0 quando todo arquivo ficou com miniatura válida",
+               cod == 0, f"cod={cod}")
+
+        # Um arquivo que nem ZIP é continua sendo falha — a tolerância ao
+        # arquivo sem desenho não pode virar tolerância a arquivo quebrado.
+        (d / "quebrado.brb").write_bytes(b"isto nao e um zip")
+        cod, saida = rodar(d, "--lote", "--sem-backup")
+        checar("`.brb` que nem abre é contado como falha, não como em branco",
+               "4 com miniatura (1 em branco, por falta de desenho), 1 sem" in saida,
+               saida.strip().splitlines()[-1])
+        checar("e aí o lote sai não-zero", cod != 0, f"cod={cod}")
+        (d / "quebrado.brb").unlink()
 
         png_em = tmp / "pngs"
         cod, _ = rodar(d, "--lote", "--sem-backup", "--png-em", png_em)
         checar("`--png-em` solta os PNGs para conferência",
-               len(list(png_em.glob("*.png"))) == 3,
+               len(list(png_em.glob("*.png"))) == 4,
                str(sorted(x.name for x in png_em.glob("*.png"))))
 
     print(f"\n{testes} teste(s), {len(falhas)} falha(s)")
