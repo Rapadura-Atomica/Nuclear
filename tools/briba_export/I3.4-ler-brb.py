@@ -151,6 +151,37 @@ def cbor_para_python(dados: bytes):
 # leitura do container
 # --------------------------------------------------------------------------- #
 
+# Os 8 bytes finais de todo PNG: o pedaço IEND com o CRC dele.
+FIM_PNG = b"IEND\xaeB`\x82"
+
+
+def png_suspeito(dados):
+    """Diz por que este `thumbnail.png` não abre, ou None se ele parece inteiro.
+
+    Existe porque a checagem antiga era só "a entrada existe", e o exportador
+    gravava ali **8 bytes** — a assinatura do PNG e mais nada. Passava em tudo:
+    comparação de árvore não olha para dentro de um PNG, e o container ficava
+    com uma imagem que nenhum decodificador abre. O outro lado não veria imagem
+    vazia, veria arquivo corrompido, e a falha apareceria no leitor dele.
+
+    Sem Pillow de propósito. Este leitor roda no CI e dentro do lote, e não vale
+    uma dependência nova para conferir cabeçalho — isto não decodifica a imagem,
+    confere que ela existe: assinatura, IHDR no lugar e o IEND no fim.
+    """
+    if not dados:
+        return "thumbnail.png está vazio"
+    if not dados.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "thumbnail.png não é PNG"
+    if len(dados) <= 8:
+        return ("thumbnail.png é só a assinatura do PNG, sem imagem nenhuma — "
+                "nenhum leitor abre")
+    if dados[12:16] != b"IHDR":
+        return "thumbnail.png não tem cabeçalho IHDR"
+    if not dados.endswith(FIM_PNG):
+        return "thumbnail.png está truncado — falta o fim (IEND)"
+    return None
+
+
 def ler_brb(caminho):
     """Devolve (manifesto, documento, avisos). Nunca levanta por falta de
     arquivo opcional — o que falta vira aviso, porque o relatório de fidelidade
@@ -193,6 +224,10 @@ def ler_brb(caminho):
 
         if "thumbnail.png" not in nomes:
             avisos.append("thumbnail.png ausente")
+        else:
+            motivo = png_suspeito(z.read("thumbnail.png"))
+            if motivo:
+                avisos.append(motivo)
 
         # O exportador grava o que decidiu perder. O comparador precisa disso:
         # perda declarada é limitação conhecida do nível 1/2; perda calada é

@@ -64,6 +64,12 @@ def _prefixo(base_curto, base_1byte, n):
 
 # --------------------------------------------------------------------------- #
 
+# Um PNG 1x1 branco, inteiro: assinatura, IHDR, IDAT e IEND.
+PNG_MINIMO = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+              b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\xdac\xf8\xff\xff?\x00"
+              b"\x05\xfe\x02\xfe3\x12\x95\x14\x00\x00\x00\x00IEND\xaeB`\x82")
+
+
 def montar(arvore, degradar=None):
     """Traduz a árvore do Nuclear para a forma que o `.brb` guarda."""
     fim_cena = (arvore.get("cena", {}).get("quadros") or [1, 250])[1]
@@ -162,7 +168,12 @@ def main():
         z.writestr("document.cbor", enc(doc))
         for i, b in enumerate(buffers):
             z.writestr(f"strokes/{i:05d}.bin", b)
-        z.writestr("thumbnail.png", b"\x89PNG\r\n\x1a\n")
+        # PNG de 1x1 válido, não só a assinatura. O fixture tinha os mesmos 8
+        # bytes que o exportador gravava — e quando a checagem de miniatura
+        # entrou no leitor, o fixture do arnês passou a produzir o defeito que o
+        # arnês existe para pegar. Fixture tem de ser um arquivo BOM; o defeito
+        # se injeta de propósito, com `--degradar`.
+        z.writestr("thumbnail.png", PNG_MINIMO)
         # Um exportador correto declara o que perdeu. O fixture representa um
         # exportador correto, então declara também — senão o comparador o
         # reprovaria por perda calada, que é justamente a checagem certa.

@@ -126,6 +126,19 @@ não era a miniatura saiu com o mesmo `sha256` e que nada ficou comprimido.
 ./I3.6-miniatura-brb.py personagem.brb --ver      # só diz o que tem hoje
 ```
 
+O modo lote do I3.3 chama esta etapa sozinho, logo depois da exportação, e
+**pergunta pelo Pillow no começo da fila, não no arquivo 1 de 384** — sem ele a
+noite inteira sairia com o container incompleto e o arnês reprovando o acervo por
+causa de uma dependência ausente. `--sem-miniatura` existe para o caso
+deliberado.
+
+Arquivo sem desenho nenhum (biblioteca de ações, arquivo só de armadura, cena de
+montagem) ganha uma miniatura **em branco**, válida, e o lote conta esses à
+parte. Recusar-se a escrever pareceria conservador e faria o contrário: deixaria
+a miniatura quebrada justamente nos arquivos que o lote decidiu **não** reprovar
+— arquivo sem desenho não é arquivo perdido. Se o número de brancos crescer de
+uma rodada para a outra, o exportador parou de achar desenho em algum lugar.
+
 O autoteste cobra o **pixel**, não o arquivo — senão repetiria o erro um degrau
 acima, cobrando "gerou um PNG" do mesmo jeito que se cobrava "a entrada existe".
 Ele confere que a arte aparece no lugar certo (o Y da cena cresce para cima, o

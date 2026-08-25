@@ -50,6 +50,7 @@ ARVORE      = str(RAIZ / "I3.4-arvore-canonica.py")
 LER_BRB     = str(RAIZ / "I3.4-ler-brb.py")
 COMPARAR    = str(RAIZ / "I3.4-comparar.py")
 FIDELIDADE  = str(RAIZ / "I3.2-relatorio-fidelidade.py")
+MINIATURA   = str(RAIZ / "I3.6-miniatura-brb.py")
 NUCLEAR     = os.environ.get("NUCLEAR_BIN", str(Path.home() / "Nuclear/current/nuclear"))
 
 # O catálogo da Montagem já se queimou com isto: filtrar só `*.blend` deixa de
@@ -203,6 +204,16 @@ def converter(arq, base, dirs, args):
         reg["ultimas_linhas"] = cauda(log)
         return reg
     reg["bytes_brb"] = brb.stat().st_size
+
+    # 1.5. miniatura do container. O exportador roda DENTRO do Nuclear, onde não
+    #      há Pillow, então a miniatura entra aqui, fora dele, como pós-passe.
+    #      Roda mesmo sem `--verificar`: um container incompleto é incompleto do
+    #      mesmo jeito, e sem esta etapa o defeito aparece no leitor do outro
+    #      lado, não aqui.
+    if not args.sem_miniatura:
+        cod_min, seg = rodar([sys.executable, MINIATURA, str(brb),
+                              "--sem-backup"], args.prazo, log)
+        reg["etapas"]["miniatura"] = {"codigo": cod_min, "segundos": round(seg, 1)}
 
     if not args.verificar:
         reg["situacao"] = "CONVERTIDO"
@@ -407,10 +418,26 @@ def main():
     ap.add_argument("--limite", type=int, help="para depois de N arquivos (ensaio)")
     ap.add_argument("--so-listar", action="store_true",
                     help="mostra o que rodaria e sai")
+    ap.add_argument("--sem-miniatura", action="store_true",
+                    help="não gera `thumbnail.png` (o container sai incompleto)")
     args = ap.parse_args()
 
     if not (args.lista or args.dir or args.arquivo):
         ap.error("informe --lista, --dir ou --arquivo")
+
+    # Perguntar agora, não no arquivo 1 de 384. Sem Pillow a miniatura não sai,
+    # e o leitor cobra miniatura válida: a noite inteira sairia com o container
+    # incompleto e o arnês reprovando o acervo por uma dependência ausente. Uma
+    # linha aqui evita descobrir isso de manhã.
+    if not args.sem_miniatura:
+        try:
+            import PIL                                            # noqa: F401
+        except ImportError:
+            sys.exit("[I3.3] Pillow não está instalado, e sem ele o `.brb` sai "
+                     "sem miniatura — o container fica incompleto e o arnês "
+                     "reprova.\n"
+                     "       Instale o Pillow, ou rode com --sem-miniatura se "
+                     "for de propósito.")
 
     alvos, pulados = descobrir(args)
     if args.limite:
