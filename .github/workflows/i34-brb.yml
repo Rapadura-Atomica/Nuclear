@@ -67,12 +67,23 @@ jobs:
         working-directory: tools/briba_export
         run: ./I3.2-autoteste.py
 
+      # A miniatura do container saiu 8 bytes por meses e passou em tudo: o
+      # leitor confere que a entrada existe, e comparação de árvore não olha
+      # para dentro de um PNG. Este autoteste cobra o pixel — se cobrasse "gerou
+      # um PNG", repetiria o mesmo erro um degrau acima.
+      - name: Pillow (só para o autoteste da miniatura)
+        run: python -m pip install --disable-pip-version-check --quiet Pillow
+
+      - name: Autoteste da miniatura — a arte tem que aparecer, não só o arquivo
+        working-directory: tools/briba_export
+        run: ./I3.6-autoteste.py
+
       # O laço completo não roda aqui, e o CI diz isso em voz alta em vez de
       # deixar a impressão de que a conversão inteira foi verificada. Silêncio
       # sobre o que não foi testado é como um relatório de fidelidade mente.
       - name: O que este job NÃO verifica
         if: always()
         run: |
-          echo "::notice title=Cobertura::Este job testa o comparador, o leitor de .brb, o fixture, o relatório de fidelidade e a recarimbagem."
+          echo "::notice title=Cobertura::Este job testa o comparador, o leitor de .brb, o fixture, o relatório de fidelidade, a recarimbagem e a miniatura do container."
           echo "::notice title=Não verificado::A extração da árvore, a exportação e o modo lote exigem o Nuclear e o acervo — rode ./I3.3-lote.py ou ./I3.4-rodar.sh numa estação."
           echo "::notice title=Também não verificado::Que o app do Briba aceite o arquivo. Isso só se prova abrindo lá — e o Briba ainda está sendo escrito, então nem o número mágico do container está confirmado."

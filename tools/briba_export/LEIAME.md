@@ -1,4 +1,4 @@
-# Exportador `.brb`, relatório de fidelidade e modo lote (I3.1 a I3.4)
+# Exportador `.brb`, relatório de fidelidade e modo lote (I3.1 a I3.6)
 
 Ferramentas do **lado Nuclear** do lote de aposentadoria do fork: converter o acervo do estúdio
 para o formato `.brb` do Briba Anima, e verificar que a conversão não mente.
@@ -33,8 +33,10 @@ critério de aceite do lote.
 | `./I3.2-relatorio-fidelidade.py` | relatório por arquivo e consolidado | só Python |
 | `./I3.1-recarimbar-brb.py` | troca o carimbo do container sem reconverter | só Python |
 | `./I3.5-desenhar-brb.py` | redesenha o `.brb` como SVG, para o olho conferir | só Python |
+| `./I3.6-miniatura-brb.py` | põe a miniatura do container, sem reconverter | só Python + Pillow |
 | `./I3.4-autoteste.sh` | prova que o arnês passa e reprova quando deve | só Python |
 | `./I3.2-autoteste.py` | prova que o relatório reprova perda calada e que a recarimbagem é reversível | só Python |
+| `./I3.6-autoteste.py` | prova que a miniatura mostra a arte, e não só que existe | só Python + Pillow |
 
 ## Modo lote (I3.3)
 
@@ -78,6 +80,41 @@ lados. E achou o espaço de cor, acima.
 
 **O que ele não prova:** que o Briba aceita o arquivo. Ele prova o conteúdo, não
 o container.
+
+## A miniatura do container (I3.6)
+
+O container manda `thumbnail.png`, "miniatura do projeto". O exportador gravava
+ali **8 bytes** — só a assinatura do PNG, sem cabeçalho, sem pixel, sem marca de
+fim. Nenhum decodificador abre isso: o outro lado não veria uma imagem vazia,
+veria arquivo corrompido, e a falha apareceria no leitor dele.
+
+Passou por tudo. É perda calada da mesma família das outras, e pela mesma razão:
+o leitor do I3.4 confere que a entrada **existe** (`thumbnail.png ausente`), e
+comparação de árvore não olha para dentro de um PNG.
+
+`I3.6-miniatura-brb.py` é **pós-passe**, o mesmo precedente da recarimbagem: não
+abre o arquivo de origem, não chama o Nuclear, não reconverte nada. Lê o próprio
+`.brb`, redesenha o conteúdo com o código do I3.5 e regrava o container com a
+miniatura no lugar — conferindo, antes de trocar o arquivo, que toda entrada que
+não era a miniatura saiu com o mesmo `sha256` e que nada ficou comprimido.
+
+```sh
+./I3.6-miniatura-brb.py personagem.brb            # no lugar, com backup
+./I3.6-miniatura-brb.py ~/lote-brb/brb --lote     # o acervo já convertido
+./I3.6-miniatura-brb.py personagem.brb --ver      # só diz o que tem hoje
+```
+
+O autoteste cobra o **pixel**, não o arquivo — senão repetiria o erro um degrau
+acima, cobrando "gerou um PNG" do mesmo jeito que se cobrava "a entrada existe".
+Ele confere que a arte aparece no lugar certo (o Y da cena cresce para cima, o
+da imagem para baixo — sem inverter, o personagem sai de cabeça para baixo) e
+que a cor sai convertida para sRGB em vez do número linear cru. Foi ele que
+pegou o `--ver` julgando validade pelo tamanho em bytes: PNG truncado com a
+assinatura certa passa fácil de 8 bytes e não abre em lugar nenhum.
+
+Pillow é a única dependência fora da biblioteca padrão em toda esta pasta, e ela
+fica aqui de propósito: este roteiro roda **fora** do Nuclear, então não pesa no
+ambiente congelado nem no lote.
 
 ## As árvores de referência são anonimizadas
 
