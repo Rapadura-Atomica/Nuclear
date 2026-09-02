@@ -732,6 +732,33 @@ pasta, e quem quiser o padrão antigo escreve `####` no caminho.
 
 ---
 
+### Marcar keyframe numa peça presa a peg keyava o objeto, não a peg (2026-09-02)
+Relato do usuário ("bug recorrente"): marca a chave no frame 1, vai ao frame 2, posa — e a segunda
+pose "reflete" a primeira: os dois frames ficam com a mesma pose. Reproduzido na GUI com mouse
+simulado e com os operadores: o auto-key do transform (`special_aftertrans_update_pegrig_peg`)
+está certo em todos os fluxos (Peg Pose, Xsheet, rig de produção). O que falhava era **marcar a
+chave por fora do transform** — e o animador marca antes de posar. Nos takes reais
+(um take do Ep05) há pegs sem chave nenhuma enquanto as vizinhas têm chaves em 1/3/6/8.
+
+| Arquivo | O que foi alterado |
+|---|---|
+| `source/blender/blenkernel/BKE_pegrig.hh` + `intern/pegrig.cc` | Nova `BKE_pegrig_object_posing_peg_get(ob, &index)`: a peg pela qual o desenho é posado (a da Follow Peg, ou a peg ativa do rig quando é a própria ou uma ancestral — o Ctrl+B do Peg Pose). É a regra que vivia como `static` em `transform_convert_pegrig.cc`; agora transform, auto-key, `I` e Alt+I resolvem a MESMA peg. |
+| `source/blender/editors/transform/transform_convert_pegrig.cc` | Usa a função do BKE em vez da cópia local. |
+| `source/blender/editors/animation/keyframing.cc` | **`I` no viewport** (`anim.keyframe_insert` sem keying set): objeto com Follow Peg keya `translation/rotation/scale` da peg no rig, não `location/rotation/scale` do objeto (que a Follow Peg ignora — o losango aparecia na timeline e a pose não estava gravada; a primeira pose keyada noutro frame era lida de volta neste). **Alt+I** (`anim.keyframe_delete_v3d` sem keying set): apaga as chaves da peg no frame (F-Curves com prefixo `pegs["nome"].`), além das do objeto. |
+| `source/blender/editors/space_action/action_edit.cc` | **`I` no Dope Sheet/Xsheet** (`action.keyframe_insert`, modos ALL e SEL): além de re-keyar os canais listados, grava a pose de **todas as pegs** de cada rig que posa um desenho listado — o Blender só re-keya canal que já existe, então peg nunca keyada (rig novo, ou controlador que a montagem deixou de fora) não ganhava chave nenhuma. |
+
+Gate novo, na GUI de propósito: `tools/nuclear_rig/selftest_peg_keyframe_mark.py` (13 checagens;
+saída 0/1/2 = passou/reprovou/arnês quebrou). No b25 reprova 8 — inclusive "frame 1 mantém a
+pose 1: got=(0,0,1) want=(0,0,0)", que é o sintoma relatado. **Candidato a upstream: não** (a
+Follow Peg é do Nuclear).
+
+Duas armadilhas do arnês de GUI que custaram rodadas: `bpy.app.timers.register(..., persistent=True)`
+é obrigatório quando o teste chama `read_factory_settings` (o timer comum é descartado no load e a
+janela fica aberta para sempre), e o tipo de objeto GP no RNA deste build é `'GREASEPENCIL'`, não
+`'GREASE_PENCIL'` (filtrar pelo segundo devolve zero peças e o teste "passa" sem testar nada).
+
+---
+
 ## 3. Branding (subconjunto de pontos quentes + dados)
 
 Pontos onde a identidade "Blender" aparece. Itens marcados [feito] já foram alterados;

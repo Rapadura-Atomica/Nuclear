@@ -13,6 +13,7 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math_base.h"
+#include "BLI_set.hh"
 #include "BLI_string.h"
 
 #include "BLT_translation.hh"
@@ -20,6 +21,8 @@
 #include "DNA_ID.h"
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
+#include "DNA_object_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_sequence_types.h"
 
@@ -33,6 +36,7 @@
 #include "BKE_idtype.hh"
 #include "BKE_lib_id.hh"
 #include "BKE_nla.hh"
+#include "BKE_pegrig.hh"
 #include "BKE_report.hh"
 #include "BKE_scene.hh"
 
@@ -237,6 +241,26 @@ static wmOperatorStatus insert_key_with_keyingset(bContext *C, wmOperator *op, K
   return OPERATOR_FINISHED;
 }
 
+/* Nuclear: the pose channels of a peg, the same three the Peg Pose tool's auto-key writes
+ * (#special_aftertrans_update_pegrig_peg), so a keyframe marked by hand and one recorded while
+ * posing cover exactly the same channels. */
+static blender::Vector<RNAPath> pegrig_pose_rna_paths()
+{
+  blender::Vector<RNAPath> paths;
+  paths.append({"translation"});
+  paths.append({"rotation"});
+  paths.append({"scale"});
+  return paths;
+}
+
+/* Nuclear: the RNA path prefix (`pegs["name"].`) of every F-Curve that animates `peg_index`. */
+static std::string pegrig_peg_rna_path_prefix(PegRig *rig, const int peg_index)
+{
+  PointerRNA peg_ptr = RNA_pointer_create_discrete(
+      &rig->id, &RNA_PegRigPeg, &rig->pegs[peg_index]);
+  return RNA_path_from_ID_to_struct(&peg_ptr).value_or("") + ".";
+}
+
 static blender::Vector<RNAPath> construct_rna_paths(PointerRNA *ptr)
 {
   eRotationModes rotation_mode;
@@ -371,8 +395,43 @@ static wmOperatorStatus insert_key(bContext *C, wmOperator *op)
 
   animrig::CombinedKeyingResult combined_result;
   blender::Set<ID *> ids;
+  /* Nuclear: several selected drawings can hang off the same peg; key it once. */
+  blender::Set<const PegRigPeg *> pegs_keyed;
   for (PointerRNA &id_ptr : selection) {
     ID *selected_id = id_ptr.owner_id;
+
+    /* Nuclear: a drawing bound to a peg is posed through that peg - the Peg Pose tool never moves
+     * the object itself - so "Insert Keyframe" records the peg's pose, not the object's transform.
+     * Keying the object put a diamond in the timeline that held nothing the animator could see:
+     * the pose was never recorded, so the first pose keyed on another frame was read back on
+     * this frame too, and the two poses came out identical. */
+    if (id_ptr.type == &RNA_Object) {
+      int peg_index;
+      PegRig *rig = BKE_pegrig_object_posing_peg_get(static_cast<Object *>(id_ptr.data),
+                                                     &peg_index);
+      if (rig != nullptr) {
+        if (!pegs_keyed.add(&rig->pegs[peg_index])) {
+          continue;
+        }
+        if (!BKE_id_is_editable(bmain, &rig->id)) {
+          BKE_reportf(op->reports, RPT_ERROR, "'%s' is not editable", rig->id.name + 2);
+          continue;
+        }
+        ids.add(&rig->id);
+        PointerRNA peg_ptr = RNA_pointer_create_discrete(
+            &rig->id, &RNA_PegRigPeg, &rig->pegs[peg_index]);
+        combined_result.merge(animrig::insert_keyframes(bmain,
+                                                        &peg_ptr,
+                                                        std::nullopt,
+                                                        pegrig_pose_rna_paths().as_span(),
+                                                        scene_frame,
+                                                        anim_eval_context,
+                                                        key_type,
+                                                        insert_key_flags));
+        continue;
+      }
+    }
+
     ids.add(selected_id);
     if (!id_can_have_animdata(selected_id)) {
       BKE_reportf(op->reports,
@@ -1164,10 +1223,56 @@ static wmOperatorStatus delete_key_v3d_without_keying_set(bContext *C, wmOperato
 
   const bool confirm = op->flag & OP_IS_INVOKE;
 
+  Main *bmain = CTX_data_main(C);
+  /* Nuclear: several selected drawings can hang off the same peg; clear it once. */
+  blender::Set<const PegRigPeg *> pegs_cleared;
+
   CTX_DATA_BEGIN (C, Object *, ob, selected_objects) {
     int success = 0;
 
     selected_objects_len += 1;
+
+    /* Nuclear: a drawing posed through a peg keeps its keys on the rig, under the peg's channels,
+     * so Delete Keyframe clears those - the counterpart of #insert_key keying the peg. The
+     * object's own keys (which older files carry from the object-keying days) are still cleared
+     * below. */
+    int peg_index;
+    PegRig *rig = BKE_pegrig_object_posing_peg_get(ob, &peg_index);
+    if (rig != nullptr && rig->adt != nullptr && rig->adt->action != nullptr &&
+        pegs_cleared.add(&rig->pegs[peg_index]) && BKE_id_is_editable(bmain, &rig->id))
+    {
+      AnimData *adt = rig->adt;
+      Action &action = adt->action->wrap();
+      if (action.is_action_layered()) {
+        const float cfra_unmap = BKE_nla_tweakedit_remap(adt, cfra, NLATIME_CONVERT_UNMAP);
+        const std::string prefix = pegrig_peg_rna_path_prefix(rig, peg_index);
+        blender::Vector<FCurve *> modified_fcurves;
+        foreach_fcurve_in_action_slot(action, adt->slot_handle, [&](FCurve &fcurve) {
+          if (fcurve.rna_path == nullptr || !STRPREFIX(fcurve.rna_path, prefix.c_str())) {
+            return;
+          }
+          if (BKE_fcurve_is_protected(&fcurve)) {
+            BKE_reportf(op->reports,
+                        RPT_WARNING,
+                        "Not deleting keyframe for locked F-Curve '%s', rig '%s'",
+                        fcurve.rna_path,
+                        rig->id.name + 2);
+            return;
+          }
+          if (fcurve_delete_keyframe_at_time(&fcurve, cfra_unmap)) {
+            modified_fcurves.append(&fcurve);
+          }
+        });
+        success += modified_fcurves.size();
+        for (FCurve *fcurve : modified_fcurves) {
+          if (BKE_fcurve_is_empty(fcurve)) {
+            action_fcurve_remove(action, *fcurve);
+          }
+        }
+        DEG_id_tag_update(&adt->action->id, ID_RECALC_ANIMATION_NO_FLUSH);
+        DEG_id_tag_update(&rig->id, ID_RECALC_ANIMATION_NO_FLUSH);
+      }
+    }
 
     /* just those in active action... */
     if ((ob->adt) && (ob->adt->action)) {
