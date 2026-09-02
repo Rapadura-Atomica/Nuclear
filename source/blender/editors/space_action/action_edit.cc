@@ -14,8 +14,10 @@
 #include "BLI_listbase.h"
 #include "BLI_map.hh"
 #include "BLI_math_base.h"
+#include "BLI_set.hh"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
+#include "BLI_vector.hh"
 
 #include "BLT_translation.hh"
 
@@ -23,12 +25,17 @@
 
 #include "DNA_anim_types.h"
 #include "DNA_gpencil_legacy_types.h"
+#include "DNA_layer_types.h"
 #include "DNA_mask_types.h"
+#include "DNA_object_types.h"
+#include "DNA_pegrig_types.h"
 #include "DNA_scene_types.h"
 
 #include "RNA_access.hh"
 #include "RNA_define.hh"
 #include "RNA_enum_types.hh"
+#include "RNA_path.hh"
+#include "RNA_prototypes.hh"
 
 #include "BKE_animsys.h"
 #include "BKE_context.hh"
@@ -36,7 +43,9 @@
 #include "BKE_global.hh"
 #include "BKE_gpencil_legacy.h"
 #include "BKE_grease_pencil.hh"
+#include "BKE_lib_id.hh"
 #include "BKE_nla.hh"
+#include "BKE_pegrig.hh"
 #include "BKE_report.hh"
 
 #include "UI_interface_icons.hh"
@@ -907,6 +916,64 @@ static void insert_fcurve_key(bAnimContext *ac,
   ale->update |= ANIM_UPDATE_DEFAULT;
 }
 
+/* Nuclear: record the pose of every peg of every rig that poses a listed drawing.
+ *
+ * A drawing bound to a peg keeps its pose on the rig, and the dope sheet lists the rig's channels
+ * under the drawing (see `animdata_filter_dopesheet_ob`). Insert Keyframe walks those channels,
+ * but a channel only exists once it has been keyed: a peg that was never keyed (a fresh rig, or a
+ * controller the montage pass left alone) got nothing from the "I" the animator pressed to mark
+ * the pose on frame 1, and the first pose keyed on another frame was then read back on frame 1
+ * too. Keying the whole rig here is the same snapshot the channel walk already takes for keyed
+ * pegs - re-keying those at the current value is a no-op - extended to the ones without curves,
+ * so the marked keyframe holds the pose of every controller. */
+static void insert_action_keys_pegs(bAnimContext *ac,
+                                    const short mode,
+                                    const eInsertKeyFlags flag,
+                                    const AnimationEvalContext &anim_eval_context)
+{
+  using namespace blender;
+  ListBase anim_data = {nullptr, nullptr};
+  eAnimFilter_Flags filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE |
+                              ANIMFILTER_LIST_CHANNELS | ANIMFILTER_FOREDIT | ANIMFILTER_NODUPLIS);
+  if (mode == 2) {
+    filter |= ANIMFILTER_SEL;
+  }
+  ANIM_animdata_filter(ac, &anim_data, filter, ac->data, eAnimCont_Types(ac->datatype));
+
+  const eBezTriple_KeyframeType key_type = eBezTriple_KeyframeType(
+      ac->scene->toolsettings->keyframe_type);
+  Vector<RNAPath> paths;
+  paths.append({"translation"});
+  paths.append({"rotation"});
+  paths.append({"scale"});
+
+  Set<PegRig *> rigs_keyed;
+  LISTBASE_FOREACH (bAnimListElem *, ale, &anim_data) {
+    if (ale->type != ANIMTYPE_OBJECT) {
+      continue;
+    }
+    const Base *base = static_cast<const Base *>(ale->data);
+    int peg_index;
+    PegRig *rig = BKE_pegrig_object_posing_peg_get(base ? base->object : nullptr, &peg_index);
+    if (rig == nullptr || !rigs_keyed.add(rig) || !BKE_id_is_editable(ac->bmain, &rig->id)) {
+      continue;
+    }
+    for (int i = 0; i < rig->pegs_num; i++) {
+      PointerRNA peg_ptr = RNA_pointer_create_discrete(&rig->id, &RNA_PegRigPeg, &rig->pegs[i]);
+      animrig::insert_keyframes(ac->bmain,
+                                &peg_ptr,
+                                std::nullopt,
+                                paths.as_span(),
+                                std::nullopt,
+                                anim_eval_context,
+                                key_type,
+                                flag);
+    }
+    DEG_id_tag_update(&rig->id, ID_RECALC_ANIMATION_NO_FLUSH);
+  }
+  ANIM_animdata_freelist(&anim_data);
+}
+
 /* this function is responsible for inserting new keyframes */
 static void insert_action_keys(bAnimContext *ac, short mode)
 {
@@ -975,6 +1042,11 @@ static void insert_action_keys(bAnimContext *ac, short mode)
       default:
         BLI_assert_msg(false, "Keys cannot be inserted into this animation type.");
     }
+  }
+
+  /* Nuclear: the pegs behind the listed drawings, including the ones with no channel yet. */
+  if (ELEM(mode, 1, 2)) {
+    insert_action_keys_pegs(ac, mode, flag, anim_eval_context);
   }
 
   ANIM_animdata_update(ac, &anim_data);

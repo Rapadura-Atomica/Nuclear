@@ -38,44 +38,6 @@
 
 namespace blender::ed::transform {
 
-/* Resolve the active object's Follow Peg constraint into its rig and (validated) peg index. */
-static PegRig *pegrig_active_peg_get(Object *object, int *r_peg_index)
-{
-  *r_peg_index = -1;
-  if (object == nullptr) {
-    return nullptr;
-  }
-  bConstraint *con = BKE_object_find_followpeg_constraint(object);
-  if (con == nullptr) {
-    return nullptr;
-  }
-  bFollowPegConstraint *data = static_cast<bFollowPegConstraint *>(con->data);
-  if (data->rig == nullptr) {
-    return nullptr;
-  }
-  PegRig *rig = data->rig;
-  int obj_peg = data->peg_index;
-  if (obj_peg < 0 || obj_peg >= rig->pegs_num || !STREQ(rig->pegs[obj_peg].name, data->peg_name)) {
-    obj_peg = BKE_pegrig_peg_index_by_name(rig, data->peg_name);
-  }
-  if (obj_peg < 0) {
-    return nullptr;
-  }
-
-  /* Prefer the rig's active peg when it is the object's own peg or one of its ancestors (the
-   * Ctrl+B "climb to parent / Peg Master" navigation); otherwise control the object's own peg. */
-  int index = obj_peg;
-  const int active = rig->active_peg_index;
-  if (active >= 0 && active < rig->pegs_num &&
-      (active == obj_peg || BKE_pegrig_peg_is_ancestor(rig, active, obj_peg)))
-  {
-    index = active;
-  }
-
-  *r_peg_index = index;
-  return rig;
-}
-
 /* World-space pivot of a peg: the point its rotation and scale turn about. It is the parent's
  * world frame applied to (pivot + translation) - the same centre #createTransPegRigPeg measures
  * around and the transform gizmo sits on. */
@@ -97,7 +59,7 @@ static void pegrig_peg_pivot_world(const PegRig *rig, int peg_index, float r_cen
 bool transform_pegrig_object_pivot_world(Object *object, float r_pivot[3])
 {
   int peg_index;
-  PegRig *rig = pegrig_active_peg_get(object, &peg_index);
+  PegRig *rig = BKE_pegrig_object_posing_peg_get(object, &peg_index);
   if (rig == nullptr) {
     return false;
   }
@@ -108,7 +70,7 @@ bool transform_pegrig_object_pivot_world(Object *object, float r_pivot[3])
 bool transform_pegrig_object_axis_world(Object *object, float r_mat[3][3])
 {
   int peg_index;
-  PegRig *rig = pegrig_active_peg_get(object, &peg_index);
+  PegRig *rig = BKE_pegrig_object_posing_peg_get(object, &peg_index);
   if (rig == nullptr) {
     return false;
   }
@@ -131,7 +93,7 @@ static void createTransPegRigPeg(bContext * /*C*/, TransInfo *t)
   }
 
   int peg_index;
-  PegRig *rig = pegrig_active_peg_get(object, &peg_index);
+  PegRig *rig = BKE_pegrig_object_posing_peg_get(object, &peg_index);
   if (rig == nullptr) {
     return;
   }
@@ -215,7 +177,7 @@ static void special_aftertrans_update_pegrig_peg(bContext *C, TransInfo *t)
     return;
   }
   int peg_index;
-  PegRig *rig = pegrig_active_peg_get(object, &peg_index);
+  PegRig *rig = BKE_pegrig_object_posing_peg_get(object, &peg_index);
   if (rig == nullptr) {
     return;
   }

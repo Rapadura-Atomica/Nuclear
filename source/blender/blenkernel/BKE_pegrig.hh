@@ -92,3 +92,16 @@ bool BKE_pegrig_peg_local_matrix_get(const PegRig *rig, int peg_index, float r_m
  * or null if the object follows no peg.
  */
 bConstraint *BKE_object_find_followpeg_constraint(const Object *ob);
+
+/**
+ * The peg an object is posed through. This is the peg its Follow Peg constraint binds it to, or
+ * the rig's active peg when that one is the object's own peg or one of its ancestors (the Ctrl+B
+ * "climb to parent / Peg Master" navigation of the Peg Pose tool).
+ *
+ * Every tool that reads or writes "the pose of this drawing" - the transform, its auto-key, Insert
+ * and Delete Keyframe - has to agree on this peg, otherwise a keyframe lands on a controller other
+ * than the one that moved.
+ *
+ * \return the rig, with the peg index in `r_peg_index`; null (index -1) when `ob` follows no peg.
+ */
+PegRig *BKE_pegrig_object_posing_peg_get(const Object *ob, int *r_peg_index);

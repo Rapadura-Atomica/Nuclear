@@ -460,4 +460,41 @@ bConstraint *BKE_object_find_followpeg_constraint(const Object *ob)
   return nullptr;
 }
 
+PegRig *BKE_pegrig_object_posing_peg_get(const Object *ob, int *r_peg_index)
+{
+  *r_peg_index = -1;
+  const bConstraint *con = BKE_object_find_followpeg_constraint(ob);
+  if (con == nullptr) {
+    return nullptr;
+  }
+  const bFollowPegConstraint *data = static_cast<const bFollowPegConstraint *>(con->data);
+  PegRig *rig = data->rig;
+  if (rig == nullptr) {
+    return nullptr;
+  }
+
+  /* The cached index is only a hint: pegs get removed and reordered, so trust it only while it
+   * still names the bound peg. */
+  int own = data->peg_index;
+  if (own < 0 || own >= rig->pegs_num || !STREQ(rig->pegs[own].name, data->peg_name)) {
+    own = BKE_pegrig_peg_index_by_name(rig, data->peg_name);
+  }
+  if (own < 0) {
+    return nullptr;
+  }
+
+  /* Prefer the rig's active peg when it is the object's own peg or one of its ancestors;
+   * otherwise the object's own peg. */
+  int index = own;
+  const int active = rig->active_peg_index;
+  if (active >= 0 && active < rig->pegs_num &&
+      (active == own || BKE_pegrig_peg_is_ancestor(rig, active, own)))
+  {
+    index = active;
+  }
+
+  *r_peg_index = index;
+  return rig;
+}
+
 /** \} */
